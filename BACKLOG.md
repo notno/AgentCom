@@ -9,6 +9,7 @@ Nathan: just add a line under Inbox. One sentence is fine. I'll figure out the r
 ## Inbox
 <!-- Nathan drops ideas here, I process them into the backlog -->
 
+- Inter-Mind communication visibility — dashboard view showing message volume between Minds, who's talking to whom, message counts per agent per hour, conversation graphs. Let Nathan see the "nervous system" in action.
 - Educational tab on the dashboard — teach Nathan about our structure, agents, Minds, and stack. Interactive explainer: what is AgentCom, how do Minds connect, what's the architecture, who's who, what's BEAM/Elixir, etc.
 
 ## In Progress
