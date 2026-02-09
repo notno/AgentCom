@@ -1,6 +1,5 @@
-Add task protocol specification
+Add agentcom-skill for OpenClaw integration
 
-Structured delegation protocol: delegate, accept, reject,
-progress, result, ack. Includes auction mode for unassigned
-tasks and Tier 0 handling rules. ~2100 token overhead per
-task lifecycle.
+Skill for Minds to poll mailbox, send messages, and process
+tasks on heartbeat. Install on each Mind and add AgentCom
+section to HEARTBEAT.md.
