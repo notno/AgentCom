@@ -7,16 +7,18 @@ defmodule AgentCom.Router do
   - Undeliverable messages are stored for later (TODO: message queue)
   """
 
-  alias AgentCom.{Message, Presence}
+  alias AgentCom.{Message, Presence, Mailbox}
 
   @doc "Send a message to its destination."
   def route(%Message{to: "broadcast"} = msg) do
     Phoenix.PubSub.broadcast(AgentCom.PubSub, "messages", {:message, msg})
+    queue_for_offline(msg)
     {:ok, :broadcast}
   end
 
   def route(%Message{to: nil} = msg) do
     Phoenix.PubSub.broadcast(AgentCom.PubSub, "messages", {:message, msg})
+    queue_for_offline(msg)
     {:ok, :broadcast}
   end
 
@@ -26,10 +28,24 @@ defmodule AgentCom.Router do
         send(pid, {:message, msg})
         {:ok, :delivered}
       [] ->
-        # Agent not connected — for now, drop with error
-        # TODO: queue for later delivery
-        {:error, :agent_offline}
+        # Agent not connected — queue for polling
+        AgentCom.Mailbox.enqueue(to, msg)
+        {:ok, :queued}
     end
+  end
+
+  # Queue broadcast messages for agents that are registered but currently offline
+  defp queue_for_offline(%Message{from: from} = msg) do
+    # Get all known agent_ids from Auth, find ones not currently connected
+    AgentCom.Auth.list()
+    |> Enum.each(fn %{agent_id: agent_id} ->
+      if agent_id != from do
+        case Registry.lookup(AgentCom.AgentRegistry, agent_id) do
+          [] -> Mailbox.enqueue(agent_id, msg)
+          _ -> :ok  # online, they got it via PubSub
+        end
+      end
+    end)
   end
 
   @doc "Send a message and return the routed message."

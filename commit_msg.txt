@@ -1,0 +1,9 @@
+Add message mailbox (poll model) + push model design notes
+
+- AgentCom.Mailbox: ETS-backed per-agent message queue
+- GET /api/mailbox/:id?since=N poll for messages (token auth)
+- POST /api/mailbox/:id/ack acknowledge processed messages
+- Router queues messages for offline agents instead of dropping
+- Broadcasts queued for offline agents with tokens
+- Max 100 messages per agent mailbox (FIFO trim)
+- docs/push-model.md: WebSocket sidecar architecture notes
