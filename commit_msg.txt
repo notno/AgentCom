@@ -1,8 +1,6 @@
-Add product vision and collaboration experiments docs
+Add task protocol specification
 
-- Product vision: what AgentCom needs to make Minds genuinely
-  productive together (task protocol, context objects, channels,
-  rich capabilities, automatic routing)
-- 6 collaboration experiments for multi-Mind problem solving
-  with token efficiency measurements (relay, auction, map-reduce,
-  critique loop, standing committee, compression relay)
+Structured delegation protocol: delegate, accept, reject,
+progress, result, ack. Includes auction mode for unassigned
+tasks and Tier 0 handling rules. ~2100 token overhead per
+task lifecycle.
