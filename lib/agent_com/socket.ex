@@ -162,6 +162,7 @@ defmodule AgentCom.Socket do
   end
 
   defp handle_msg(%{"type" => "ping"}, state) do
+    Presence.touch(state.agent_id)
     reply = Jason.encode!(%{"type" => "pong", "timestamp" => System.system_time(:millisecond)})
     {:push, {:text, reply}, state}
   end

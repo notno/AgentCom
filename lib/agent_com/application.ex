@@ -15,6 +15,7 @@ defmodule AgentCom.Application do
       {AgentCom.Auth, []},
       {AgentCom.Mailbox, []},
       {AgentCom.Presence, []},
+      {AgentCom.Reaper, []},
       {Bandit, plug: AgentCom.Endpoint, scheme: :http, port: port()}
     ]
 

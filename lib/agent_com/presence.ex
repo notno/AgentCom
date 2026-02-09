@@ -35,6 +35,11 @@ defmodule AgentCom.Presence do
     GenServer.cast(__MODULE__, {:update_status, agent_id, status})
   end
 
+  @doc "Touch an agent's last_seen timestamp (called on ping/message)."
+  def touch(agent_id) do
+    GenServer.cast(__MODULE__, {:touch, agent_id})
+  end
+
   @doc "List all connected agents."
   def list do
     GenServer.call(__MODULE__, :list)
@@ -49,9 +54,11 @@ defmodule AgentCom.Presence do
 
   @impl true
   def handle_call({:register, agent_id, info}, _from, state) do
+    now = System.system_time(:millisecond)
     entry = Map.merge(info, %{
       agent_id: agent_id,
-      connected_at: System.system_time(:millisecond)
+      connected_at: now,
+      last_seen: now
     })
     Phoenix.PubSub.broadcast(AgentCom.PubSub, "presence", {:agent_joined, entry})
     {:reply, :ok, Map.put(state, agent_id, entry)}
@@ -69,6 +76,15 @@ defmodule AgentCom.Presence do
   def handle_cast({:unregister, agent_id}, state) do
     Phoenix.PubSub.broadcast(AgentCom.PubSub, "presence", {:agent_left, agent_id})
     {:noreply, Map.delete(state, agent_id)}
+  end
+
+  def handle_cast({:touch, agent_id}, state) do
+    case Map.get(state, agent_id) do
+      nil -> {:noreply, state}
+      entry ->
+        updated = Map.put(entry, :last_seen, System.system_time(:millisecond))
+        {:noreply, Map.put(state, agent_id, updated)}
+    end
   end
 
   def handle_cast({:update_status, agent_id, status}, state) do
