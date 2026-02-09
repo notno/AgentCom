@@ -118,6 +118,44 @@ defmodule AgentCom.Endpoint do
     end
   end
 
+  # --- Config: Mailbox retention ---
+
+  get "/api/config/mailbox-retention" do
+    token = get_token(conn)
+    case AgentCom.Auth.verify(token) do
+      {:ok, _agent_id} ->
+        ttl = AgentCom.Mailbox.get_ttl()
+        send_json(conn, 200, %{"mailbox_ttl_ms" => ttl})
+      _ ->
+        send_json(conn, 401, %{"error" => "unauthorized"})
+    end
+  end
+
+  put "/api/config/mailbox-retention" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case conn.body_params do
+        %{"mailbox_ttl_ms" => ms} when is_integer(ms) and ms > 0 ->
+          AgentCom.Mailbox.set_ttl(ms)
+          send_json(conn, 200, %{"mailbox_ttl_ms" => ms, "status" => "updated"})
+        _ ->
+          send_json(conn, 400, %{"error" => "missing or invalid field: mailbox_ttl_ms (positive integer)"})
+      end
+    end
+  end
+
+  post "/api/mailbox/evict" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      AgentCom.Mailbox.evict_expired()
+      send_json(conn, 200, %{"status" => "eviction_triggered"})
+    end
+  end
+
   # --- Threads: Conversation view ---
 
   get "/api/threads/:message_id" do

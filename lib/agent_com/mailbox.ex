@@ -12,6 +12,8 @@ defmodule AgentCom.Mailbox do
 
   @max_messages_per_agent 100
   @table :agent_mailbox
+  @default_ttl_ms 7 * 24 * 60 * 60 * 1000  # 7 days
+  @eviction_interval_ms 60 * 60 * 1000      # run eviction every hour
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -29,6 +31,9 @@ defmodule AgentCom.Mailbox do
 
     # Recover sequence counter from existing data
     seq = recover_seq()
+
+    # Schedule periodic TTL eviction
+    Process.send_after(self(), :evict_expired, @eviction_interval_ms)
 
     {:ok, %{seq: seq}}
   end
@@ -128,6 +133,52 @@ defmodule AgentCom.Mailbox do
 
     Enum.each(keys_to_delete, fn key -> :dets.delete(@table, key) end)
     {:noreply, state}
+  end
+
+  @doc "Manually trigger TTL-based eviction of expired messages."
+  def evict_expired do
+    GenServer.cast(__MODULE__, :evict_expired)
+  end
+
+  @doc "Get or set the retention TTL in milliseconds. Persisted via AgentCom.Config."
+  def get_ttl do
+    AgentCom.Config.get(:mailbox_ttl_ms) || @default_ttl_ms
+  end
+
+  def set_ttl(ttl_ms) when is_integer(ttl_ms) and ttl_ms > 0 do
+    AgentCom.Config.put(:mailbox_ttl_ms, ttl_ms)
+  end
+
+  @impl true
+  def handle_info(:evict_expired, state) do
+    do_evict_expired()
+    Process.send_after(self(), :evict_expired, @eviction_interval_ms)
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast(:evict_expired, state) do
+    do_evict_expired()
+    {:noreply, state}
+  end
+
+  defp do_evict_expired do
+    ttl = get_ttl()
+    cutoff = System.system_time(:millisecond) - ttl
+
+    # Select all entries with stored_at before cutoff
+    expired_keys =
+      :dets.select(@table, [
+        {{:"$1", %{stored_at: :"$2"}},
+         [{:<, :"$2", cutoff}],
+         [:"$1"]}
+      ])
+
+    Enum.each(expired_keys, fn key -> :dets.delete(@table, key) end)
+
+    if length(expired_keys) > 0 do
+      :dets.sync(@table)
+    end
   end
 
   # Helpers
