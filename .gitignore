@@ -1,0 +1,23 @@
+# Dependencies
+/deps/
+/_build/
+
+# Generated on crash
+erl_crash.dump
+
+# Mix archives
+*.ez
+
+# Test coverage
+/cover/
+
+# Editor
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
