@@ -21,6 +21,7 @@ defmodule AgentCom.Endpoint do
   - POST   /api/channels/:ch/publish     — Publish to channel (auth required)
   - GET    /api/channels/:ch/history     — Channel message history
   - GET    /api/agents/:id/subscriptions — List agent's channel subscriptions
+  - POST   /api/admin/reset       — Reset hub (restart all supervised children, auth required)
   - WS     /ws                   — WebSocket for agent connections
   """
   use Plug.Router
@@ -312,6 +313,45 @@ defmodule AgentCom.Endpoint do
     conn
     |> WebSockAdapter.upgrade(AgentCom.Socket, [], timeout: 60_000)
     |> halt()
+  end
+
+  # --- Admin: Hub reset ---
+
+  post "/api/admin/reset" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      agent_id = conn.assigns[:authenticated_agent]
+
+      # Log who triggered the reset
+      require Logger
+      Logger.warning("Hub reset triggered by #{agent_id}")
+
+      # Restart all supervised children (presence, mailbox, channels, analytics, etc.)
+      # This effectively resets hub state without a full process restart.
+      children = Supervisor.which_children(AgentCom.Supervisor)
+      restart_results = Enum.map(children, fn {id, _pid, _type, _modules} ->
+        case Supervisor.restart_child(AgentCom.Supervisor, id) do
+          {:ok, _} -> {id, :restarted}
+          {:error, :running} ->
+            Supervisor.terminate_child(AgentCom.Supervisor, id)
+            case Supervisor.restart_child(AgentCom.Supervisor, id) do
+              {:ok, _} -> {id, :restarted}
+              {:error, reason} -> {id, reason}
+            end
+          {:error, reason} -> {id, reason}
+        end
+      end)
+
+      send_json(conn, 200, %{
+        "status" => "reset",
+        "triggered_by" => agent_id,
+        "children" => Enum.map(restart_results, fn {id, result} ->
+          %{"id" => to_string(id), "result" => to_string(result)}
+        end)
+      })
+    end
   end
 
   # --- Analytics ---
