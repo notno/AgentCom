@@ -11,18 +11,21 @@ defmodule AgentCom.Router do
 
   @doc "Send a message to its destination."
   def route(%Message{to: "broadcast"} = msg) do
+    AgentCom.MessageHistory.store(msg)
     Phoenix.PubSub.broadcast(AgentCom.PubSub, "messages", {:message, msg})
     queue_for_offline(msg)
     {:ok, :broadcast}
   end
 
   def route(%Message{to: nil} = msg) do
+    AgentCom.MessageHistory.store(msg)
     Phoenix.PubSub.broadcast(AgentCom.PubSub, "messages", {:message, msg})
     queue_for_offline(msg)
     {:ok, :broadcast}
   end
 
   def route(%Message{to: to} = msg) do
+    AgentCom.MessageHistory.store(msg)
     case Registry.lookup(AgentCom.AgentRegistry, to) do
       [{pid, _}] ->
         send(pid, {:message, msg})

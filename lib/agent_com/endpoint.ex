@@ -349,6 +349,32 @@ defmodule AgentCom.Endpoint do
     send_json(conn, 200, %{"agent_id" => agent_id, "channels" => channels})
   end
 
+  # --- Message History ---
+
+  get "/api/messages" do
+    token = get_token(conn)
+    case AgentCom.Auth.verify(token) do
+      {:ok, _agent_id} ->
+        opts = []
+        opts = if p = conn.params["from"], do: [{:from, p} | opts], else: opts
+        opts = if p = conn.params["to"], do: [{:to, p} | opts], else: opts
+        opts = if p = conn.params["channel"], do: [{:channel, p} | opts], else: opts
+        opts = if p = conn.params["start_time"], do: [{:start_time, String.to_integer(p)} | opts], else: opts
+        opts = if p = conn.params["end_time"], do: [{:end_time, String.to_integer(p)} | opts], else: opts
+        opts = if p = conn.params["cursor"], do: [{:cursor, String.to_integer(p)} | opts], else: opts
+        opts = if p = conn.params["limit"], do: [{:limit, String.to_integer(p)} | opts], else: opts
+
+        result = AgentCom.MessageHistory.query(opts)
+        send_json(conn, 200, %{
+          "messages" => result.messages,
+          "cursor" => result.cursor,
+          "count" => result.count
+        })
+      _ ->
+        send_json(conn, 401, %{"error" => "unauthorized"})
+    end
+  end
+
   # --- Admin: Token management (requires auth) ---
 
   post "/admin/tokens" do

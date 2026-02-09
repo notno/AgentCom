@@ -19,6 +19,7 @@ defmodule AgentCom.Application do
       {AgentCom.Presence, []},
       {AgentCom.Analytics, []},
       {AgentCom.Threads, []},
+      {AgentCom.MessageHistory, []},
       {AgentCom.Reaper, []},
       {Bandit, plug: AgentCom.Endpoint, scheme: :http, port: port()}
     ]
