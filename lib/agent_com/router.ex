@@ -52,7 +52,10 @@ defmodule AgentCom.Router do
   def send_message(attrs) do
     msg = Message.new(attrs)
     case route(msg) do
-      {:ok, _} -> {:ok, msg}
+      {:ok, _} = result ->
+        # Track analytics
+        AgentCom.Analytics.record_message(msg.from, msg.to, msg.type)
+        {:ok, msg}
       {:error, _} = err -> err
     end
   end
