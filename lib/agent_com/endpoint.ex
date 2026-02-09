@@ -6,6 +6,8 @@ defmodule AgentCom.Endpoint do
   - GET    /health               — Health check
   - GET    /api/agents           — List connected agents
   - POST   /api/message          — Send a message via HTTP (auth required)
+  - GET    /api/config/heartbeat-interval — Get heartbeat interval (auth required)
+  - PUT    /api/config/heartbeat-interval — Set heartbeat interval (admin, auth required)
   - GET    /api/mailbox/:id      — Poll messages (token required)
   - POST   /api/mailbox/:id/ack  — Acknowledge messages (token required)
   - POST   /admin/tokens         — Generate a token for an agent (auth required)
@@ -84,6 +86,34 @@ defmodule AgentCom.Endpoint do
 
         _ ->
           send_json(conn, 400, %{"error" => "missing required field: payload"})
+      end
+    end
+  end
+
+  # --- Config: Heartbeat interval ---
+
+  get "/api/config/heartbeat-interval" do
+    token = get_token(conn)
+    case AgentCom.Auth.verify(token) do
+      {:ok, _agent_id} ->
+        interval = AgentCom.Config.get(:heartbeat_interval_ms)
+        send_json(conn, 200, %{"heartbeat_interval_ms" => interval})
+      _ ->
+        send_json(conn, 401, %{"error" => "unauthorized"})
+    end
+  end
+
+  put "/api/config/heartbeat-interval" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case conn.body_params do
+        %{"heartbeat_interval_ms" => ms} when is_integer(ms) and ms > 0 ->
+          :ok = AgentCom.Config.put(:heartbeat_interval_ms, ms)
+          send_json(conn, 200, %{"heartbeat_interval_ms" => ms, "status" => "updated"})
+        _ ->
+          send_json(conn, 400, %{"error" => "missing or invalid field: heartbeat_interval_ms (positive integer)"})
       end
     end
   end
