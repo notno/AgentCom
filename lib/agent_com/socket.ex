@@ -134,6 +134,7 @@ defmodule AgentCom.Socket do
     if state.agent_id do
       Registry.unregister(AgentCom.AgentRegistry, state.agent_id)
       Presence.unregister(state.agent_id)
+      AgentCom.Analytics.record_disconnect(state.agent_id)
     end
     :ok
   end
@@ -276,6 +277,9 @@ defmodule AgentCom.Socket do
     |> Enum.each(fn ch ->
       Phoenix.PubSub.subscribe(AgentCom.PubSub, "channel:#{ch}")
     end)
+
+    # Track analytics
+    AgentCom.Analytics.record_connect(agent_id)
 
     new_state = %{state | agent_id: agent_id, identified: true}
     reply = Jason.encode!(%{"type" => "identified", "agent_id" => agent_id})

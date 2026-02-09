@@ -284,6 +284,26 @@ defmodule AgentCom.Endpoint do
     |> halt()
   end
 
+  # --- Analytics ---
+
+  get "/api/analytics/summary" do
+    send_json(conn, 200, AgentCom.Analytics.summary())
+  end
+
+  get "/api/analytics/agents" do
+    send_json(conn, 200, %{"agents" => AgentCom.Analytics.stats()})
+  end
+
+  get "/api/analytics/agents/:agent_id/hourly" do
+    send_json(conn, 200, %{"agent_id" => agent_id, "hourly" => AgentCom.Analytics.hourly(agent_id)})
+  end
+
+  get "/dashboard" do
+    conn
+    |> put_resp_content_type("text/html")
+    |> send_resp(200, AgentCom.Dashboard.render())
+  end
+
   match _ do
     send_json(conn, 404, %{"error" => "not_found"})
   end
