@@ -1,4 +1,4 @@
-Add BACKLOG.md for feature request queue
+Add personality profiles doc
 
-Nathan drops ideas in Inbox, Flere-Imsaho triages and delegates.
-Tracks In Progress, Ready, Someday, and Done.
+SOUL.md working style additions for each Mind.
+Pragmatist, systems thinker, experimentalist.
