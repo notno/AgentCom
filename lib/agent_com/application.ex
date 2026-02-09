@@ -16,6 +16,7 @@ defmodule AgentCom.Application do
       {AgentCom.Auth, []},
       {AgentCom.Mailbox, []},
       {AgentCom.Channels, []},
+      {AgentCom.Threads, []},
       {AgentCom.Presence, []},
       {AgentCom.Analytics, []},
       {AgentCom.Reaper, []},

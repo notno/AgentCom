@@ -20,6 +20,9 @@ defmodule AgentCom.Endpoint do
   - POST   /api/channels/:ch/unsubscribe — Unsubscribe (auth required)
   - POST   /api/channels/:ch/publish     — Publish to channel (auth required)
   - GET    /api/channels/:ch/history     — Channel message history
+  - GET    /api/threads/:id         — Full thread containing message (auth required)
+  - GET    /api/threads/:id/replies — Direct replies to message (auth required)
+  - GET    /api/threads/:id/root    — Root message of thread (auth required)
   - GET    /api/agents/:id/subscriptions — List agent's channel subscriptions
   - WS     /ws                   — WebSocket for agent connections
   """
@@ -115,6 +118,41 @@ defmodule AgentCom.Endpoint do
         _ ->
           send_json(conn, 400, %{"error" => "missing or invalid field: heartbeat_interval_ms (positive integer)"})
       end
+    end
+  end
+
+  # --- Threads: Conversation view ---
+
+  get "/api/threads/:message_id" do
+    token = get_token(conn)
+    case AgentCom.Auth.verify(token) do
+      {:ok, _agent_id} ->
+        {:ok, thread} = AgentCom.Threads.get_thread(message_id)
+        send_json(conn, 200, thread)
+      _ ->
+        send_json(conn, 401, %{"error" => "unauthorized"})
+    end
+  end
+
+  get "/api/threads/:message_id/replies" do
+    token = get_token(conn)
+    case AgentCom.Auth.verify(token) do
+      {:ok, _agent_id} ->
+        {:ok, replies} = AgentCom.Threads.get_replies(message_id)
+        send_json(conn, 200, %{"parent" => message_id, "replies" => replies, "count" => length(replies)})
+      _ ->
+        send_json(conn, 401, %{"error" => "unauthorized"})
+    end
+  end
+
+  get "/api/threads/:message_id/root" do
+    token = get_token(conn)
+    case AgentCom.Auth.verify(token) do
+      {:ok, _agent_id} ->
+        {:ok, root_id} = AgentCom.Threads.get_root(message_id)
+        send_json(conn, 200, %{"message_id" => message_id, "root" => root_id})
+      _ ->
+        send_json(conn, 401, %{"error" => "unauthorized"})
     end
   end
 
