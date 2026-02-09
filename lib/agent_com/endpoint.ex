@@ -5,12 +5,12 @@ defmodule AgentCom.Endpoint do
   Routes:
   - GET    /health               — Health check
   - GET    /api/agents           — List connected agents
-  - POST   /api/message          — Send a message via HTTP
+  - POST   /api/message          — Send a message via HTTP (auth required)
   - GET    /api/mailbox/:id      — Poll messages (token required)
   - POST   /api/mailbox/:id/ack  — Acknowledge messages (token required)
-  - POST   /admin/tokens         — Generate a token for an agent
-  - GET    /admin/tokens         — List tokens (truncated)
-  - DELETE /admin/tokens/:id     — Revoke tokens for an agent
+  - POST   /admin/tokens         — Generate a token for an agent (auth required)
+  - GET    /admin/tokens         — List tokens (auth required)
+  - DELETE /admin/tokens/:id     — Revoke tokens for an agent (auth required)
   - WS     /ws                   — WebSocket for agent connections
   """
   use Plug.Router
@@ -48,27 +48,35 @@ defmodule AgentCom.Endpoint do
   end
 
   post "/api/message" do
-    params = conn.body_params
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      authenticated_agent = conn.assigns[:authenticated_agent]
+      params = conn.body_params
+      # Use authenticated agent_id as "from" — ignore any spoofed "from" field
+      from = authenticated_agent
 
-    case params do
-      %{"from" => from, "payload" => payload} ->
-        msg = AgentCom.Message.new(%{
-          from: from,
-          to: params["to"],
-          type: params["type"] || "chat",
-          payload: payload,
-          reply_to: params["reply_to"]
-        })
+      case params do
+        %{"payload" => payload} ->
+          msg = AgentCom.Message.new(%{
+            from: from,
+            to: params["to"],
+            type: params["type"] || "chat",
+            payload: payload,
+            reply_to: params["reply_to"]
+          })
 
-        case AgentCom.Router.route(msg) do
-          {:ok, _} ->
-            send_json(conn, 200, %{"status" => "sent", "id" => msg.id})
-          {:error, reason} ->
-            send_json(conn, 422, %{"status" => "failed", "error" => to_string(reason)})
-        end
+          case AgentCom.Router.route(msg) do
+            {:ok, _} ->
+              send_json(conn, 200, %{"status" => "sent", "id" => msg.id})
+            {:error, reason} ->
+              send_json(conn, 422, %{"status" => "failed", "error" => to_string(reason)})
+          end
 
-      _ ->
-        send_json(conn, 400, %{"error" => "missing required fields: from, payload"})
+        _ ->
+          send_json(conn, 400, %{"error" => "missing required field: payload"})
+      end
     end
   end
 
@@ -80,7 +88,6 @@ defmodule AgentCom.Endpoint do
       s -> String.to_integer(s)
     end
 
-    # Verify the agent has a valid token (passed as query param or header)
     token = get_token(conn)
     case AgentCom.Auth.verify(token) do
       {:ok, ^agent_id} ->
@@ -115,26 +122,36 @@ defmodule AgentCom.Endpoint do
     end
   end
 
-  # --- Admin: Token management ---
+  # --- Admin: Token management (requires auth) ---
 
   post "/admin/tokens" do
-    case conn.body_params do
-      %{"agent_id" => agent_id} ->
-        {:ok, token} = AgentCom.Auth.generate(agent_id)
-        send_json(conn, 201, %{"agent_id" => agent_id, "token" => token})
-      _ ->
-        send_json(conn, 400, %{"error" => "missing required field: agent_id"})
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case conn.body_params do
+        %{"agent_id" => agent_id} ->
+          {:ok, token} = AgentCom.Auth.generate(agent_id)
+          send_json(conn, 201, %{"agent_id" => agent_id, "token" => token})
+        _ ->
+          send_json(conn, 400, %{"error" => "missing required field: agent_id"})
+      end
     end
   end
 
   get "/admin/tokens" do
-    entries = AgentCom.Auth.list()
-    send_json(conn, 200, %{"tokens" => entries})
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted, do: conn, else: send_json(conn, 200, %{"tokens" => AgentCom.Auth.list()})
   end
 
   delete "/admin/tokens/:agent_id" do
-    AgentCom.Auth.revoke(agent_id)
-    send_json(conn, 200, %{"status" => "revoked", "agent_id" => agent_id})
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      AgentCom.Auth.revoke(agent_id)
+      send_json(conn, 200, %{"status" => "revoked", "agent_id" => agent_id})
+    end
   end
 
   get "/ws" do
