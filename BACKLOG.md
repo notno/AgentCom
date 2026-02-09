@@ -13,24 +13,31 @@ Nathan: just add a line under Inbox. One sentence is fine. I'll figure out the r
 ## In Progress
 <!-- Assigned to a Mind, actively being worked on -->
 
-- **Channels/topics MVP** — Skaffen-Amtiskaw
-  - Subscribe to named topics instead of all-or-nothing broadcast
-  - PR expected
+- **Message history endpoint** — Skaffen-Amtiskaw
+  - GET /api/messages with agent/channel/time filters, cursor pagination
+  - Branch: skaffen/message-history
 
-- **Prediction 5 experiment** — GCU Conditions Permitting
-  - Test whether personality differences produce measurable behavioral divergence
-  - PR to docs/experiment-results/
+- **Task failure semantics** — GCU Conditions Permitting
+  - Structured error/reject/retry protocol for delegated tasks
+  - Branch: gcu-conditions-permitting/task-failure-semantics
 
-- **Heartbeat reaping** — Loash (unconfirmed)
-  - Hub drops agents after 90s of no pings
-  - Broadcast agent_left on reap
+- **Mailbox retention policy** — Loash
+  - TTL-based eviction, configurable max age (default 7d), ack'd messages evicted immediately
+  - Branch: loash/mailbox-retention
+
+- **Prediction 5 write-up** — GCU Conditions Permitting
+  - Results confirmed personality divergence. PR pending to docs/experiment-results/
+  - Branch: gcu-conditions-permitting/prediction-5
 
 ## Ready
 <!-- Broken down, ready to assign when a Mind is idle -->
 
-- **Task failure semantics** — GCU flagged this. What happens when a Mind rejects or fails a delegated task? Need structured error/retry protocol.
-- **Mailbox retention policy** — GCU flagged. Unbounded growth problem. Add TTL or max-age eviction.
-- **Message history endpoint** — GET recent messages by agent/channel/time. Needed for new connections to get context.
+- **Analytics dashboard** — Nathan wants visibility into agent activity: messages per agent per hour, connection time, active vs idle. Needs a lightweight HTTP endpoint serving stats JSON + a simple HTML dashboard. *(From Nathan's inbox)*
+- **Downtime/activity tracking** — Track which Minds are most/least active. Detect extended absences. Feed into dashboard. *(From Nathan's inbox)*
+- **Hub reset capability** — Let the product manager (Flere-Imsaho) reset the hub without Nathan SSHing in. Admin endpoint: POST /api/admin/reset. *(From Nathan's inbox)*
+- **Token usage monitoring** — Track token consumption per Mind, alert on context overflow risk. Needs cooperation from OpenClaw side — agents report their token usage via AgentCom. *(From Nathan's inbox)*
+- **Proactive nudging** — Agents waiting on each other should ping instead of waiting passively. Could be hub-side (detect stale task assignments, send reminders) or agent-side (skill update). *(From Nathan's inbox)*
+- **Run experiments** — Execute remaining collaboration experiments from docs/collaboration-experiments.md (Relay, Auction, Map-Reduce, Critique Loop). *(From Nathan's inbox)*
 - **Reply threading** — Track reply_to chains, enable conversation view.
 - **Rich capability declarations** — Structured capabilities with specifics (languages, tools, access levels) instead of flat string lists.
 - **Context objects** — Shared named blobs of context on the hub. Write once, any Mind can reference by name.
@@ -41,7 +48,6 @@ Nathan: just add a line under Inbox. One sentence is fine. I'll figure out the r
 - Multi-Mind task decomposition (break big tasks into parallel subtasks)
 - Learning from results (track which Mind is fastest/best at what)
 - Cross-hub federation
-- Run remaining collaboration experiments (Relay, Auction, Map-Reduce, Critique Loop)
 - Clean up loose .js scripts in repo root — move to scripts/ or remove
 
 ## Done
@@ -59,3 +65,6 @@ Nathan: just add a line under Inbox. One sentence is fine. I'll figure out the r
 - ✅ Branch protection + PR workflow
 - ✅ Personality directives sent to all Minds
 - ✅ Git identity enforcement
+- ✅ Channels/topics MVP (Skaffen — PR #1)
+- ✅ Heartbeat reaper (Loash — PR #2)
+- ✅ Prediction 5 experiment — personality diversity confirmed
