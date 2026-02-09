@@ -18,6 +18,9 @@ erl_crash.dump
 .idea/
 .vscode/
 
+# Auth tokens (secrets!)
+priv/tokens.json
+
 # OS
 .DS_Store
 Thumbs.db

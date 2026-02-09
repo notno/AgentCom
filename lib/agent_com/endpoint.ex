@@ -3,10 +3,13 @@ defmodule AgentCom.Endpoint do
   HTTP + WebSocket endpoint for AgentCom.
 
   Routes:
-  - GET  /health       — Health check
-  - GET  /api/agents   — List connected agents
-  - POST /api/message  — Send a message via HTTP
-  - WS   /ws           — WebSocket for agent connections
+  - GET    /health          — Health check
+  - GET    /api/agents      — List connected agents
+  - POST   /api/message     — Send a message via HTTP
+  - POST   /admin/tokens    — Generate a token for an agent
+  - GET    /admin/tokens    — List tokens (truncated)
+  - DELETE /admin/tokens/:id — Revoke tokens for an agent
+  - WS     /ws              — WebSocket for agent connections
   """
   use Plug.Router
 
@@ -65,6 +68,28 @@ defmodule AgentCom.Endpoint do
       _ ->
         send_json(conn, 400, %{"error" => "missing required fields: from, payload"})
     end
+  end
+
+  # --- Admin: Token management ---
+
+  post "/admin/tokens" do
+    case conn.body_params do
+      %{"agent_id" => agent_id} ->
+        {:ok, token} = AgentCom.Auth.generate(agent_id)
+        send_json(conn, 201, %{"agent_id" => agent_id, "token" => token})
+      _ ->
+        send_json(conn, 400, %{"error" => "missing required field: agent_id"})
+    end
+  end
+
+  get "/admin/tokens" do
+    entries = AgentCom.Auth.list()
+    send_json(conn, 200, %{"tokens" => entries})
+  end
+
+  delete "/admin/tokens/:agent_id" do
+    AgentCom.Auth.revoke(agent_id)
+    send_json(conn, 200, %{"status" => "revoked", "agent_id" => agent_id})
   end
 
   get "/ws" do

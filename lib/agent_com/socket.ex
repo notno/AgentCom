@@ -6,8 +6,10 @@ defmodule AgentCom.Socket do
 
   ### Identify (required first message)
 
-      -> {"type": "identify", "agent_id": "my-agent", "name": "My Agent", "status": "idle", "capabilities": ["search", "code"]}
+      -> {"type": "identify", "agent_id": "my-agent", "token": "abc123...", "name": "My Agent", "status": "idle", "capabilities": ["search", "code"]}
       <- {"type": "identified", "agent_id": "my-agent"}
+      <- {"type": "error", "error": "invalid_token"}  (if token is wrong)
+      <- {"type": "error", "error": "token_agent_mismatch"}  (if token belongs to a different agent)
 
   ### Send a message
 
@@ -110,8 +112,21 @@ defmodule AgentCom.Socket do
 
   # — Message handlers —
 
-  # Identify (must be first)
+  # Identify (must be first, requires valid token)
   defp handle_msg(%{"type" => "identify", "agent_id" => agent_id} = msg, state) do
+    token = Map.get(msg, "token")
+
+    case AgentCom.Auth.verify(token) do
+      {:ok, ^agent_id} ->
+        do_identify(agent_id, msg, state)
+      {:ok, _other} ->
+        reply_error("token_agent_mismatch", state)
+      :error ->
+        reply_error("invalid_token", state)
+    end
+  end
+
+  defp do_identify(agent_id, msg, state) do
     name = Map.get(msg, "name", agent_id)
     status = Map.get(msg, "status", "connected")
     capabilities = Map.get(msg, "capabilities", [])

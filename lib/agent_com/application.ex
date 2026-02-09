@@ -12,6 +12,7 @@ defmodule AgentCom.Application do
     children = [
       {Phoenix.PubSub, name: AgentCom.PubSub},
       {Registry, keys: :unique, name: AgentCom.AgentRegistry},
+      {AgentCom.Auth, []},
       {AgentCom.Presence, []},
       {Bandit, plug: AgentCom.Endpoint, scheme: :http, port: port()}
     ]
