@@ -94,6 +94,34 @@ defmodule AgentCom.Socket do
     {:push, {:text, Jason.encode!(push)}, state}
   end
 
+  def handle_info({:channel_message, channel, %AgentCom.Message{} = msg}, state) do
+    # Don't echo own messages back via WebSocket (sender already got the publish ack)
+    if msg.from != state.agent_id do
+      push = %{
+        "type" => "channel_message",
+        "channel" => channel,
+        "id" => msg.id,
+        "from" => msg.from,
+        "message_type" => msg.type,
+        "payload" => msg.payload,
+        "reply_to" => msg.reply_to,
+        "timestamp" => msg.timestamp
+      }
+      {:push, {:text, Jason.encode!(push)}, state}
+    else
+      {:ok, state}
+    end
+  end
+
+  def handle_info({:channel_subscribed, channel, agent_id}, state) do
+    if agent_id != state.agent_id do
+      push = %{"type" => "channel_agent_joined", "channel" => channel, "agent_id" => agent_id}
+      {:push, {:text, Jason.encode!(push)}, state}
+    else
+      {:ok, state}
+    end
+  end
+
   def handle_info({:status_changed, info}, state) do
     push = %{"type" => "status_changed", "agent" => stringify_agent(info)}
     {:push, {:text, Jason.encode!(push)}, state}
@@ -161,6 +189,64 @@ defmodule AgentCom.Socket do
     {:push, {:text, reply}, state}
   end
 
+  # --- Channel operations ---
+
+  defp handle_msg(%{"type" => "channel_subscribe", "channel" => channel}, state) do
+    case AgentCom.Channels.subscribe(channel, state.agent_id) do
+      :ok ->
+        Phoenix.PubSub.subscribe(AgentCom.PubSub, "channel:#{AgentCom.Channels.normalize_name(channel)}")
+        reply = Jason.encode!(%{"type" => "channel_subscribed", "channel" => channel})
+        {:push, {:text, reply}, state}
+      {:ok, :already_subscribed} ->
+        reply = Jason.encode!(%{"type" => "channel_subscribed", "channel" => channel, "note" => "already_subscribed"})
+        {:push, {:text, reply}, state}
+      {:error, :not_found} ->
+        reply_error("channel_not_found", state)
+    end
+  end
+
+  defp handle_msg(%{"type" => "channel_unsubscribe", "channel" => channel}, state) do
+    case AgentCom.Channels.unsubscribe(channel, state.agent_id) do
+      :ok ->
+        Phoenix.PubSub.unsubscribe(AgentCom.PubSub, "channel:#{AgentCom.Channels.normalize_name(channel)}")
+        reply = Jason.encode!(%{"type" => "channel_unsubscribed", "channel" => channel})
+        {:push, {:text, reply}, state}
+      {:error, :not_found} ->
+        reply_error("channel_not_found", state)
+    end
+  end
+
+  defp handle_msg(%{"type" => "channel_publish", "channel" => channel, "payload" => payload} = msg, state) do
+    message = AgentCom.Message.new(%{
+      from: state.agent_id,
+      to: nil,
+      type: msg["message_type"] || "chat",
+      payload: payload,
+      reply_to: msg["reply_to"]
+    })
+    case AgentCom.Channels.publish(channel, message) do
+      {:ok, seq} ->
+        reply = Jason.encode!(%{"type" => "channel_published", "channel" => channel, "seq" => seq, "id" => message.id})
+        {:push, {:text, reply}, state}
+      {:error, :not_found} ->
+        reply_error("channel_not_found", state)
+    end
+  end
+
+  defp handle_msg(%{"type" => "channel_history", "channel" => channel} = msg, state) do
+    limit = msg["limit"] || 50
+    since = msg["since"] || 0
+    messages = AgentCom.Channels.history(channel, limit: limit, since: since)
+    reply = Jason.encode!(%{"type" => "channel_history", "channel" => channel, "messages" => messages})
+    {:push, {:text, reply}, state}
+  end
+
+  defp handle_msg(%{"type" => "list_channels"}, state) do
+    channels = AgentCom.Channels.list()
+    reply = Jason.encode!(%{"type" => "channels", "channels" => channels})
+    {:push, {:text, reply}, state}
+  end
+
   defp handle_msg(%{"type" => "ping"}, state) do
     reply = Jason.encode!(%{"type" => "pong", "timestamp" => System.system_time(:millisecond)})
     {:push, {:text, reply}, state}
@@ -183,6 +269,12 @@ defmodule AgentCom.Socket do
     # Subscribe to broadcasts and presence
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "messages")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "presence")
+
+    # Subscribe to any channels this agent is already in
+    AgentCom.Channels.subscriptions(agent_id)
+    |> Enum.each(fn ch ->
+      Phoenix.PubSub.subscribe(AgentCom.PubSub, "channel:#{ch}")
+    end)
 
     new_state = %{state | agent_id: agent_id, identified: true}
     reply = Jason.encode!(%{"type" => "identified", "agent_id" => agent_id})

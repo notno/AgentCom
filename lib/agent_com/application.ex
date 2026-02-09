@@ -14,6 +14,7 @@ defmodule AgentCom.Application do
       {Registry, keys: :unique, name: AgentCom.AgentRegistry},
       {AgentCom.Auth, []},
       {AgentCom.Mailbox, []},
+      {AgentCom.Channels, []},
       {AgentCom.Presence, []},
       {Bandit, plug: AgentCom.Endpoint, scheme: :http, port: port()}
     ]

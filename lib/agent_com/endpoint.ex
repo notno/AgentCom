@@ -11,6 +11,14 @@ defmodule AgentCom.Endpoint do
   - POST   /admin/tokens         — Generate a token for an agent (auth required)
   - GET    /admin/tokens         — List tokens (auth required)
   - DELETE /admin/tokens/:id     — Revoke tokens for an agent (auth required)
+  - GET    /api/channels          — List all channels
+  - POST   /api/channels          — Create a channel (auth required)
+  - GET    /api/channels/:ch      — Channel info + subscribers
+  - POST   /api/channels/:ch/subscribe   — Subscribe to channel (auth required)
+  - POST   /api/channels/:ch/unsubscribe — Unsubscribe (auth required)
+  - POST   /api/channels/:ch/publish     — Publish to channel (auth required)
+  - GET    /api/channels/:ch/history     — Channel message history
+  - GET    /api/agents/:id/subscriptions — List agent's channel subscriptions
   - WS     /ws                   — WebSocket for agent connections
   """
   use Plug.Router
@@ -120,6 +128,122 @@ defmodule AgentCom.Endpoint do
       _ ->
         send_json(conn, 401, %{"error" => "unauthorized"})
     end
+  end
+
+  # --- Channels ---
+
+  get "/api/channels" do
+    channels = AgentCom.Channels.list()
+    send_json(conn, 200, %{"channels" => channels})
+  end
+
+  post "/api/channels" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      agent_id = conn.assigns[:authenticated_agent]
+      case conn.body_params do
+        %{"name" => name} ->
+          opts = %{
+            description: conn.body_params["description"] || "",
+            created_by: agent_id
+          }
+          case AgentCom.Channels.create(name, opts) do
+            :ok -> send_json(conn, 201, %{"status" => "created", "channel" => name})
+            {:error, :exists} -> send_json(conn, 409, %{"error" => "channel_exists"})
+          end
+        _ ->
+          send_json(conn, 400, %{"error" => "missing required field: name"})
+      end
+    end
+  end
+
+  get "/api/channels/:channel" do
+    case AgentCom.Channels.info(channel) do
+      {:ok, info} ->
+        send_json(conn, 200, %{
+          "name" => info.name,
+          "description" => info.description,
+          "subscribers" => info.subscribers,
+          "subscriber_count" => length(info.subscribers),
+          "created_at" => info.created_at,
+          "created_by" => info.created_by
+        })
+      {:error, :not_found} ->
+        send_json(conn, 404, %{"error" => "channel_not_found"})
+    end
+  end
+
+  post "/api/channels/:channel/subscribe" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      agent_id = conn.assigns[:authenticated_agent]
+      case AgentCom.Channels.subscribe(channel, agent_id) do
+        :ok -> send_json(conn, 200, %{"status" => "subscribed", "channel" => channel})
+        {:ok, :already_subscribed} -> send_json(conn, 200, %{"status" => "already_subscribed"})
+        {:error, :not_found} -> send_json(conn, 404, %{"error" => "channel_not_found"})
+      end
+    end
+  end
+
+  post "/api/channels/:channel/unsubscribe" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      agent_id = conn.assigns[:authenticated_agent]
+      case AgentCom.Channels.unsubscribe(channel, agent_id) do
+        :ok -> send_json(conn, 200, %{"status" => "unsubscribed", "channel" => channel})
+        {:error, :not_found} -> send_json(conn, 404, %{"error" => "channel_not_found"})
+      end
+    end
+  end
+
+  post "/api/channels/:channel/publish" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      agent_id = conn.assigns[:authenticated_agent]
+      case conn.body_params do
+        %{"payload" => payload} ->
+          msg = AgentCom.Message.new(%{
+            from: agent_id,
+            to: nil,
+            type: conn.body_params["type"] || "chat",
+            payload: payload,
+            reply_to: conn.body_params["reply_to"]
+          })
+          case AgentCom.Channels.publish(channel, msg) do
+            {:ok, seq} -> send_json(conn, 200, %{"status" => "published", "seq" => seq})
+            {:error, :not_found} -> send_json(conn, 404, %{"error" => "channel_not_found"})
+          end
+        _ ->
+          send_json(conn, 400, %{"error" => "missing required field: payload"})
+      end
+    end
+  end
+
+  get "/api/channels/:channel/history" do
+    limit = case conn.params["limit"] do
+      nil -> 50
+      l -> String.to_integer(l)
+    end
+    since = case conn.params["since"] do
+      nil -> 0
+      s -> String.to_integer(s)
+    end
+
+    messages = AgentCom.Channels.history(channel, limit: limit, since: since)
+    send_json(conn, 200, %{"channel" => channel, "messages" => messages, "count" => length(messages)})
+  end
+
+  get "/api/agents/:agent_id/subscriptions" do
+    channels = AgentCom.Channels.subscriptions(agent_id)
+    send_json(conn, 200, %{"agent_id" => agent_id, "channels" => channels})
   end
 
   # --- Admin: Token management (requires auth) ---
