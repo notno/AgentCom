@@ -8,6 +8,9 @@ defmodule AgentCom.Endpoint do
   - POST   /api/message          — Send a message via HTTP (auth required)
   - GET    /api/config/heartbeat-interval — Get heartbeat interval (auth required)
   - PUT    /api/config/heartbeat-interval — Set heartbeat interval (admin, auth required)
+  - GET    /api/config/mailbox-retention — Get mailbox TTL (auth required)
+  - PUT    /api/config/mailbox-retention — Set mailbox TTL (admin, auth required)
+  - POST   /api/mailbox/evict            — Trigger TTL eviction (admin, auth required)
   - GET    /api/mailbox/:id      — Poll messages (token required)
   - POST   /api/mailbox/:id/ack  — Acknowledge messages (token required)
   - POST   /admin/tokens         — Generate a token for an agent (auth required)
@@ -115,6 +118,44 @@ defmodule AgentCom.Endpoint do
         _ ->
           send_json(conn, 400, %{"error" => "missing or invalid field: heartbeat_interval_ms (positive integer)"})
       end
+    end
+  end
+
+  # --- Config: Mailbox retention ---
+
+  get "/api/config/mailbox-retention" do
+    token = get_token(conn)
+    case AgentCom.Auth.verify(token) do
+      {:ok, _agent_id} ->
+        ttl = AgentCom.Mailbox.get_ttl()
+        send_json(conn, 200, %{"mailbox_ttl_ms" => ttl, "mailbox_ttl_days" => ttl / 86_400_000})
+      _ ->
+        send_json(conn, 401, %{"error" => "unauthorized"})
+    end
+  end
+
+  put "/api/config/mailbox-retention" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case conn.body_params do
+        %{"mailbox_ttl_ms" => ms} when is_integer(ms) and ms > 0 ->
+          :ok = AgentCom.Mailbox.set_ttl(ms)
+          send_json(conn, 200, %{"mailbox_ttl_ms" => ms, "status" => "updated"})
+        _ ->
+          send_json(conn, 400, %{"error" => "missing or invalid field: mailbox_ttl_ms (positive integer)"})
+      end
+    end
+  end
+
+  post "/api/mailbox/evict" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      AgentCom.Mailbox.evict_expired()
+      send_json(conn, 200, %{"status" => "eviction_triggered"})
     end
   end
 
