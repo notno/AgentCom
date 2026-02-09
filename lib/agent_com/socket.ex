@@ -126,23 +126,6 @@ defmodule AgentCom.Socket do
     end
   end
 
-  defp do_identify(agent_id, msg, state) do
-    name = Map.get(msg, "name", agent_id)
-    status = Map.get(msg, "status", "connected")
-    capabilities = Map.get(msg, "capabilities", [])
-
-    Registry.register(AgentCom.AgentRegistry, agent_id, %{pid: self()})
-    Presence.register(agent_id, %{name: name, status: status, capabilities: capabilities})
-
-    # Subscribe to broadcasts and presence
-    Phoenix.PubSub.subscribe(AgentCom.PubSub, "messages")
-    Phoenix.PubSub.subscribe(AgentCom.PubSub, "presence")
-
-    new_state = %{state | agent_id: agent_id, identified: true}
-    reply = Jason.encode!(%{"type" => "identified", "agent_id" => agent_id})
-    {:push, {:text, reply}, new_state}
-  end
-
   # All other messages require identification
   defp handle_msg(_msg, %{identified: false} = state) do
     reply_error("not_identified", state)
@@ -185,6 +168,25 @@ defmodule AgentCom.Socket do
 
   defp handle_msg(_unknown, state) do
     reply_error("unknown_message_type", state)
+  end
+
+  # — Identity —
+
+  defp do_identify(agent_id, msg, state) do
+    name = Map.get(msg, "name", agent_id)
+    status = Map.get(msg, "status", "connected")
+    capabilities = Map.get(msg, "capabilities", [])
+
+    Registry.register(AgentCom.AgentRegistry, agent_id, %{pid: self()})
+    Presence.register(agent_id, %{name: name, status: status, capabilities: capabilities})
+
+    # Subscribe to broadcasts and presence
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "messages")
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "presence")
+
+    new_state = %{state | agent_id: agent_id, identified: true}
+    reply = Jason.encode!(%{"type" => "identified", "agent_id" => agent_id})
+    {:push, {:text, reply}, new_state}
   end
 
   # — Helpers —

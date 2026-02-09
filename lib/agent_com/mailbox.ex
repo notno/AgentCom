@@ -5,7 +5,8 @@ defmodule AgentCom.Mailbox do
   Messages are stored per-agent and retrieved via HTTP poll.
   Each message gets a monotonic sequence number for cursor-based pagination.
 
-  Messages are kept in memory (ETS) for now. Future: optional persistence.
+  Backed by DETS (disk-based ETS) for persistence across restarts.
+  Stored at `priv/mailbox.dets` by default.
   """
   use GenServer
 
@@ -18,8 +19,24 @@ defmodule AgentCom.Mailbox do
 
   @impl true
   def init(_opts) do
-    :ets.new(@table, [:named_table, :ordered_set, :public])
-    {:ok, %{seq: 0}}
+    path = dets_path() |> String.to_charlist()
+    File.mkdir_p!(Path.dirname(dets_path()))
+    {:ok, @table} = :dets.open_file(@table, [
+      file: path,
+      type: :set,
+      auto_save: 5_000
+    ])
+
+    # Recover sequence counter from existing data
+    seq = recover_seq()
+
+    {:ok, %{seq: seq}}
+  end
+
+  @impl true
+  def terminate(_reason, _state) do
+    :dets.close(@table)
+    :ok
   end
 
   @doc """
@@ -63,7 +80,7 @@ defmodule AgentCom.Mailbox do
       message: AgentCom.Message.to_json(msg),
       stored_at: System.system_time(:millisecond)
     }
-    :ets.insert(@table, {{agent_id, seq}, entry})
+    :dets.insert(@table, {{agent_id, seq}, entry})
 
     # Trim old messages if over limit
     trim_mailbox(agent_id)
@@ -71,9 +88,10 @@ defmodule AgentCom.Mailbox do
     {:reply, {:ok, seq}, %{state | seq: seq}}
   end
 
+  @impl true
   def handle_call({:poll, agent_id, since_seq}, _from, state) do
     messages =
-      :ets.select(@table, [
+      :dets.select(@table, [
         {{{agent_id, :"$1"}, :"$2"},
          [{:>, :"$1", since_seq}],
          [:"$2"]}
@@ -88,33 +106,55 @@ defmodule AgentCom.Mailbox do
     {:reply, {messages, last_seq}, state}
   end
 
+  @impl true
   def handle_call({:count, agent_id}, _from, state) do
-    count = :ets.select_count(@table, [
-      {{{agent_id, :_}, :_}, [], [true]}
-    ])
+    count =
+      :dets.select(@table, [
+        {{{agent_id, :_}, :_}, [], [true]}
+      ])
+      |> length()
+
     {:reply, count, state}
   end
 
   @impl true
   def handle_cast({:ack, agent_id, up_to_seq}, state) do
-    :ets.select_delete(@table, [
-      {{{agent_id, :"$1"}, :_},
-       [{:"=<", :"$1", up_to_seq}],
-       [true]}
-    ])
+    keys_to_delete =
+      :dets.select(@table, [
+        {{{agent_id, :"$1"}, :_},
+         [{:"=<", :"$1", up_to_seq}],
+         [{{agent_id, :"$1"}}]}
+      ])
+
+    Enum.each(keys_to_delete, fn key -> :dets.delete(@table, key) end)
     {:noreply, state}
   end
 
+  # Helpers
+
+  defp dets_path do
+    Application.get_env(:agent_com, :mailbox_path, "priv/mailbox.dets")
+  end
+
+  defp recover_seq do
+    case :dets.select(@table, [{{:_, :"$1"}, [], [:"$1"]}]) do
+      [] -> 0
+      entries -> entries |> Enum.map(& &1.seq) |> Enum.max()
+    end
+  end
+
   defp trim_mailbox(agent_id) do
-    keys = :ets.select(@table, [
-      {{{agent_id, :"$1"}, :_}, [], [:"$1"]}
-    ]) |> Enum.sort()
+    keys =
+      :dets.select(@table, [
+        {{{agent_id, :"$1"}, :_}, [], [:"$1"]}
+      ])
+      |> Enum.sort()
 
     overflow = length(keys) - @max_messages_per_agent
     if overflow > 0 do
       keys
       |> Enum.take(overflow)
-      |> Enum.each(fn seq -> :ets.delete(@table, {agent_id, seq}) end)
+      |> Enum.each(fn seq -> :dets.delete(@table, {agent_id, seq}) end)
     end
   end
 end

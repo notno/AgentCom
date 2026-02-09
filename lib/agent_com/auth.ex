@@ -17,6 +17,7 @@ defmodule AgentCom.Auth do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
+  @impl true
   def init(_opts) do
     path = tokens_path()
     File.mkdir_p!(Path.dirname(path))

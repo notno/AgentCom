@@ -1,9 +1,7 @@
-Add message mailbox (poll model) + push model design notes
+Mailbox: swap ETS to DETS for persistence + fix compiler warnings
 
-- AgentCom.Mailbox: ETS-backed per-agent message queue
-- GET /api/mailbox/:id?since=N poll for messages (token auth)
-- POST /api/mailbox/:id/ack acknowledge processed messages
-- Router queues messages for offline agents instead of dropping
-- Broadcasts queued for offline agents with tokens
-- Max 100 messages per agent mailbox (FIFO trim)
-- docs/push-model.md: WebSocket sidecar architecture notes
+- Mailbox now backed by DETS (priv/mailbox.dets), survives hub restarts
+- Sequence counter recovered from existing data on startup
+- Auto-save every 5s, clean shutdown via terminate/2
+- Fixed all compiler warnings: added @impl annotations, fixed clause
+  ordering in socket, removed unused Presence alias in router

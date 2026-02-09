@@ -22,6 +22,9 @@ erl_crash.dump
 # Auth tokens (secrets!)
 priv/tokens.json
 
+# Mailbox persistence
+priv/mailbox.dets
+
 # OS
 .DS_Store
 Thumbs.db

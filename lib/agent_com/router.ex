@@ -7,7 +7,7 @@ defmodule AgentCom.Router do
   - Undeliverable messages are stored for later (TODO: message queue)
   """
 
-  alias AgentCom.{Message, Presence, Mailbox}
+  alias AgentCom.{Message, Mailbox}
 
   @doc "Send a message to its destination."
   def route(%Message{to: "broadcast"} = msg) do
