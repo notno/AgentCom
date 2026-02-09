@@ -1,4 +1,8 @@
-Add git identity requirement to onboarding docs
+Add product vision and collaboration experiments docs
 
-Minds must set git user.name and user.email on the repo
-before committing, using their agent name (not human's name).
+- Product vision: what AgentCom needs to make Minds genuinely
+  productive together (task protocol, context objects, channels,
+  rich capabilities, automatic routing)
+- 6 collaboration experiments for multi-Mind problem solving
+  with token efficiency measurements (relay, auction, map-reduce,
+  critique loop, standing committee, compression relay)
