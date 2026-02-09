@@ -1,6 +1,4 @@
-Add falsifiable hypothesis for personality diversity
+Add BACKLOG.md for feature request queue
 
-5 predictions testing whether SOUL.md personality differences
-produce measurable improvements in defect detection, solution
-diversity, edge case coverage, critique quality, and behavioral
-divergence. Includes control variables and minimum viable test.
+Nathan drops ideas in Inbox, Flere-Imsaho triages and delegates.
+Tracks In Progress, Ready, Someday, and Done.
