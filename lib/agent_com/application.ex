@@ -12,6 +12,7 @@ defmodule AgentCom.Application do
     children = [
       {Phoenix.PubSub, name: AgentCom.PubSub},
       {Registry, keys: :unique, name: AgentCom.AgentRegistry},
+      {AgentCom.Config, []},
       {AgentCom.Auth, []},
       {AgentCom.Mailbox, []},
       {AgentCom.Channels, []},
