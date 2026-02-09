@@ -1,7 +1,4 @@
-Mailbox: swap ETS to DETS for persistence + fix compiler warnings
+Add git identity requirement to onboarding docs
 
-- Mailbox now backed by DETS (priv/mailbox.dets), survives hub restarts
-- Sequence counter recovered from existing data on startup
-- Auto-save every 5s, clean shutdown via terminate/2
-- Fixed all compiler warnings: added @impl annotations, fixed clause
-  ordering in socket, removed unused Presence alias in router
+Minds must set git user.name and user.email on the repo
+before committing, using their agent name (not human's name).
