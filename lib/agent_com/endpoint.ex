@@ -118,6 +118,41 @@ defmodule AgentCom.Endpoint do
     end
   end
 
+  # --- Threads: Conversation view ---
+
+  get "/api/threads/:message_id" do
+    token = get_token(conn)
+    case AgentCom.Auth.verify(token) do
+      {:ok, _agent_id} ->
+        {:ok, thread} = AgentCom.Threads.get_thread(message_id)
+        send_json(conn, 200, thread)
+      _ ->
+        send_json(conn, 401, %{"error" => "unauthorized"})
+    end
+  end
+
+  get "/api/threads/:message_id/replies" do
+    token = get_token(conn)
+    case AgentCom.Auth.verify(token) do
+      {:ok, _agent_id} ->
+        {:ok, replies} = AgentCom.Threads.get_replies(message_id)
+        send_json(conn, 200, %{"parent" => message_id, "replies" => replies, "count" => length(replies)})
+      _ ->
+        send_json(conn, 401, %{"error" => "unauthorized"})
+    end
+  end
+
+  get "/api/threads/:message_id/root" do
+    token = get_token(conn)
+    case AgentCom.Auth.verify(token) do
+      {:ok, _agent_id} ->
+        {:ok, root_id} = AgentCom.Threads.get_root(message_id)
+        send_json(conn, 200, %{"message_id" => message_id, "root" => root_id})
+      _ ->
+        send_json(conn, 401, %{"error" => "unauthorized"})
+    end
+  end
+
   # --- Mailbox: Poll for messages ---
 
   get "/api/mailbox/:agent_id" do

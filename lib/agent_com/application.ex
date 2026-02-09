@@ -18,6 +18,7 @@ defmodule AgentCom.Application do
       {AgentCom.Channels, []},
       {AgentCom.Presence, []},
       {AgentCom.Analytics, []},
+      {AgentCom.Threads, []},
       {AgentCom.Reaper, []},
       {Bandit, plug: AgentCom.Endpoint, scheme: :http, port: port()}
     ]

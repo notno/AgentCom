@@ -53,8 +53,9 @@ defmodule AgentCom.Router do
     msg = Message.new(attrs)
     case route(msg) do
       {:ok, _} = result ->
-        # Track analytics
+        # Track analytics + thread index
         AgentCom.Analytics.record_message(msg.from, msg.to, msg.type)
+        AgentCom.Threads.index(msg)
         {:ok, msg}
       {:error, _} = err -> err
     end
