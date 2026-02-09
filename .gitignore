@@ -1,6 +1,7 @@
 # Dependencies
 /deps/
 /_build/
+node_modules/
 
 # Generated on crash
 erl_crash.dump
