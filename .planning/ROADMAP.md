@@ -66,11 +66,11 @@ Plans:
   2. Agent disconnection triggers immediate state update and reclamation of any assigned task back to queue (verifiable by disconnecting agent mid-assignment, confirming task re-queued)
   3. Assigned task with no acceptance within 60 seconds is reclaimed and agent flagged (verifiable by assigning task to unresponsive agent, waiting 60s, confirming reclamation)
   4. Agent declares structured capabilities on connect, visible in hub state (verifiable by connecting agent with capabilities, querying hub to see them)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
+- [ ] 03-01-PLAN.md — AgentFSM GenServer + AgentSupervisor (DynamicSupervisor) + Registry infrastructure
+- [ ] 03-02-PLAN.md — Socket/Endpoint/TaskQueue/Presence wiring to AgentFSM + HTTP state API
 
 ### Phase 4: Scheduler
 **Goal**: Queued tasks are automatically matched to idle, capable agents without human intervention
@@ -154,7 +154,7 @@ Phases 1 and 2 are parallel. Phase 3 follows Phase 2. Phase 4 requires Phases 1+
 |-------|----------------|--------|-----------|
 | 1. Sidecar | 4/4 | ✓ Complete | 2026-02-09 |
 | 2. Task Queue | 2/2 | ✓ Complete | 2026-02-10 |
-| 3. Agent State | 0/TBD | Not started | - |
+| 3. Agent State | 0/2 | Planned | - |
 | 4. Scheduler | 0/TBD | Not started | - |
 | 5. Smoke Test | 0/TBD | Not started | - |
 | 6. Dashboard | 0/TBD | Not started | - |
@@ -163,4 +163,4 @@ Phases 1 and 2 are parallel. Phase 3 follows Phase 2. Phase 4 requires Phases 1+
 
 ---
 *Roadmap created: 2026-02-09*
-*Last updated: 2026-02-10 — Phase 2 complete*
+*Last updated: 2026-02-10 — Phase 3 planned*
