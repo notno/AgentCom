@@ -1,0 +1,14 @@
+{
+  "name": "agentcom-sidecar",
+  "version": "1.0.0",
+  "description": "Always-on WebSocket relay for AgentCom agents",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "ws": "^8.19.0",
+    "write-file-atomic": "^5.0.0",
+    "chokidar": "^3.6.0"
+  }
+}

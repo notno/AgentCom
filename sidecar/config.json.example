@@ -1,0 +1,10 @@
+{
+  "agent_id": "my-agent",
+  "token": "paste-token-here",
+  "hub_url": "ws://hub-hostname:4000/ws",
+  "wake_command": "openclaw agent --message \"Task: ${TASK_JSON}\" --session-id ${TASK_ID}",
+  "capabilities": ["code"],
+  "confirmation_timeout_ms": 30000,
+  "results_dir": "./results",
+  "log_file": "./sidecar.log"
+}
