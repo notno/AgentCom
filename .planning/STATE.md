@@ -9,29 +9,29 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 
 ## Current Position
 
-Phase: 1 of 8 (Sidecar + Task Queue parallel start)
-Plan: 3 of 4 in current phase
-Status: Executing
-Last activity: 2026-02-10 -- Completed 01-03-PLAN.md (Task Lifecycle Handling)
+Phase: 1 of 8 (Sidecar + Task Queue parallel start) -- PHASE COMPLETE
+Plan: 4 of 4 in current phase
+Status: Phase 01-sidecar complete. Ready for Phase 02.
+Last activity: 2026-02-10 -- Completed 01-04-PLAN.md (Startup Recovery & Deployment)
 
-Progress: [███░░░░░░░] 23%
+Progress: [███░░░░░░░] 31%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 6 min
-- Total execution time: 0.32 hours
+- Total plans completed: 4
+- Average duration: 5 min
+- Total execution time: 0.35 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-sidecar | 3/4 | 19 min | 6 min |
+| 01-sidecar | 4/4 | 21 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (3 min), 01-02 (5 min), 01-03 (11 min)
-- Trend: Increasing (more complex tasks)
+- Last 5 plans: 01-01 (3 min), 01-02 (5 min), 01-03 (11 min), 01-04 (2 min)
+- Trend: Variable (01-04 was lightweight deployment artifacts)
 
 *Updated after each plan completion*
 
@@ -58,6 +58,10 @@ Recent decisions affecting current work:
 - [01-03]: Wake command skipped gracefully when not configured (agent self-start mode)
 - [01-03]: Confirmation timeout treated as failure (not retry) to prevent infinite wake loops
 - [01-03]: Result file cleanup after hub notification to prevent data loss
+- [01-04]: Recovery reports task_recovering AFTER WebSocket identification (needs connection ready)
+- [01-04]: task_reassign is default Phase 1 behavior; task_continue reserved for Phase 2+ intelligence
+- [01-04]: Wrapper scripts handle git/npm failure gracefully (continue with current version if offline)
+- [01-04]: pm2 ecosystem uses process.platform for cross-platform script/interpreter selection
 
 ### Pending Todos
 
@@ -71,5 +75,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 01-03-PLAN.md (Task Lifecycle Handling)
+Stopped at: Completed 01-04-PLAN.md (Startup Recovery & Deployment) -- Phase 01-sidecar COMPLETE
 Resume file: None
