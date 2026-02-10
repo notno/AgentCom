@@ -51,11 +51,11 @@ Plans:
   3. Failed tasks retry up to configured max then move to dead-letter storage (verifiable by submitting task that always fails, observing retries then dead-letter)
   4. Overdue assigned tasks are reclaimed by periodic sweep and returned to queue (verifiable by assigning task, letting deadline expire, confirming task re-queued)
   5. Task completion results include tokens_used field stored in task history (verifiable by completing task with token count, querying task history)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
+- [ ] 02-01-PLAN.md — Core TaskQueue GenServer with DETS persistence, priority lanes, retry/dead-letter, generation fencing, overdue sweep
+- [ ] 02-02-PLAN.md — Socket handler wiring to TaskQueue + HTTP task management API endpoints
 
 ### Phase 3: Agent State
 **Goal**: The hub tracks each agent's work lifecycle with a state machine that stays synchronized with reality
