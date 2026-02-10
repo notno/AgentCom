@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Sidecar** - Always-on WebSocket relay with OpenClaw wake and crash recovery
 - [x] **Phase 2: Task Queue** - DETS-backed persistent work storage with priority lanes and retry
-- [ ] **Phase 3: Agent State** - Per-agent finite state machine tracking work lifecycle
+- [x] **Phase 3: Agent State** - Per-agent finite state machine tracking work lifecycle
 - [ ] **Phase 4: Scheduler** - Event-driven task-to-agent matching with capability routing
 - [ ] **Phase 5: Smoke Test** - End-to-end pipeline validation with 2 agents and trivial tasks
 - [ ] **Phase 6: Dashboard** - Real-time observability showing queue, agents, and task flow
@@ -69,8 +69,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — AgentFSM GenServer + AgentSupervisor (DynamicSupervisor) + Registry infrastructure
-- [ ] 03-02-PLAN.md — Socket/Endpoint/TaskQueue/Presence wiring to AgentFSM + HTTP state API
+- [x] 03-01-PLAN.md — AgentFSM GenServer + AgentSupervisor (DynamicSupervisor) + Registry infrastructure
+- [x] 03-02-PLAN.md — Socket/Endpoint/TaskQueue/Presence wiring to AgentFSM + HTTP state API
 
 ### Phase 4: Scheduler
 **Goal**: Queued tasks are automatically matched to idle, capable agents without human intervention
@@ -154,7 +154,7 @@ Phases 1 and 2 are parallel. Phase 3 follows Phase 2. Phase 4 requires Phases 1+
 |-------|----------------|--------|-----------|
 | 1. Sidecar | 4/4 | ✓ Complete | 2026-02-09 |
 | 2. Task Queue | 2/2 | ✓ Complete | 2026-02-10 |
-| 3. Agent State | 0/2 | Planned | - |
+| 3. Agent State | 2/2 | ✓ Complete | 2026-02-10 |
 | 4. Scheduler | 0/TBD | Not started | - |
 | 5. Smoke Test | 0/TBD | Not started | - |
 | 6. Dashboard | 0/TBD | Not started | - |
@@ -163,4 +163,4 @@ Phases 1 and 2 are parallel. Phase 3 follows Phase 2. Phase 4 requires Phases 1+
 
 ---
 *Roadmap created: 2026-02-09*
-*Last updated: 2026-02-10 — Phase 3 planned*
+*Last updated: 2026-02-10 — Phase 3 complete*

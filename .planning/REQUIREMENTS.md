@@ -116,10 +116,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TASK-04 | Phase 2: Task Queue | ✓ Complete |
 | TASK-05 | Phase 2: Task Queue | ✓ Complete |
 | TASK-06 | Phase 2: Task Queue | ✓ Complete |
-| AGNT-01 | Phase 3: Agent State | Pending |
-| AGNT-02 | Phase 3: Agent State | Pending |
-| AGNT-03 | Phase 3: Agent State | Pending |
-| AGNT-04 | Phase 3: Agent State | Pending |
+| AGNT-01 | Phase 3: Agent State | ✓ Complete |
+| AGNT-02 | Phase 3: Agent State | ✓ Complete |
+| AGNT-03 | Phase 3: Agent State | ✓ Complete |
+| AGNT-04 | Phase 3: Agent State | ✓ Complete |
 | SCHED-01 | Phase 4: Scheduler | Pending |
 | SCHED-02 | Phase 4: Scheduler | Pending |
 | SCHED-03 | Phase 4: Scheduler | Pending |
@@ -136,7 +136,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-03 | Phase 5: Smoke Test | Pending |
 | API-01 | Phase 1: Sidecar | ✓ Complete |
 | API-02 | Phase 2: Task Queue | ✓ Complete |
-| API-03 | Phase 3: Agent State | Pending |
+| API-03 | Phase 3: Agent State | ✓ Complete |
 
 **Coverage:**
 - v1 requirements: 32 total
