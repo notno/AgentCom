@@ -15,7 +15,7 @@ defmodule AgentCom.MixProject do
   def application do
     [
       mod: {AgentCom.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [:logger, :runtime_tools, :inets]
     ]
   end
 
@@ -25,7 +25,8 @@ defmodule AgentCom.MixProject do
       {:jason, "~> 1.4"},
       {:bandit, "~> 1.0"},
       {:websock_adapter, "~> 0.5"},
-      {:plug, "~> 1.15"}
+      {:plug, "~> 1.15"},
+      {:fresh, "~> 0.4.4", only: [:dev, :test]}
     ]
   end
 

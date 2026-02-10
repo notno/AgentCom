@@ -408,6 +408,7 @@ class HubConnection {
     this.pongTimer = null;
     this.lastPongTime = null;
     this.shuttingDown = false;
+    this.taskGenerations = new Map(); // task_id -> generation from task_assign
   }
 
   connect() {
@@ -549,11 +550,17 @@ class HubConnection {
   }
 
   sendTaskComplete(taskId, result) {
-    return this.send({ type: 'task_complete', task_id: taskId, result });
+    const generation = this.taskGenerations.get(taskId) || 0;
+    const sent = this.send({ type: 'task_complete', task_id: taskId, result, generation });
+    this.taskGenerations.delete(taskId);
+    return sent;
   }
 
   sendTaskFailed(taskId, reason) {
-    return this.send({ type: 'task_failed', task_id: taskId, reason });
+    const generation = this.taskGenerations.get(taskId) || 0;
+    const sent = this.send({ type: 'task_failed', task_id: taskId, reason, generation });
+    this.taskGenerations.delete(taskId);
+    return sent;
   }
 
   sendTaskRejected(taskId, reason) {
@@ -572,6 +579,11 @@ class HubConnection {
       return;
     }
 
+    // Track generation from task_assign for use in task_complete/task_failed
+    if (msg.generation !== undefined) {
+      this.taskGenerations.set(msg.task_id, msg.generation);
+    }
+
     // Create task object with full payload for crash-safe persistence
     const task = {
       task_id: msg.task_id,
@@ -579,6 +591,7 @@ class HubConnection {
       metadata: msg.metadata || {},
       status: 'accepted',
       assigned_at: msg.assigned_at || Date.now(),
+      generation: msg.generation || 0,
       wake_attempts: 0
     };
 
@@ -628,6 +641,9 @@ class HubConnection {
     const taskId = msg.task_id;
     log('recovery_reassigned', { task_id: taskId });
 
+    // Clean up generation tracking for reassigned task
+    this.taskGenerations.delete(taskId);
+
     if (_queue.recovering && _queue.recovering.task_id === taskId) {
       _queue.recovering = null;
       saveQueue(_queue);
@@ -643,6 +659,11 @@ class HubConnection {
   handleTaskContinue(msg) {
     const taskId = msg.task_id;
     log('recovery_continued', { task_id: taskId });
+
+    // Update generation from task_continue message (may have changed during recovery)
+    if (msg.generation !== undefined) {
+      this.taskGenerations.set(taskId, msg.generation);
+    }
 
     if (_queue.recovering && _queue.recovering.task_id === taskId) {
       _queue.active = _queue.recovering;
