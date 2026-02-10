@@ -53,20 +53,23 @@ defmodule AgentCom.Socket do
       <- {"type": "task_ack", "task_id": "task-abc123", "status": "accepted"}
 
       -> {"type": "task_progress", "task_id": "task-abc123", "progress": 50}
-      (no reply — fire and forget)
+      (no reply — fire and forget, updates TaskQueue timestamp to prevent overdue sweep)
 
-      -> {"type": "task_complete", "task_id": "task-abc123", "result": {...}}
+      -> {"type": "task_complete", "task_id": "task-abc123", "generation": 1, "result": {...}, "tokens_used": 150}
       <- {"type": "task_ack", "task_id": "task-abc123", "status": "complete"}
 
-      -> {"type": "task_failed", "task_id": "task-abc123", "error": "..."}
+      -> {"type": "task_failed", "task_id": "task-abc123", "generation": 1, "error": "..."}
       <- {"type": "task_ack", "task_id": "task-abc123", "status": "failed"}
+      <- {"type": "task_ack", "task_id": "task-abc123", "status": "retried"}
+      <- {"type": "task_ack", "task_id": "task-abc123", "status": "dead_letter"}
 
       -> {"type": "task_recovering", "task_id": "task-abc123"}
-      <- {"type": "task_reassign", "task_id": "task-abc123"}
+      <- {"type": "task_continue", "task_id": "task-abc123", "generation": 1}  (still assigned)
+      <- {"type": "task_reassign", "task_id": "task-abc123"}                    (not assigned)
 
   ### Task assignment (hub -> sidecar, pushed via WebSocket)
 
-      <- {"type": "task_assign", "task_id": "task-abc123", "description": "...", "metadata": {...}, "assigned_at": 1234567890}
+      <- {"type": "task_assign", "task_id": "task-abc123", "description": "...", "metadata": {...}, "generation": 1, "assigned_at": 1234567890}
   """
 
   @behaviour WebSock
@@ -156,6 +159,7 @@ defmodule AgentCom.Socket do
       "task_id" => task["task_id"] || task[:task_id],
       "description" => task["description"] || task[:description] || "",
       "metadata" => task["metadata"] || task[:metadata] || %{},
+      "generation" => task["generation"] || task[:generation] || 0,
       "assigned_at" => System.system_time(:millisecond)
     }
     {:push, {:text, Jason.encode!(push)}, state}
@@ -292,33 +296,73 @@ defmodule AgentCom.Socket do
 
   defp handle_msg(%{"type" => "task_accepted", "task_id" => task_id} = msg, state) do
     log_task_event(state.agent_id, "task_accepted", task_id, msg)
+    # Update timestamp to signal the task is actively being worked on
+    AgentCom.TaskQueue.update_progress(task_id)
     reply = Jason.encode!(%{"type" => "task_ack", "task_id" => task_id, "status" => "accepted"})
     {:push, {:text, reply}, state}
   end
 
   defp handle_msg(%{"type" => "task_progress", "task_id" => task_id} = msg, state) do
     log_task_event(state.agent_id, "task_progress", task_id, msg)
+    # Update timestamp to prevent overdue sweep reclamation
+    AgentCom.TaskQueue.update_progress(task_id)
     {:ok, state}
   end
 
   defp handle_msg(%{"type" => "task_complete", "task_id" => task_id} = msg, state) do
     log_task_event(state.agent_id, "task_complete", task_id, msg)
-    reply = Jason.encode!(%{"type" => "task_ack", "task_id" => task_id, "status" => "complete"})
-    {:push, {:text, reply}, state}
+    generation = msg["generation"] || 0
+    result = msg["result"] || %{}
+    tokens_used = msg["tokens_used"] || result["tokens_used"]
+
+    case AgentCom.TaskQueue.complete_task(task_id, generation, %{
+      result: result,
+      tokens_used: tokens_used
+    }) do
+      {:ok, _task} ->
+        reply = Jason.encode!(%{"type" => "task_ack", "task_id" => task_id, "status" => "complete"})
+        {:push, {:text, reply}, state}
+      {:error, reason} ->
+        reply_error("task_complete_failed: #{reason}", state)
+    end
   end
 
   defp handle_msg(%{"type" => "task_failed", "task_id" => task_id} = msg, state) do
     log_task_event(state.agent_id, "task_failed", task_id, msg)
-    reply = Jason.encode!(%{"type" => "task_ack", "task_id" => task_id, "status" => "failed"})
-    {:push, {:text, reply}, state}
+    generation = msg["generation"] || 0
+    error = msg["error"] || msg["reason"] || "unknown"
+
+    case AgentCom.TaskQueue.fail_task(task_id, generation, error) do
+      {:ok, :retried, _task} ->
+        reply = Jason.encode!(%{"type" => "task_ack", "task_id" => task_id, "status" => "retried"})
+        {:push, {:text, reply}, state}
+      {:ok, :dead_letter, _task} ->
+        reply = Jason.encode!(%{"type" => "task_ack", "task_id" => task_id, "status" => "dead_letter"})
+        {:push, {:text, reply}, state}
+      {:error, reason} ->
+        reply_error("task_fail_failed: #{reason}", state)
+    end
   end
 
   defp handle_msg(%{"type" => "task_recovering", "task_id" => task_id} = msg, state) do
     log_task_event(state.agent_id, "task_recovering", task_id, msg)
-    # For Phase 1: respond with task_reassign (hub takes task back)
-    # Phase 2 will add intelligence about whether agent is still working
-    reply = Jason.encode!(%{"type" => "task_reassign", "task_id" => task_id})
-    {:push, {:text, reply}, state}
+
+    case AgentCom.TaskQueue.recover_task(task_id) do
+      {:ok, :continue, task} ->
+        # Task is still assigned to this agent -- tell sidecar to continue
+        reply = Jason.encode!(%{
+          "type" => "task_continue",
+          "task_id" => task_id,
+          "generation" => task.generation
+        })
+        {:push, {:text, reply}, state}
+      {:ok, :reassign} ->
+        reply = Jason.encode!(%{"type" => "task_reassign", "task_id" => task_id})
+        {:push, {:text, reply}, state}
+      {:error, :not_found} ->
+        reply = Jason.encode!(%{"type" => "task_reassign", "task_id" => task_id})
+        {:push, {:text, reply}, state}
+    end
   end
 
   defp handle_msg(_unknown, state) do
