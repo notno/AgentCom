@@ -5,33 +5,34 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Phase 1 (Sidecar) and Phase 2 (Task Queue) -- parallel foundations
+**Current focus:** Phase 2 (Task Queue) -- core GenServer complete, wiring Socket/HTTP next
 
 ## Current Position
 
-Phase: 1 of 8 (Sidecar + Task Queue parallel start) -- PHASE COMPLETE
-Plan: 4 of 4 in current phase
-Status: Phase 01-sidecar complete. Ready for Phase 02.
-Last activity: 2026-02-10 -- Completed 01-04-PLAN.md (Startup Recovery & Deployment)
+Phase: 2 of 8 (Task Queue)
+Plan: 1 of 2 in current phase
+Status: 02-01-PLAN.md complete. Ready for 02-02-PLAN.md (Socket/HTTP wiring).
+Last activity: 2026-02-10 -- Completed 02-01-PLAN.md (Core TaskQueue GenServer)
 
-Progress: [███░░░░░░░] 31%
+Progress: [████░░░░░░] 38%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
+- Total plans completed: 5
 - Average duration: 5 min
-- Total execution time: 0.35 hours
+- Total execution time: 0.40 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-sidecar | 4/4 | 21 min | 5 min |
+| 02-task-queue | 1/2 | 3 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (3 min), 01-02 (5 min), 01-03 (11 min), 01-04 (2 min)
-- Trend: Variable (01-04 was lightweight deployment artifacts)
+- Last 5 plans: 01-02 (5 min), 01-03 (11 min), 01-04 (2 min), 02-01 (3 min)
+- Trend: Stabilizing around 3-5 min for focused plans
 
 *Updated after each plan completion*
 
@@ -62,6 +63,11 @@ Recent decisions affecting current work:
 - [01-04]: task_reassign is default Phase 1 behavior; task_continue reserved for Phase 2+ intelligence
 - [01-04]: Wrapper scripts handle git/npm failure gracefully (continue with current version if offline)
 - [01-04]: pm2 ecosystem uses process.platform for cross-platform script/interpreter selection
+- [02-01]: Dual-DETS approach: main table for active tasks, separate table for dead-letter
+- [02-01]: In-memory sorted list for priority index (not ETS) -- simple at expected scale
+- [02-01]: History capped at 50 entries per task to prevent unbounded growth
+- [02-01]: update_progress is fire-and-forget cast (no generation check for informational updates)
+- [02-01]: Dual atom/string key lookup in submit for Socket (string) and internal (atom) flexibility
 
 ### Pending Todos
 
@@ -75,5 +81,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 01-04-PLAN.md (Startup Recovery & Deployment) -- Phase 01-sidecar COMPLETE
+Stopped at: Completed 02-01-PLAN.md (Core TaskQueue GenServer)
 Resume file: None
