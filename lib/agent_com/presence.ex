@@ -50,6 +50,11 @@ defmodule AgentCom.Presence do
     GenServer.call(__MODULE__, {:get, agent_id})
   end
 
+  @doc "Update an agent's FSM state. Called by AgentFSM on state transitions."
+  def update_fsm_state(agent_id, fsm_state) do
+    GenServer.cast(__MODULE__, {:update_fsm_state, agent_id, fsm_state})
+  end
+
   # Server callbacks
 
   @impl true
@@ -93,6 +98,15 @@ defmodule AgentCom.Presence do
       entry ->
         updated = Map.put(entry, :status, status)
         Phoenix.PubSub.broadcast(AgentCom.PubSub, "presence", {:status_changed, updated})
+        {:noreply, Map.put(state, agent_id, updated)}
+    end
+  end
+
+  def handle_cast({:update_fsm_state, agent_id, fsm_state}, state) do
+    case Map.get(state, agent_id) do
+      nil -> {:noreply, state}
+      entry ->
+        updated = Map.put(entry, :fsm_state, fsm_state)
         {:noreply, Map.put(state, agent_id, updated)}
     end
   end

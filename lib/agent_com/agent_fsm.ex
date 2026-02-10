@@ -208,6 +208,9 @@ defmodule AgentCom.AgentFSM do
       flags: []
     }
 
+    # Push initial FSM state to Presence
+    AgentCom.Presence.update_fsm_state(agent_id, initial_state)
+
     Logger.info("AgentFSM: started for agent #{agent_id} in state :#{initial_state}")
 
     {:ok, state}
@@ -219,6 +222,7 @@ defmodule AgentCom.AgentFSM do
   def handle_call(:get_state, _from, state) do
     reply = %{
       agent_id: state.agent_id,
+      name: state.name,
       fsm_state: state.fsm_state,
       current_task_id: state.current_task_id,
       capabilities: state.capabilities,
@@ -413,6 +417,7 @@ defmodule AgentCom.AgentFSM do
     Logger.warning("AgentFSM: WebSocket down for agent #{state.agent_id}, transitioning to :offline")
 
     cancel_timer(state.acceptance_timer_ref)
+    AgentCom.Presence.update_fsm_state(state.agent_id, :offline)
     reclaim_task_from_agent(state.agent_id, state.current_task_id)
 
     {:stop, :normal, %{state | fsm_state: :offline}}
@@ -471,6 +476,7 @@ defmodule AgentCom.AgentFSM do
 
     if to in allowed do
       now = System.system_time(:millisecond)
+      AgentCom.Presence.update_fsm_state(state.agent_id, to)
       {:ok, %{state | fsm_state: to, last_state_change: now}}
     else
       {:error, {:invalid_transition, from, to}}

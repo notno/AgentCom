@@ -20,6 +20,8 @@ defmodule AgentCom.Endpoint do
   - POST   /api/channels/:ch/unsubscribe — Unsubscribe (auth required)
   - POST   /api/channels/:ch/publish     — Publish to channel (auth required)
   - GET    /api/channels/:ch/history     — Channel message history
+  - GET    /api/agents/states          — All agent FSM states (auth required)
+  - GET    /api/agents/:id/state       — Single agent FSM state detail (auth required)
   - GET    /api/agents/:id/subscriptions — List agent's channel subscriptions
   - POST   /api/admin/push-task  — Push a task to a connected agent (auth required)
   - POST   /api/tasks             — Submit a task to the queue (auth required)
@@ -57,7 +59,8 @@ defmodule AgentCom.Endpoint do
         "name" => a[:name],
         "status" => a[:status],
         "capabilities" => a[:capabilities] || [],
-        "connected_at" => a[:connected_at]
+        "connected_at" => a[:connected_at],
+        "fsm_state" => Map.get(a, :fsm_state, "unknown")
       }
     end)
 
@@ -349,6 +352,64 @@ defmodule AgentCom.Endpoint do
 
     messages = AgentCom.Channels.history(channel, limit: limit, since: since)
     send_json(conn, 200, %{"channel" => channel, "messages" => messages, "count" => length(messages)})
+  end
+
+  # --- Agent FSM state endpoints (must be before parameterized :agent_id routes) ---
+
+  get "/api/agents/states" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      agents = AgentCom.AgentFSM.list_all()
+      formatted = Enum.map(agents, fn a ->
+        %{
+          "agent_id" => a.agent_id,
+          "fsm_state" => to_string(a.fsm_state),
+          "current_task_id" => a.current_task_id,
+          "capabilities" => Enum.map(a.capabilities || [], fn cap ->
+            if is_map(cap) do
+              Map.new(cap, fn {k, v} -> {to_string(k), v} end)
+            else
+              cap
+            end
+          end),
+          "flags" => Enum.map(a.flags || [], &to_string/1),
+          "connected_at" => a.connected_at,
+          "name" => a.name
+        }
+      end)
+      send_json(conn, 200, %{"agents" => formatted})
+    end
+  end
+
+  get "/api/agents/:agent_id/state" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case AgentCom.AgentFSM.get_state(agent_id) do
+        {:ok, agent_state} ->
+          send_json(conn, 200, %{
+            "agent_id" => agent_state.agent_id,
+            "fsm_state" => to_string(agent_state.fsm_state),
+            "current_task_id" => agent_state.current_task_id,
+            "capabilities" => Enum.map(agent_state.capabilities, fn cap ->
+              if is_map(cap) do
+                Map.new(cap, fn {k, v} -> {to_string(k), v} end)
+              else
+                cap
+              end
+            end),
+            "flags" => Enum.map(agent_state.flags, &to_string/1),
+            "connected_at" => agent_state.connected_at,
+            "last_state_change" => agent_state.last_state_change,
+            "name" => agent_state.name
+          })
+        {:error, :not_found} ->
+          send_json(conn, 404, %{"error" => "agent_not_found"})
+      end
+    end
   end
 
   get "/api/agents/:agent_id/subscriptions" do
