@@ -94,11 +94,11 @@ Plans:
   1. 10 trivial tasks ("write number N to file") complete across 2 agents on separate machines with 10/10 success, under 5s assignment latency, and under 500 tokens overhead per task
   2. Killing one agent mid-task results in task returning to queue and completing via the remaining agent with no duplicates and no lost tasks
   3. 4 agents processing 20 tasks achieve even distribution (within +/-2 tasks per agent) with no starvation of any priority lane
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 05-01: TBD
-- [ ] 05-02: TBD
+- [ ] 05-01-PLAN.md — Fix sidecar generation bug + build smoke test infrastructure (AgentSim, HTTP helpers, assertions, DETS cleanup)
+- [ ] 05-02-PLAN.md — Implement TEST-01 basic pipeline, TEST-02 failure recovery, TEST-03 scale distribution tests
 
 ### Phase 6: Dashboard
 **Goal**: Nathan can see the full state of the system at a glance without asking any agent
@@ -155,11 +155,11 @@ Phases 1 and 2 are parallel. Phase 3 follows Phase 2. Phase 4 requires Phases 1+
 | 2. Task Queue | 2/2 | ✓ Complete | 2026-02-10 |
 | 3. Agent State | 2/2 | ✓ Complete | 2026-02-10 |
 | 4. Scheduler | 1/1 | ✓ Complete | 2026-02-10 |
-| 5. Smoke Test | 0/TBD | Not started | - |
+| 5. Smoke Test | 0/2 | Planned | - |
 | 6. Dashboard | 0/TBD | Not started | - |
 | 7. Git Workflow | 0/TBD | Not started | - |
 | 8. Onboarding | 0/TBD | Not started | - |
 
 ---
 *Roadmap created: 2026-02-09*
-*Last updated: 2026-02-10 — Phase 4 complete*
+*Last updated: 2026-02-10 — Phase 5 planned*
