@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Phase 2 (Task Queue) complete. Ready for Phase 3 (Agent State).
+**Current focus:** Phase 3 (Agent State) in progress. Plan 01 (FSM infrastructure) complete.
 
 ## Current Position
 
-Phase: 2 of 8 (Task Queue) -- COMPLETE
-Plan: 2 of 2 in current phase (all done)
-Status: Phase 2 complete. All task queue functionality wired into Socket and HTTP layers.
-Last activity: 2026-02-10 -- Completed 02-02-PLAN.md (Socket/HTTP wiring)
+Phase: 3 of 8 (Agent State)
+Plan: 1 of 2 in current phase
+Status: Plan 01 complete. AgentFSM and AgentSupervisor infrastructure built. Ready for Plan 02 (wiring).
+Last activity: 2026-02-10 -- Completed 03-01-PLAN.md (Agent FSM infrastructure)
 
-Progress: [█████░░░░░] 46%
+Progress: [██████░░░░] 54%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
+- Total plans completed: 7
 - Average duration: 4 min
-- Total execution time: 0.48 hours
+- Total execution time: 0.53 hours
 
 **By Phase:**
 
@@ -29,9 +29,10 @@ Progress: [█████░░░░░] 46%
 |-------|-------|-------|----------|
 | 01-sidecar | 4/4 | 21 min | 5 min |
 | 02-task-queue | 2/2 | 8 min | 4 min |
+| 03-agent-state | 1/2 | 3 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-03 (11 min), 01-04 (2 min), 02-01 (3 min), 02-02 (5 min)
+- Last 5 plans: 01-04 (2 min), 02-01 (3 min), 02-02 (5 min), 03-01 (3 min)
 - Trend: Stabilizing around 3-5 min for focused plans
 
 *Updated after each plan completion*
@@ -71,6 +72,9 @@ Recent decisions affecting current work:
 - [02-02]: Map.get for optional fields in format_task to handle tasks without last_error key
 - [02-02]: String.to_existing_atom for status filter to prevent atom table exhaustion
 - [02-02]: Plug.Router route ordering: specific paths (/dead-letter, /stats) before parameterized (:task_id)
+- [03-01]: restart: :temporary for agent FSM processes -- agents must reconnect, not auto-restart on crash
+- [03-01]: Defensive reclaim stub in AgentFSM -- logs intent, actual TaskQueue.reclaim_task/1 deferred to Plan 02
+- [03-01]: Synchronous init (no handle_continue) -- avoids race conditions where messages arrive before state is ready
 
 ### Pending Todos
 
@@ -84,5 +88,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 02-02-PLAN.md (Socket/HTTP wiring) -- Phase 2 complete
+Stopped at: Completed 03-01-PLAN.md (Agent FSM infrastructure)
 Resume file: None
