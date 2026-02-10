@@ -21,6 +21,7 @@ defmodule AgentCom.Endpoint do
   - POST   /api/channels/:ch/publish     — Publish to channel (auth required)
   - GET    /api/channels/:ch/history     — Channel message history
   - GET    /api/agents/:id/subscriptions — List agent's channel subscriptions
+  - POST   /api/admin/push-task  — Push a task to a connected agent (auth required)
   - WS     /ws                   — WebSocket for agent connections
   """
   use Plug.Router
@@ -467,6 +468,48 @@ defmodule AgentCom.Endpoint do
     conn
     |> put_resp_content_type("text/html")
     |> send_resp(200, AgentCom.Dashboard.render())
+  end
+
+  # --- Admin: Push task to agent (for testing, pre-scheduler) ---
+
+  post "/api/admin/push-task" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      admin_agent = conn.assigns[:authenticated_agent]
+
+      case conn.body_params do
+        %{"agent_id" => target_agent_id, "description" => description} = params ->
+          task = %{
+            "task_id" => "task-" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower),
+            "description" => description,
+            "metadata" => params["metadata"] || %{},
+            "submitted_by" => admin_agent,
+            "submitted_at" => System.system_time(:millisecond)
+          }
+
+          case Registry.lookup(AgentCom.AgentRegistry, target_agent_id) do
+            [{pid, _meta}] ->
+              send(pid, {:push_task, task})
+              send_json(conn, 200, %{
+                "status" => "pushed",
+                "task_id" => task["task_id"],
+                "agent_id" => target_agent_id
+              })
+            [] ->
+              send_json(conn, 404, %{
+                "error" => "agent_not_connected",
+                "agent_id" => target_agent_id
+              })
+          end
+
+        _ ->
+          send_json(conn, 400, %{
+            "error" => "missing required fields: agent_id, description"
+          })
+      end
+    end
   end
 
   match _ do
