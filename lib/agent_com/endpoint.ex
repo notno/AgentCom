@@ -413,6 +413,40 @@ defmodule AgentCom.Endpoint do
     |> halt()
   end
 
+  # --- Admin: Hub reset ---
+
+  @admin_agents ["flere-imsaho"]
+
+  post "/api/admin/reset" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      agent_id = conn.assigns[:authenticated_agent]
+
+      if agent_id not in @admin_agents do
+        send_json(conn, 403, %{"error" => "admin_only", "message" => "Only admin agents can reset the hub"})
+      else
+        require Logger
+        Logger.warning("Hub reset triggered by #{agent_id}")
+
+        # Send response before restarting to avoid killing the connection mid-flight
+        spawn(fn ->
+          Process.sleep(500)
+          children = Supervisor.which_children(AgentCom.Supervisor)
+          Enum.each(children, fn {id, _pid, _type, _modules} ->
+            if id != Bandit do
+              Supervisor.terminate_child(AgentCom.Supervisor, id)
+              Supervisor.restart_child(AgentCom.Supervisor, id)
+            end
+          end)
+        end)
+
+        send_json(conn, 200, %{"status" => "reset_scheduled", "triggered_by" => agent_id})
+      end
+    end
+  end
+
   # --- Analytics ---
 
   get "/api/analytics/summary" do
