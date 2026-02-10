@@ -33,11 +33,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Sidecar triggers OpenClaw session wake when a message arrives and verifies wake succeeded (observable via OpenClaw process starting)
   4. Sidecar recovers incomplete tasks from queue.json on restart and reports their status to hub (verifiable by killing and restarting sidecar, checking hub state)
   5. Sidecar runs as pm2 managed process with auto-restart and log rotation (verifiable by killing sidecar process, observing pm2 restarts it)
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md — Sidecar scaffolding + core WebSocket connection with reconnect, heartbeat, logging
+- [ ] 01-02-PLAN.md — Hub protocol extensions for sidecar message types + admin push-task endpoint
+- [ ] 01-03-PLAN.md — Task lifecycle: queue persistence, wake command with retry, result file watching
+- [ ] 01-04-PLAN.md — Startup recovery for incomplete tasks + pm2 deployment artifacts
 
 ### Phase 2: Task Queue
 **Goal**: The hub has durable, prioritized work storage that survives crashes and handles failures gracefully
@@ -150,7 +152,7 @@ Phases 1 and 2 are parallel. Phase 3 follows Phase 2. Phase 4 requires Phases 1+
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Sidecar | 0/TBD | Not started | - |
+| 1. Sidecar | 0/4 | Planned | - |
 | 2. Task Queue | 0/TBD | Not started | - |
 | 3. Agent State | 0/TBD | Not started | - |
 | 4. Scheduler | 0/TBD | Not started | - |
