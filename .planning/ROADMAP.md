@@ -54,8 +54,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Core TaskQueue GenServer with DETS persistence, priority lanes, retry/dead-letter, generation fencing, overdue sweep
-- [ ] 02-02-PLAN.md — Socket handler wiring to TaskQueue + HTTP task management API endpoints
+- [x] 02-01-PLAN.md — Core TaskQueue GenServer with DETS persistence, priority lanes, retry/dead-letter, generation fencing, overdue sweep
+- [x] 02-02-PLAN.md — Socket handler wiring to TaskQueue + HTTP task management API endpoints
 
 ### Phase 3: Agent State
 **Goal**: The hub tracks each agent's work lifecycle with a state machine that stays synchronized with reality
@@ -153,7 +153,7 @@ Phases 1 and 2 are parallel. Phase 3 follows Phase 2. Phase 4 requires Phases 1+
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Sidecar | 4/4 | ✓ Complete | 2026-02-09 |
-| 2. Task Queue | 0/TBD | Not started | - |
+| 2. Task Queue | 2/2 | ✓ Complete | 2026-02-10 |
 | 3. Agent State | 0/TBD | Not started | - |
 | 4. Scheduler | 0/TBD | Not started | - |
 | 5. Smoke Test | 0/TBD | Not started | - |
@@ -163,4 +163,4 @@ Phases 1 and 2 are parallel. Phase 3 follows Phase 2. Phase 4 requires Phases 1+
 
 ---
 *Roadmap created: 2026-02-09*
-*Last updated: 2026-02-09 — Phase 1 complete*
+*Last updated: 2026-02-10 — Phase 2 complete*

@@ -110,12 +110,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SIDE-03 | Phase 1: Sidecar | ✓ Complete |
 | SIDE-04 | Phase 1: Sidecar | ✓ Complete |
 | SIDE-05 | Phase 1: Sidecar | ✓ Complete |
-| TASK-01 | Phase 2: Task Queue | Pending |
-| TASK-02 | Phase 2: Task Queue | Pending |
-| TASK-03 | Phase 2: Task Queue | Pending |
-| TASK-04 | Phase 2: Task Queue | Pending |
-| TASK-05 | Phase 2: Task Queue | Pending |
-| TASK-06 | Phase 2: Task Queue | Pending |
+| TASK-01 | Phase 2: Task Queue | ✓ Complete |
+| TASK-02 | Phase 2: Task Queue | ✓ Complete |
+| TASK-03 | Phase 2: Task Queue | ✓ Complete |
+| TASK-04 | Phase 2: Task Queue | ✓ Complete |
+| TASK-05 | Phase 2: Task Queue | ✓ Complete |
+| TASK-06 | Phase 2: Task Queue | ✓ Complete |
 | AGNT-01 | Phase 3: Agent State | Pending |
 | AGNT-02 | Phase 3: Agent State | Pending |
 | AGNT-03 | Phase 3: Agent State | Pending |
@@ -135,7 +135,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-02 | Phase 5: Smoke Test | Pending |
 | TEST-03 | Phase 5: Smoke Test | Pending |
 | API-01 | Phase 1: Sidecar | ✓ Complete |
-| API-02 | Phase 2: Task Queue | Pending |
+| API-02 | Phase 2: Task Queue | ✓ Complete |
 | API-03 | Phase 3: Agent State | Pending |
 
 **Coverage:**
