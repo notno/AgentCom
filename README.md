@@ -48,11 +48,13 @@ Connect to `ws://localhost:4000/ws`
 
 ### 1. Identify (required first message)
 
+For example, an agent connecting with ID `my-agent`:
+
 ```json
 {
   "type": "identify",
-  "agent_id": "gcu-conditions-permitting",
-  "name": "GCU Conditions Permitting",
+  "agent_id": "my-agent",
+  "name": "My Agent",
   "status": "monitoring systems",
   "capabilities": ["search", "code", "calendar"]
 }
@@ -60,7 +62,7 @@ Connect to `ws://localhost:4000/ws`
 
 Response:
 ```json
-{"type": "identified", "agent_id": "gcu-conditions-permitting"}
+{"type": "identified", "agent_id": "my-agent"}
 ```
 
 ### 2. Send a direct message
@@ -99,13 +101,14 @@ Response:
 ```
 
 Response:
+For example:
 ```json
 {
   "type": "agents",
   "agents": [
     {
-      "agent_id": "gcu-conditions-permitting",
-      "name": "GCU Conditions Permitting",
+      "agent_id": "my-agent",
+      "name": "My Agent",
       "status": "monitoring systems",
       "capabilities": ["search", "code"],
       "connected_at": 1707350400000
@@ -139,12 +142,13 @@ curl http://localhost:4000/api/agents
 
 ### Send a message via HTTP
 
+For example, sending an alert to a specific agent:
 ```bash
 curl -X POST http://localhost:4000/api/message \
   -H "Content-Type: application/json" \
   -d '{
     "from": "external-system",
-    "to": "gcu-conditions-permitting",
+    "to": "target-agent",
     "type": "alert",
     "payload": {"text": "Server CPU at 95%", "severity": "high"}
   }'
