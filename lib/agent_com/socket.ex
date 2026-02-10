@@ -44,6 +44,29 @@ defmodule AgentCom.Socket do
 
       -> {"type": "ping"}
       <- {"type": "pong", "timestamp": 1234567890}
+
+  ## Sidecar Task Protocol
+
+  ### Task lifecycle (sidecar -> hub)
+
+      -> {"type": "task_accepted", "task_id": "task-abc123"}
+      <- {"type": "task_ack", "task_id": "task-abc123", "status": "accepted"}
+
+      -> {"type": "task_progress", "task_id": "task-abc123", "progress": 50}
+      (no reply — fire and forget)
+
+      -> {"type": "task_complete", "task_id": "task-abc123", "result": {...}}
+      <- {"type": "task_ack", "task_id": "task-abc123", "status": "complete"}
+
+      -> {"type": "task_failed", "task_id": "task-abc123", "error": "..."}
+      <- {"type": "task_ack", "task_id": "task-abc123", "status": "failed"}
+
+      -> {"type": "task_recovering", "task_id": "task-abc123"}
+      <- {"type": "task_reassign", "task_id": "task-abc123"}
+
+  ### Task assignment (hub -> sidecar, pushed via WebSocket)
+
+      <- {"type": "task_assign", "task_id": "task-abc123", "description": "...", "metadata": {...}, "assigned_at": 1234567890}
   """
 
   @behaviour WebSock
@@ -124,6 +147,17 @@ defmodule AgentCom.Socket do
 
   def handle_info({:status_changed, info}, state) do
     push = %{"type" => "status_changed", "agent" => stringify_agent(info)}
+    {:push, {:text, Jason.encode!(push)}, state}
+  end
+
+  def handle_info({:push_task, task}, state) do
+    push = %{
+      "type" => "task_assign",
+      "task_id" => task["task_id"] || task[:task_id],
+      "description" => task["description"] || task[:description] || "",
+      "metadata" => task["metadata"] || task[:metadata] || %{},
+      "assigned_at" => System.system_time(:millisecond)
+    }
     {:push, {:text, Jason.encode!(push)}, state}
   end
 
@@ -254,6 +288,39 @@ defmodule AgentCom.Socket do
     {:push, {:text, reply}, state}
   end
 
+  # --- Sidecar task lifecycle messages ---
+
+  defp handle_msg(%{"type" => "task_accepted", "task_id" => task_id} = msg, state) do
+    log_task_event(state.agent_id, "task_accepted", task_id, msg)
+    reply = Jason.encode!(%{"type" => "task_ack", "task_id" => task_id, "status" => "accepted"})
+    {:push, {:text, reply}, state}
+  end
+
+  defp handle_msg(%{"type" => "task_progress", "task_id" => task_id} = msg, state) do
+    log_task_event(state.agent_id, "task_progress", task_id, msg)
+    {:ok, state}
+  end
+
+  defp handle_msg(%{"type" => "task_complete", "task_id" => task_id} = msg, state) do
+    log_task_event(state.agent_id, "task_complete", task_id, msg)
+    reply = Jason.encode!(%{"type" => "task_ack", "task_id" => task_id, "status" => "complete"})
+    {:push, {:text, reply}, state}
+  end
+
+  defp handle_msg(%{"type" => "task_failed", "task_id" => task_id} = msg, state) do
+    log_task_event(state.agent_id, "task_failed", task_id, msg)
+    reply = Jason.encode!(%{"type" => "task_ack", "task_id" => task_id, "status" => "failed"})
+    {:push, {:text, reply}, state}
+  end
+
+  defp handle_msg(%{"type" => "task_recovering", "task_id" => task_id} = msg, state) do
+    log_task_event(state.agent_id, "task_recovering", task_id, msg)
+    # For Phase 1: respond with task_reassign (hub takes task back)
+    # Phase 2 will add intelligence about whether agent is still working
+    reply = Jason.encode!(%{"type" => "task_reassign", "task_id" => task_id})
+    {:push, {:text, reply}, state}
+  end
+
   defp handle_msg(_unknown, state) do
     reply_error("unknown_message_type", state)
   end
@@ -287,6 +354,19 @@ defmodule AgentCom.Socket do
   end
 
   # — Helpers —
+
+  defp log_task_event(agent_id, event, task_id, msg) do
+    require Logger
+    Logger.info("Task event: #{event} from #{agent_id} for task #{task_id}")
+    # Broadcast to PubSub for future dashboard/monitoring consumption
+    Phoenix.PubSub.broadcast(AgentCom.PubSub, "tasks", {:task_event, %{
+      agent_id: agent_id,
+      event: event,
+      task_id: task_id,
+      payload: msg,
+      timestamp: System.system_time(:millisecond)
+    }})
+  end
 
   defp reply_error(reason, state) do
     reply = Jason.encode!(%{"type" => "error", "error" => reason})
