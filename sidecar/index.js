@@ -490,6 +490,8 @@ class HubConnection {
         this.identified = true;
         this.reconnectDelay = 1000; // Reset on successful identification
         log('identified', { agent_id: msg.agent_id });
+        // Report any recovering task to hub after identification
+        this.reportRecovery();
         break;
 
       case 'error':
@@ -506,6 +508,14 @@ class HubConnection {
 
       case 'task_ack':
         log('task_ack', { task_id: msg.task_id });
+        break;
+
+      case 'task_reassign':
+        this.handleTaskReassign(msg);
+        break;
+
+      case 'task_continue':
+        this.handleTaskContinue(msg);
         break;
 
       default:
@@ -582,6 +592,65 @@ class HubConnection {
 
     // Start wake process (implemented in Task 2)
     wakeAgent(task, this);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Recovery: report incomplete tasks to hub after identification
+  // ---------------------------------------------------------------------------
+
+  /**
+   * If a task was in-progress when the sidecar crashed, report it to the hub.
+   * Called after successful identification so the WebSocket connection is ready.
+   */
+  reportRecovery() {
+    if (!_queue.recovering) return;
+
+    const task = _queue.recovering;
+    log('recovery_reporting', { task_id: task.task_id, last_status: task.status });
+
+    this.send({
+      type: 'task_recovering',
+      task_id: task.task_id,
+      description: task.description,
+      metadata: task.metadata,
+      last_status: task.status,
+      protocol_version: 1
+    });
+
+    log('recovery_reported', { task_id: task.task_id });
+  }
+
+  /**
+   * Hub is taking the recovering task back (default Phase 1 behavior).
+   * Clear recovering slot so sidecar is idle and ready for new tasks.
+   */
+  handleTaskReassign(msg) {
+    const taskId = msg.task_id;
+    log('recovery_reassigned', { task_id: taskId });
+
+    if (_queue.recovering && _queue.recovering.task_id === taskId) {
+      _queue.recovering = null;
+      saveQueue(_queue);
+    } else {
+      log('recovery_reassign_ignored', { task_id: taskId, reason: 'not_recovering_task' });
+    }
+  }
+
+  /**
+   * Hub says the agent is still working on the recovering task (future Phase 2+ behavior).
+   * Move recovering back to active and resume watching for result file.
+   */
+  handleTaskContinue(msg) {
+    const taskId = msg.task_id;
+    log('recovery_continued', { task_id: taskId });
+
+    if (_queue.recovering && _queue.recovering.task_id === taskId) {
+      _queue.active = _queue.recovering;
+      _queue.recovering = null;
+      saveQueue(_queue);
+    } else {
+      log('recovery_continue_ignored', { task_id: taskId, reason: 'not_recovering_task' });
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -696,10 +765,14 @@ function main() {
     version: '1.0.0'
   });
 
-  // Load persisted queue state (crash recovery)
+  // Load persisted queue state and check for incomplete tasks (crash recovery)
   _queue = loadQueue();
   if (_queue.active) {
-    log('queue_recovered', { task_id: _queue.active.task_id, status: _queue.active.status });
+    log('recovery_found', { task_id: _queue.active.task_id, status: _queue.active.status });
+    // Move active to recovering slot -- sidecar crashed while task was in progress
+    _queue.recovering = _queue.active;
+    _queue.active = null;
+    saveQueue(_queue);
   }
 
   // Create connection and connect
