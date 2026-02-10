@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Phase 3 (Agent State) complete. Ready for Phase 4 (Scheduler).
+**Current focus:** Phase 4 (Scheduler) complete. Ready for Phase 5 (Smoke Test).
 
 ## Current Position
 
-Phase: 3 of 8 (Agent State) -- COMPLETE
-Plan: 2 of 2 in current phase (all plans complete)
-Status: Phase 3 complete. AgentFSM fully wired into Socket, Endpoint, TaskQueue, and Presence. Ready for Phase 4 (Scheduler).
-Last activity: 2026-02-10 -- Completed 03-02-PLAN.md (AgentFSM integration wiring)
+Phase: 4 of 8 (Scheduler) -- COMPLETE
+Plan: 1 of 1 in current phase (all plans complete)
+Status: Phase 4 complete. Scheduler GenServer auto-matches queued tasks to idle agents via PubSub events. Ready for Phase 5 (Smoke Test).
+Last activity: 2026-02-10 -- Completed 04-01-PLAN.md (Scheduler GenServer)
 
-Progress: [██████░░░░] 62%
+Progress: [███████░░░] 69%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 9
 - Average duration: 4 min
-- Total execution time: 0.58 hours
+- Total execution time: 0.61 hours
 
 **By Phase:**
 
@@ -30,10 +30,11 @@ Progress: [██████░░░░] 62%
 | 01-sidecar | 4/4 | 21 min | 5 min |
 | 02-task-queue | 2/2 | 8 min | 4 min |
 | 03-agent-state | 2/2 | 6 min | 3 min |
+| 04-scheduler | 1/1 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-01 (3 min), 02-02 (5 min), 03-01 (3 min), 03-02 (3 min)
-- Trend: Stabilizing around 3-5 min for focused plans
+- Last 5 plans: 02-02 (5 min), 03-01 (3 min), 03-02 (3 min), 04-01 (2 min)
+- Trend: Stabilizing around 2-3 min for focused plans
 
 *Updated after each plan completion*
 
@@ -78,6 +79,10 @@ Recent decisions affecting current work:
 - [03-02]: Socket.terminate does NOT clean up FSM -- AgentFSM's :DOWN handler owns task reclamation (Pitfall 3: clear ownership)
 - [03-02]: Presence.update_fsm_state does NOT broadcast to PubSub -- FSM state changes are frequent and internal
 - [03-02]: Route ordering: /api/agents/states before /:agent_id/state before /:agent_id/subscriptions
+- [04-01]: Scheduler is stateless -- queries TaskQueue and AgentFSM on every attempt to avoid stale-state bugs
+- [04-01]: Scheduler does NOT call AgentFSM.assign_task -- Socket push_task handler owns FSM transition
+- [04-01]: Greedy matching loop iterates all queued tasks, not just queue head, preventing head-of-line blocking
+- [04-01]: Map.get with default [] for needed_capabilities on existing DETS records for backward compat
 
 ### Pending Todos
 
@@ -91,5 +96,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 03-02-PLAN.md (AgentFSM integration wiring) -- Phase 3 complete
+Stopped at: Completed 04-01-PLAN.md (Scheduler GenServer) -- Phase 4 complete
 Resume file: None
