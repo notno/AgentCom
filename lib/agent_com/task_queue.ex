@@ -143,6 +143,16 @@ defmodule AgentCom.TaskQueue do
     GenServer.call(__MODULE__, {:tasks_assigned_to, agent_id})
   end
 
+  @doc """
+  Reclaim a specific task from an agent. Used by AgentFSM on disconnect or
+  acceptance timeout. Resets task to :queued, bumps generation, re-adds to
+  priority index. Returns {:ok, task} or {:error, :not_found | :not_assigned}.
+  Idempotent: if task is already queued/completed, returns {:error, :not_assigned}.
+  """
+  def reclaim_task(task_id) do
+    GenServer.call(__MODULE__, {:reclaim_task, task_id})
+  end
+
   @doc "Return queue statistics: counts by status and by priority."
   def stats do
     GenServer.call(__MODULE__, :stats)
@@ -499,6 +509,39 @@ defmodule AgentCom.TaskQueue do
       )
 
     {:reply, tasks, state}
+  end
+
+  # -- reclaim_task ------------------------------------------------------------
+
+  @impl true
+  def handle_call({:reclaim_task, task_id}, _from, state) do
+    case lookup_task(task_id) do
+      {:ok, %{status: :assigned} = task} ->
+        now = System.system_time(:millisecond)
+
+        reclaimed =
+          %{task |
+            status: :queued,
+            assigned_to: nil,
+            assigned_at: nil,
+            generation: task.generation + 1,
+            updated_at: now,
+            history:
+              cap_history([{:reclaimed, now, "agent_disconnect"} | task.history])
+          }
+
+        persist_task(reclaimed, @tasks_table)
+        new_index = add_to_priority_index(state.priority_index, reclaimed)
+        broadcast_task_event(:task_reclaimed, reclaimed)
+
+        {:reply, {:ok, reclaimed}, %{state | priority_index: new_index}}
+
+      {:ok, _task} ->
+        {:reply, {:error, :not_assigned}, state}
+
+      {:error, :not_found} ->
+        {:reply, {:error, :not_found}, state}
+    end
   end
 
   # -- stats -------------------------------------------------------------------

@@ -499,22 +499,12 @@ defmodule AgentCom.AgentFSM do
   defp reclaim_task_from_agent(_agent_id, nil), do: :ok
 
   defp reclaim_task_from_agent(agent_id, task_id) do
-    # Defensive reclaim: TaskQueue.reclaim_task/1 will be added in Plan 02.
-    # For now, check the task status and log the reclamation intent.
-    case AgentCom.TaskQueue.get(task_id) do
-      {:ok, %{status: :assigned}} ->
-        Logger.info(
-          "AgentFSM: reclaiming task #{task_id} from agent #{agent_id} " <>
-            "(task is :assigned, pending TaskQueue.reclaim_task/1 in Plan 02)"
-        )
+    case AgentCom.TaskQueue.reclaim_task(task_id) do
+      {:ok, _task} ->
+        Logger.info("AgentFSM: reclaimed task #{task_id} from #{agent_id}")
 
-      {:ok, %{status: status}} ->
-        Logger.info(
-          "AgentFSM: task #{task_id} for agent #{agent_id} is in :#{status}, no reclaim needed"
-        )
-
-      {:error, :not_found} ->
-        Logger.info("AgentFSM: task #{task_id} not found in TaskQueue, no reclaim needed")
+      {:error, reason} ->
+        Logger.warning("AgentFSM: reclaim failed for #{task_id}: #{reason}")
     end
   end
 end

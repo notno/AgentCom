@@ -162,6 +162,11 @@ defmodule AgentCom.Socket do
       "generation" => task["generation"] || task[:generation] || 0,
       "assigned_at" => System.system_time(:millisecond)
     }
+
+    # Notify FSM about task assignment
+    task_id = task["task_id"] || task[:task_id]
+    if task_id, do: AgentCom.AgentFSM.assign_task(state.agent_id, task_id)
+
     {:push, {:text, Jason.encode!(push)}, state}
   end
 
@@ -298,6 +303,7 @@ defmodule AgentCom.Socket do
     log_task_event(state.agent_id, "task_accepted", task_id, msg)
     # Update timestamp to signal the task is actively being worked on
     AgentCom.TaskQueue.update_progress(task_id)
+    AgentCom.AgentFSM.task_accepted(state.agent_id, task_id)
     reply = Jason.encode!(%{"type" => "task_ack", "task_id" => task_id, "status" => "accepted"})
     {:push, {:text, reply}, state}
   end
@@ -320,6 +326,7 @@ defmodule AgentCom.Socket do
       tokens_used: tokens_used
     }) do
       {:ok, _task} ->
+        AgentCom.AgentFSM.task_completed(state.agent_id)
         reply = Jason.encode!(%{"type" => "task_ack", "task_id" => task_id, "status" => "complete"})
         {:push, {:text, reply}, state}
       {:error, reason} ->
@@ -334,9 +341,11 @@ defmodule AgentCom.Socket do
 
     case AgentCom.TaskQueue.fail_task(task_id, generation, error) do
       {:ok, :retried, _task} ->
+        AgentCom.AgentFSM.task_failed(state.agent_id)
         reply = Jason.encode!(%{"type" => "task_ack", "task_id" => task_id, "status" => "retried"})
         {:push, {:text, reply}, state}
       {:ok, :dead_letter, _task} ->
+        AgentCom.AgentFSM.task_failed(state.agent_id)
         reply = Jason.encode!(%{"type" => "task_ack", "task_id" => task_id, "status" => "dead_letter"})
         {:push, {:text, reply}, state}
       {:error, reason} ->
@@ -375,6 +384,21 @@ defmodule AgentCom.Socket do
     name = Map.get(msg, "name", agent_id)
     status = Map.get(msg, "status", "connected")
     capabilities = Map.get(msg, "capabilities", [])
+
+    # Handle reconnect: stop old FSM if one exists (Pitfall 5)
+    case Registry.lookup(AgentCom.AgentFSMRegistry, agent_id) do
+      [{old_pid, _}] ->
+        AgentCom.AgentSupervisor.stop_agent(old_pid)
+      [] -> :ok
+    end
+
+    # Start new AgentFSM
+    {:ok, _fsm_pid} = AgentCom.AgentSupervisor.start_agent([
+      agent_id: agent_id,
+      ws_pid: self(),
+      name: name,
+      capabilities: capabilities
+    ])
 
     Registry.register(AgentCom.AgentRegistry, agent_id, %{pid: self()})
     Presence.register(agent_id, %{name: name, status: status, capabilities: capabilities})
