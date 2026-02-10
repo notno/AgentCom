@@ -597,6 +597,7 @@ defmodule AgentCom.Endpoint do
             metadata: params["metadata"] || %{},
             max_retries: params["max_retries"] || 3,
             complete_by: params["complete_by"],
+            needed_capabilities: params["needed_capabilities"] || [],
             submitted_by: agent_id
           }
 
@@ -718,6 +719,7 @@ defmodule AgentCom.Endpoint do
       "generation" => task.generation,
       "retry_count" => task.retry_count,
       "max_retries" => task.max_retries,
+      "needed_capabilities" => Map.get(task, :needed_capabilities, []),
       "last_error" => Map.get(task, :last_error),
       "complete_by" => task.complete_by,
       "result" => task.result,

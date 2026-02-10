@@ -212,6 +212,9 @@ defmodule AgentCom.TaskQueue do
       max_retries:
         Map.get(params, :max_retries, Map.get(params, "max_retries", @default_max_retries)),
       complete_by: Map.get(params, :complete_by, Map.get(params, "complete_by", nil)),
+      needed_capabilities:
+        Map.get(params, :needed_capabilities,
+          Map.get(params, "needed_capabilities", [])),
       result: nil,
       tokens_used: nil,
       submitted_by:
