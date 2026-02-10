@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 ## Current Position
 
 Phase: 1 of 8 (Sidecar + Task Queue parallel start)
-Plan: 2 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: Executing
-Last activity: 2026-02-10 -- Completed 01-02-PLAN.md (Hub Task Protocol)
+Last activity: 2026-02-10 -- Completed 01-03-PLAN.md (Task Lifecycle Handling)
 
-Progress: [██░░░░░░░░] 15%
+Progress: [███░░░░░░░] 23%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 4 min
-- Total execution time: 0.13 hours
+- Total plans completed: 3
+- Average duration: 6 min
+- Total execution time: 0.32 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-sidecar | 2/4 | 8 min | 4 min |
+| 01-sidecar | 3/4 | 19 min | 6 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (3 min), 01-02 (5 min)
-- Trend: Starting
+- Last 5 plans: 01-01 (3 min), 01-02 (5 min), 01-03 (11 min)
+- Trend: Increasing (more complex tasks)
 
 *Updated after each plan completion*
 
@@ -54,6 +54,10 @@ Recent decisions affecting current work:
 - [01-02]: task_progress is fire-and-forget (no ack) to reduce chattiness
 - [01-02]: task_recovering triggers task_reassign -- Phase 2 adds intelligence
 - [01-02]: Push-task endpoint uses existing RequireAuth (any authed agent can push, scheduler replaces in Phase 2)
+- [01-03]: Persist task to queue.json BEFORE sending task_accepted to hub (crash-safe ordering)
+- [01-03]: Wake command skipped gracefully when not configured (agent self-start mode)
+- [01-03]: Confirmation timeout treated as failure (not retry) to prevent infinite wake loops
+- [01-03]: Result file cleanup after hub notification to prevent data loss
 
 ### Pending Todos
 
@@ -67,5 +71,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 01-02-PLAN.md (Hub Task Protocol)
+Stopped at: Completed 01-03-PLAN.md (Task Lifecycle Handling)
 Resume file: None
