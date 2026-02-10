@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
+const writeFileAtomic = require('write-file-atomic');
 
 // =============================================================================
 // 1. Config Loader
@@ -78,7 +79,44 @@ function log(event, data = {}) {
 }
 
 // =============================================================================
-// 3. HubConnection Class
+// 3. Queue Manager
+// =============================================================================
+// Queue data model (per CONTEXT.md: max 1 active + 1 recovering)
+// { active: { task_id, description, metadata, status, assigned_at, wake_attempts }, recovering: null }
+
+const QUEUE_PATH = path.join(__dirname, 'queue.json');
+
+let _queue = { active: null, recovering: null };
+
+function loadQueue() {
+  try {
+    const data = fs.readFileSync(QUEUE_PATH, 'utf8');
+    return JSON.parse(data);
+  } catch (err) {
+    if (err.code === 'ENOENT') return { active: null, recovering: null };
+    // Corrupted file -- fall back to empty (per research pitfall #3)
+    log('queue_corrupt', { error: err.message });
+    return { active: null, recovering: null };
+  }
+}
+
+function saveQueue(queue) {
+  // Atomic write: write to temp file, then rename
+  // Per CONTEXT.md locked decision: atomic writes to prevent corruption on crash
+  writeFileAtomic.sync(QUEUE_PATH, JSON.stringify(queue, null, 2));
+}
+
+// =============================================================================
+// 4. Wake Agent (stub -- implemented in Task 2)
+// =============================================================================
+
+async function wakeAgent(task, hub) {
+  // Full implementation in Task 2: wake command execution with retry + result watching
+  log('wake_stub', { task_id: task.task_id, message: 'wake command not yet implemented' });
+}
+
+// =============================================================================
+// 5. HubConnection Class
 // =============================================================================
 
 class HubConnection {
@@ -185,6 +223,14 @@ class HubConnection {
         this.lastPongTime = Date.now();
         break;
 
+      case 'task_assign':
+        this.handleTaskAssign(msg);
+        break;
+
+      case 'task_ack':
+        log('task_ack', { task_id: msg.task_id });
+        break;
+
       default:
         log('unhandled_message', { type: msg.type });
         break;
@@ -205,6 +251,60 @@ class HubConnection {
       log('send_error', { error: err.message, type: obj.type });
       return false;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Task Lifecycle Senders
+  // ---------------------------------------------------------------------------
+
+  sendTaskAccepted(taskId) {
+    return this.send({ type: 'task_accepted', task_id: taskId });
+  }
+
+  sendTaskComplete(taskId, result) {
+    return this.send({ type: 'task_complete', task_id: taskId, result });
+  }
+
+  sendTaskFailed(taskId, reason) {
+    return this.send({ type: 'task_failed', task_id: taskId, reason });
+  }
+
+  sendTaskRejected(taskId, reason) {
+    return this.send({ type: 'task_rejected', task_id: taskId, reason });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Task Assignment Handler
+  // ---------------------------------------------------------------------------
+
+  handleTaskAssign(msg) {
+    // Check if sidecar is already busy with an active task
+    if (_queue.active !== null) {
+      log('task_rejected', { task_id: msg.task_id, reason: 'busy', active_task_id: _queue.active.task_id });
+      this.sendTaskRejected(msg.task_id, 'busy');
+      return;
+    }
+
+    // Create task object with full payload for crash-safe persistence
+    const task = {
+      task_id: msg.task_id,
+      description: msg.description,
+      metadata: msg.metadata || {},
+      status: 'accepted',
+      assigned_at: msg.assigned_at || Date.now(),
+      wake_attempts: 0
+    };
+
+    // Persist BEFORE acknowledging (crash between accept and persist loses the task)
+    _queue.active = task;
+    saveQueue(_queue);
+
+    // Acknowledge to hub
+    this.sendTaskAccepted(msg.task_id);
+    log('task_received', { task_id: msg.task_id, description: msg.description });
+
+    // Start wake process (implemented in Task 2)
+    wakeAgent(task, this);
   }
 
   // ---------------------------------------------------------------------------
@@ -277,12 +377,14 @@ class HubConnection {
 }
 
 // =============================================================================
-// 4. Graceful Shutdown
+// 6. Graceful Shutdown
 // =============================================================================
 
 function setupGracefulShutdown(hub) {
   const shutdown = (signal) => {
     log('shutdown', { signal });
+    // Save current queue state before closing
+    saveQueue(_queue);
     hub.shutdown();
     // Give a moment for the close frame to send, then exit
     setTimeout(() => {
@@ -300,7 +402,7 @@ function setupGracefulShutdown(hub) {
 }
 
 // =============================================================================
-// 5. Main Entry Point
+// 7. Main Entry Point
 // =============================================================================
 
 function main() {
@@ -314,6 +416,12 @@ function main() {
     capabilities: config.capabilities,
     version: '1.0.0'
   });
+
+  // Load persisted queue state (crash recovery)
+  _queue = loadQueue();
+  if (_queue.active) {
+    log('queue_recovered', { task_id: _queue.active.task_id, status: _queue.active.status });
+  }
 
   // Create connection and connect
   const hub = new HubConnection(config);
