@@ -415,7 +415,9 @@ defmodule AgentCom.Endpoint do
 
   # --- Admin: Hub reset ---
 
-  @admin_agents ["flere-imsaho"]
+  # Admin agents can be configured via ADMIN_AGENTS env var (comma-separated).
+  # For example: ADMIN_AGENTS=flere-imsaho,hub-admin
+  @admin_agents (System.get_env("ADMIN_AGENTS", "") |> String.split(",", trim: true))
 
   post "/api/admin/reset" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])

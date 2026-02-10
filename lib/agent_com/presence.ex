@@ -3,7 +3,7 @@ defmodule AgentCom.Presence do
   Tracks connected agents and their current status.
 
   Each agent has:
-  - `agent_id` — unique identifier (e.g. "gcu-conditions-permitting")
+  - `agent_id` — unique identifier (for example, "my-agent")
   - `name` — display name
   - `status` — freeform status text (what they're working on)
   - `capabilities` — list of things they can help with

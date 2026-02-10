@@ -4,7 +4,7 @@ defmodule Mix.Tasks.AgentCom.GenToken do
 
   ## Usage
 
-      mix agent_com.gen_token --agent-id flere-imsaho
+      mix agent_com.gen_token --agent-id my-agent
   """
   use Mix.Task
 
