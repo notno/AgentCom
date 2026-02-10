@@ -13,7 +13,7 @@ AgentCom v2 transforms a message-passing system into a GPU scheduler-style archi
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Sidecar** - Always-on WebSocket relay with OpenClaw wake and crash recovery
-- [ ] **Phase 2: Task Queue** - DETS-backed persistent work storage with priority lanes and retry
+- [x] **Phase 2: Task Queue** - DETS-backed persistent work storage with priority lanes and retry
 - [ ] **Phase 3: Agent State** - Per-agent finite state machine tracking work lifecycle
 - [ ] **Phase 4: Scheduler** - Event-driven task-to-agent matching with capability routing
 - [ ] **Phase 5: Smoke Test** - End-to-end pipeline validation with 2 agents and trivial tasks
