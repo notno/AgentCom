@@ -21,6 +21,8 @@ defmodule AgentCom.Application do
       {AgentCom.Threads, []},
       {AgentCom.MessageHistory, []},
       {AgentCom.Reaper, []},
+      {Registry, keys: :unique, name: AgentCom.AgentFSMRegistry},
+      {AgentCom.AgentSupervisor, []},
       {AgentCom.TaskQueue, []},
       {Bandit, plug: AgentCom.Endpoint, scheme: :http, port: port()}
     ]
