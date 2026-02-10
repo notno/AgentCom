@@ -24,6 +24,7 @@ defmodule AgentCom.Application do
       {Registry, keys: :unique, name: AgentCom.AgentFSMRegistry},
       {AgentCom.AgentSupervisor, []},
       {AgentCom.TaskQueue, []},
+      {AgentCom.Scheduler, []},
       {Bandit, plug: AgentCom.Endpoint, scheme: :http, port: port()}
     ]
 
