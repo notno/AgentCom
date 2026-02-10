@@ -81,11 +81,10 @@ Plans:
   2. Agent becoming idle after completing work immediately receives next queued task if available (verifiable by completing task, observing next assignment without manual trigger)
   3. Agent connecting to hub receives pending work if queue is non-empty and capabilities match (verifiable by queuing task then connecting agent, observing automatic assignment)
   4. Stuck assignments (assigned but no progress for 5 minutes) are detected by 30s sweep and reclaimed (verifiable by assigning task, blocking progress reports, waiting for reclamation)
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
+- [ ] 04-01-PLAN.md — Scheduler GenServer with event-driven matching, capability routing, and stuck sweep
 
 ### Phase 5: Smoke Test
 **Goal**: The full pipeline (task creation through agent completion) works reliably across real distributed machines
