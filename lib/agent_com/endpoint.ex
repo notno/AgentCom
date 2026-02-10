@@ -22,6 +22,12 @@ defmodule AgentCom.Endpoint do
   - GET    /api/channels/:ch/history     — Channel message history
   - GET    /api/agents/:id/subscriptions — List agent's channel subscriptions
   - POST   /api/admin/push-task  — Push a task to a connected agent (auth required)
+  - POST   /api/tasks             — Submit a task to the queue (auth required)
+  - GET    /api/tasks             — List tasks with optional filters (auth required)
+  - GET    /api/tasks/dead-letter — List dead-letter tasks (auth required)
+  - GET    /api/tasks/stats       — Queue statistics (auth required)
+  - GET    /api/tasks/:task_id    — Get task details with history (auth required)
+  - POST   /api/tasks/:task_id/retry — Retry a dead-letter task (auth required)
   - WS     /ws                   — WebSocket for agent connections
   """
   use Plug.Router
@@ -512,6 +518,121 @@ defmodule AgentCom.Endpoint do
     end
   end
 
+  # --- Task Queue API ---
+
+  post "/api/tasks" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      agent_id = conn.assigns[:authenticated_agent]
+      params = conn.body_params
+
+      case params do
+        %{"description" => description} ->
+          task_params = %{
+            description: description,
+            priority: params["priority"] || "normal",
+            metadata: params["metadata"] || %{},
+            max_retries: params["max_retries"] || 3,
+            complete_by: params["complete_by"],
+            submitted_by: agent_id
+          }
+
+          case AgentCom.TaskQueue.submit(task_params) do
+            {:ok, task} ->
+              send_json(conn, 201, %{
+                "status" => "queued",
+                "task_id" => task.id,
+                "priority" => task.priority,
+                "created_at" => task.created_at
+              })
+          end
+
+        _ ->
+          send_json(conn, 400, %{"error" => "missing required field: description"})
+      end
+    end
+  end
+
+  get "/api/tasks" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      opts = []
+      opts = if s = conn.params["status"] do
+        try do
+          [{:status, String.to_existing_atom(s)} | opts]
+        rescue
+          ArgumentError -> opts
+        end
+      else
+        opts
+      end
+      opts = if p = conn.params["priority"], do: [{:priority, p} | opts], else: opts
+      opts = if a = conn.params["assigned_to"], do: [{:assigned_to, a} | opts], else: opts
+
+      tasks = AgentCom.TaskQueue.list(opts)
+      formatted = Enum.map(tasks, &format_task/1)
+      send_json(conn, 200, %{"tasks" => formatted, "count" => length(formatted)})
+    end
+  end
+
+  # IMPORTANT: /dead-letter and /stats MUST be defined BEFORE /:task_id
+  get "/api/tasks/dead-letter" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      tasks = AgentCom.TaskQueue.list_dead_letter()
+      formatted = Enum.map(tasks, &format_task/1)
+      send_json(conn, 200, %{"tasks" => formatted, "count" => length(formatted)})
+    end
+  end
+
+  get "/api/tasks/stats" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      stats = AgentCom.TaskQueue.stats()
+      send_json(conn, 200, stats)
+    end
+  end
+
+  get "/api/tasks/:task_id" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case AgentCom.TaskQueue.get(task_id) do
+        {:ok, task} ->
+          send_json(conn, 200, format_task(task))
+        {:error, :not_found} ->
+          send_json(conn, 404, %{"error" => "task_not_found", "task_id" => task_id})
+      end
+    end
+  end
+
+  post "/api/tasks/:task_id/retry" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case AgentCom.TaskQueue.retry_dead_letter(task_id) do
+        {:ok, task} ->
+          send_json(conn, 200, %{
+            "status" => "requeued",
+            "task_id" => task.id,
+            "priority" => task.priority
+          })
+        {:error, :not_found} ->
+          send_json(conn, 404, %{"error" => "task_not_found", "task_id" => task_id})
+      end
+    end
+  end
+
   match _ do
     send_json(conn, 404, %{"error" => "not_found"})
   end
@@ -523,6 +644,38 @@ defmodule AgentCom.Endpoint do
       _ -> conn.params["token"]
     end
   end
+
+  defp format_task(task) do
+    %{
+      "id" => task.id,
+      "description" => task.description,
+      "metadata" => task.metadata,
+      "priority" => task.priority,
+      "status" => to_string(task.status),
+      "assigned_to" => task.assigned_to,
+      "assigned_at" => task.assigned_at,
+      "generation" => task.generation,
+      "retry_count" => task.retry_count,
+      "max_retries" => task.max_retries,
+      "last_error" => Map.get(task, :last_error),
+      "complete_by" => task.complete_by,
+      "result" => task.result,
+      "tokens_used" => task.tokens_used,
+      "submitted_by" => task.submitted_by,
+      "created_at" => task.created_at,
+      "updated_at" => task.updated_at,
+      "history" => Enum.map(task.history || [], fn
+        {event, timestamp, details} ->
+          %{"event" => to_string(event), "timestamp" => timestamp, "details" => format_details(details)}
+        other -> other
+      end)
+    }
+  end
+
+  defp format_details(details) when is_map(details) do
+    Map.new(details, fn {k, v} -> {to_string(k), v} end)
+  end
+  defp format_details(details), do: details
 
   defp send_json(conn, status, data) do
     conn
