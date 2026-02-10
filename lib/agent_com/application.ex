@@ -21,6 +21,7 @@ defmodule AgentCom.Application do
       {AgentCom.Threads, []},
       {AgentCom.MessageHistory, []},
       {AgentCom.Reaper, []},
+      {AgentCom.TaskQueue, []},
       {Bandit, plug: AgentCom.Endpoint, scheme: :http, port: port()}
     ]
 
