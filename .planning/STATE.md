@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Phase 4 (Scheduler) complete. Ready for Phase 5 (Smoke Test).
+**Current focus:** Phase 5 (Smoke Test) in progress. Plan 01 complete, Plan 02 next.
 
 ## Current Position
 
-Phase: 4 of 8 (Scheduler) -- COMPLETE
-Plan: 1 of 1 in current phase (all plans complete)
-Status: Phase 4 complete. Scheduler GenServer auto-matches queued tasks to idle agents via PubSub events. Ready for Phase 5 (Smoke Test).
-Last activity: 2026-02-10 -- Completed 04-01-PLAN.md (Scheduler GenServer)
+Phase: 5 of 8 (Smoke Test)
+Plan: 1 of 2 in current phase
+Status: Smoke test infrastructure built. Sidecar generation bug fixed. 5 test helper modules ready. Plan 02 (smoke test scenarios) next.
+Last activity: 2026-02-10 -- Completed 05-01-PLAN.md (Smoke Test Infrastructure)
 
-Progress: [███████░░░] 69%
+Progress: [████████░░] 77%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
+- Total plans completed: 10
 - Average duration: 4 min
-- Total execution time: 0.61 hours
+- Total execution time: 0.69 hours
 
 **By Phase:**
 
@@ -31,10 +31,11 @@ Progress: [███████░░░] 69%
 | 02-task-queue | 2/2 | 8 min | 4 min |
 | 03-agent-state | 2/2 | 6 min | 3 min |
 | 04-scheduler | 1/1 | 2 min | 2 min |
+| 05-smoke-test | 1/2 | 5 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-02 (5 min), 03-01 (3 min), 03-02 (3 min), 04-01 (2 min)
-- Trend: Stabilizing around 2-3 min for focused plans
+- Last 5 plans: 03-01 (3 min), 03-02 (3 min), 04-01 (2 min), 05-01 (5 min)
+- Trend: 05-01 slightly longer due to sidecar bug fix + 5 new files
 
 *Updated after each plan completion*
 
@@ -83,6 +84,9 @@ Recent decisions affecting current work:
 - [04-01]: Scheduler does NOT call AgentFSM.assign_task -- Socket push_task handler owns FSM transition
 - [04-01]: Greedy matching loop iterates all queued tasks, not just queue head, preventing head-of-line blocking
 - [04-01]: Map.get with default [] for needed_capabilities on existing DETS records for backward compat
+- [05-01]: Used Mint.HTTP + Mint.WebSocket directly for AgentSim instead of Fresh wrapper (full control over connection lifecycle)
+- [05-01]: Used :httpc for HTTP helpers (built-in, no extra deps for test usage)
+- [05-01]: Generation tracked in Map keyed by task_id in sidecar (supports recovery edge cases)
 
 ### Pending Todos
 
@@ -96,5 +100,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 04-01-PLAN.md (Scheduler GenServer) -- Phase 4 complete
+Stopped at: Completed 05-01-PLAN.md (Smoke Test Infrastructure)
 Resume file: None
