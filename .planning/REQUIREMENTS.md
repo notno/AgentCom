@@ -105,13 +105,44 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (Populated during roadmap creation) | | |
+| SIDE-01 | Phase 1: Sidecar | Pending |
+| SIDE-02 | Phase 1: Sidecar | Pending |
+| SIDE-03 | Phase 1: Sidecar | Pending |
+| SIDE-04 | Phase 1: Sidecar | Pending |
+| SIDE-05 | Phase 1: Sidecar | Pending |
+| TASK-01 | Phase 2: Task Queue | Pending |
+| TASK-02 | Phase 2: Task Queue | Pending |
+| TASK-03 | Phase 2: Task Queue | Pending |
+| TASK-04 | Phase 2: Task Queue | Pending |
+| TASK-05 | Phase 2: Task Queue | Pending |
+| TASK-06 | Phase 2: Task Queue | Pending |
+| AGNT-01 | Phase 3: Agent State | Pending |
+| AGNT-02 | Phase 3: Agent State | Pending |
+| AGNT-03 | Phase 3: Agent State | Pending |
+| AGNT-04 | Phase 3: Agent State | Pending |
+| SCHED-01 | Phase 4: Scheduler | Pending |
+| SCHED-02 | Phase 4: Scheduler | Pending |
+| SCHED-03 | Phase 4: Scheduler | Pending |
+| SCHED-04 | Phase 4: Scheduler | Pending |
+| OBS-01 | Phase 6: Dashboard | Pending |
+| OBS-02 | Phase 6: Dashboard | Pending |
+| OBS-03 | Phase 6: Dashboard | Pending |
+| GIT-01 | Phase 7: Git Workflow | Pending |
+| GIT-02 | Phase 7: Git Workflow | Pending |
+| GIT-03 | Phase 7: Git Workflow | Pending |
+| ONBD-01 | Phase 8: Onboarding | Pending |
+| TEST-01 | Phase 5: Smoke Test | Pending |
+| TEST-02 | Phase 5: Smoke Test | Pending |
+| TEST-03 | Phase 5: Smoke Test | Pending |
+| API-01 | Phase 1: Sidecar | Pending |
+| API-02 | Phase 2: Task Queue | Pending |
+| API-03 | Phase 3: Agent State | Pending |
 
 **Coverage:**
-- v1 requirements: 28 total
-- Mapped to phases: 0
-- Unmapped: 28
+- v1 requirements: 32 total
+- Mapped to phases: 32
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-09*
-*Last updated: 2026-02-09 after initial definition*
+*Last updated: 2026-02-09 after roadmap creation*
