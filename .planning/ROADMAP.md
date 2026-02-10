@@ -12,7 +12,7 @@ AgentCom v2 transforms a message-passing system into a GPU scheduler-style archi
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Sidecar** - Always-on WebSocket relay with OpenClaw wake and crash recovery
+- [x] **Phase 1: Sidecar** - Always-on WebSocket relay with OpenClaw wake and crash recovery
 - [ ] **Phase 2: Task Queue** - DETS-backed persistent work storage with priority lanes and retry
 - [ ] **Phase 3: Agent State** - Per-agent finite state machine tracking work lifecycle
 - [ ] **Phase 4: Scheduler** - Event-driven task-to-agent matching with capability routing
@@ -36,10 +36,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 4 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Sidecar scaffolding + core WebSocket connection with reconnect, heartbeat, logging
-- [ ] 01-02-PLAN.md — Hub protocol extensions for sidecar message types + admin push-task endpoint
-- [ ] 01-03-PLAN.md — Task lifecycle: queue persistence, wake command with retry, result file watching
-- [ ] 01-04-PLAN.md — Startup recovery for incomplete tasks + pm2 deployment artifacts
+- [x] 01-01-PLAN.md — Sidecar scaffolding + core WebSocket connection with reconnect, heartbeat, logging
+- [x] 01-02-PLAN.md — Hub protocol extensions for sidecar message types + admin push-task endpoint
+- [x] 01-03-PLAN.md — Task lifecycle: queue persistence, wake command with retry, result file watching
+- [x] 01-04-PLAN.md — Startup recovery for incomplete tasks + pm2 deployment artifacts
 
 ### Phase 2: Task Queue
 **Goal**: The hub has durable, prioritized work storage that survives crashes and handles failures gracefully
@@ -152,7 +152,7 @@ Phases 1 and 2 are parallel. Phase 3 follows Phase 2. Phase 4 requires Phases 1+
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Sidecar | 0/4 | Planned | - |
+| 1. Sidecar | 4/4 | ✓ Complete | 2026-02-09 |
 | 2. Task Queue | 0/TBD | Not started | - |
 | 3. Agent State | 0/TBD | Not started | - |
 | 4. Scheduler | 0/TBD | Not started | - |
@@ -163,4 +163,4 @@ Phases 1 and 2 are parallel. Phase 3 follows Phase 2. Phase 4 requires Phases 1+
 
 ---
 *Roadmap created: 2026-02-09*
-*Last updated: 2026-02-09*
+*Last updated: 2026-02-09 — Phase 1 complete*

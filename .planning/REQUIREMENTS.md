@@ -105,11 +105,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SIDE-01 | Phase 1: Sidecar | Pending |
-| SIDE-02 | Phase 1: Sidecar | Pending |
-| SIDE-03 | Phase 1: Sidecar | Pending |
-| SIDE-04 | Phase 1: Sidecar | Pending |
-| SIDE-05 | Phase 1: Sidecar | Pending |
+| SIDE-01 | Phase 1: Sidecar | ✓ Complete |
+| SIDE-02 | Phase 1: Sidecar | ✓ Complete |
+| SIDE-03 | Phase 1: Sidecar | ✓ Complete |
+| SIDE-04 | Phase 1: Sidecar | ✓ Complete |
+| SIDE-05 | Phase 1: Sidecar | ✓ Complete |
 | TASK-01 | Phase 2: Task Queue | Pending |
 | TASK-02 | Phase 2: Task Queue | Pending |
 | TASK-03 | Phase 2: Task Queue | Pending |
@@ -134,7 +134,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-01 | Phase 5: Smoke Test | Pending |
 | TEST-02 | Phase 5: Smoke Test | Pending |
 | TEST-03 | Phase 5: Smoke Test | Pending |
-| API-01 | Phase 1: Sidecar | Pending |
+| API-01 | Phase 1: Sidecar | ✓ Complete |
 | API-02 | Phase 2: Task Queue | Pending |
 | API-03 | Phase 3: Agent State | Pending |
 
@@ -145,4 +145,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-02-09*
-*Last updated: 2026-02-09 after roadmap creation*
+*Last updated: 2026-02-09 — Phase 1 requirements verified*
