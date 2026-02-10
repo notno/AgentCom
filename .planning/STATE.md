@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Phase 3 (Agent State) in progress. Plan 01 (FSM infrastructure) complete.
+**Current focus:** Phase 3 (Agent State) complete. Ready for Phase 4 (Scheduler).
 
 ## Current Position
 
-Phase: 3 of 8 (Agent State)
-Plan: 1 of 2 in current phase
-Status: Plan 01 complete. AgentFSM and AgentSupervisor infrastructure built. Ready for Plan 02 (wiring).
-Last activity: 2026-02-10 -- Completed 03-01-PLAN.md (Agent FSM infrastructure)
+Phase: 3 of 8 (Agent State) -- COMPLETE
+Plan: 2 of 2 in current phase (all plans complete)
+Status: Phase 3 complete. AgentFSM fully wired into Socket, Endpoint, TaskQueue, and Presence. Ready for Phase 4 (Scheduler).
+Last activity: 2026-02-10 -- Completed 03-02-PLAN.md (AgentFSM integration wiring)
 
-Progress: [██████░░░░] 54%
+Progress: [██████░░░░] 62%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
+- Total plans completed: 8
 - Average duration: 4 min
-- Total execution time: 0.53 hours
+- Total execution time: 0.58 hours
 
 **By Phase:**
 
@@ -29,10 +29,10 @@ Progress: [██████░░░░] 54%
 |-------|-------|-------|----------|
 | 01-sidecar | 4/4 | 21 min | 5 min |
 | 02-task-queue | 2/2 | 8 min | 4 min |
-| 03-agent-state | 1/2 | 3 min | 3 min |
+| 03-agent-state | 2/2 | 6 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-04 (2 min), 02-01 (3 min), 02-02 (5 min), 03-01 (3 min)
+- Last 5 plans: 02-01 (3 min), 02-02 (5 min), 03-01 (3 min), 03-02 (3 min)
 - Trend: Stabilizing around 3-5 min for focused plans
 
 *Updated after each plan completion*
@@ -75,6 +75,9 @@ Recent decisions affecting current work:
 - [03-01]: restart: :temporary for agent FSM processes -- agents must reconnect, not auto-restart on crash
 - [03-01]: Defensive reclaim stub in AgentFSM -- logs intent, actual TaskQueue.reclaim_task/1 deferred to Plan 02
 - [03-01]: Synchronous init (no handle_continue) -- avoids race conditions where messages arrive before state is ready
+- [03-02]: Socket.terminate does NOT clean up FSM -- AgentFSM's :DOWN handler owns task reclamation (Pitfall 3: clear ownership)
+- [03-02]: Presence.update_fsm_state does NOT broadcast to PubSub -- FSM state changes are frequent and internal
+- [03-02]: Route ordering: /api/agents/states before /:agent_id/state before /:agent_id/subscriptions
 
 ### Pending Todos
 
@@ -88,5 +91,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 03-01-PLAN.md (Agent FSM infrastructure)
+Stopped at: Completed 03-02-PLAN.md (AgentFSM integration wiring) -- Phase 3 complete
 Resume file: None
