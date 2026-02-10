@@ -10,27 +10,27 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 ## Current Position
 
 Phase: 1 of 8 (Sidecar + Task Queue parallel start)
-Plan: 1 of 4 in current phase
+Plan: 2 of 4 in current phase
 Status: Executing
-Last activity: 2026-02-10 -- Completed 01-01-PLAN.md (Sidecar Core Connection)
+Last activity: 2026-02-10 -- Completed 01-02-PLAN.md (Hub Task Protocol)
 
-Progress: [█░░░░░░░░░] 10%
+Progress: [██░░░░░░░░] 15%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 3 min
-- Total execution time: 0.05 hours
+- Total plans completed: 2
+- Average duration: 4 min
+- Total execution time: 0.13 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-sidecar | 1/4 | 3 min | 3 min |
+| 01-sidecar | 2/4 | 8 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (3 min)
+- Last 5 plans: 01-01 (3 min), 01-02 (5 min)
 - Trend: Starting
 
 *Updated after each plan completion*
@@ -50,6 +50,10 @@ Recent decisions affecting current work:
 - [01-01]: Add protocol_version: 1 to all outgoing messages for forward-compatibility
 - [01-01]: Use chokidar v3 (CJS-compatible) not v4 (ESM-only) matching codebase conventions
 - [01-01]: Use write-file-atomic v5 (latest CJS-compatible version)
+- [01-02]: Task IDs auto-generated using crypto.strong_rand_bytes (consistent with auth token pattern)
+- [01-02]: task_progress is fire-and-forget (no ack) to reduce chattiness
+- [01-02]: task_recovering triggers task_reassign -- Phase 2 adds intelligence
+- [01-02]: Push-task endpoint uses existing RequireAuth (any authed agent can push, scheduler replaces in Phase 2)
 
 ### Pending Todos
 
@@ -63,5 +67,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 01-01-PLAN.md (Sidecar Core Connection)
+Stopped at: Completed 01-02-PLAN.md (Hub Task Protocol)
 Resume file: None
