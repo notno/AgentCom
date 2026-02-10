@@ -1,0 +1,12 @@
+{
+  "agent_id": "my-agent",
+  "token": "your-auth-token-here",
+  "hub_url": "ws://localhost:4000/ws",
+  "name": "My Agent",
+  "capabilities": [],
+  "openclaw_wake_command": null,
+  "reconnect_base_ms": 1000,
+  "reconnect_max_ms": 60000,
+  "heartbeat_interval_ms": 30000,
+  "queue_path": "./queue.json"
+}

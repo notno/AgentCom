@@ -1,0 +1,12 @@
+{
+  "name": "agentcom-sidecar",
+  "version": "0.1.0",
+  "description": "Always-on WebSocket relay between AgentCom hub and OpenClaw agents",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}
