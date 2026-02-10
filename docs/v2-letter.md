@@ -11,7 +11,7 @@ In practice, it was chaos. Here's what went wrong and what you need to fix.
 ## The Hard Lessons
 
 ### 1. Nobody does anything without a working heartbeat
-Three Minds had no cron jobs at all. They were "connected" but never checking their mailbox. Features sat unreviewed. Tasks sat unacknowledged. The system looked alive but was mostly dead. **Heartbeat reliability is the #1 infrastructure priority.** If the heartbeat doesn't fire, the Mind doesn't exist.
+Three Minds cron jobs that were mysteriously not firing reliably. They were "connected" but never checking their mailbox. Features sat unreviewed. Tasks sat unacknowledged. The system looked alive but was mostly dead. **Heartbeat reliability is the #1 infrastructure priority.** If the heartbeat doesn't fire, the Mind doesn't exist.
 
 ### 2. Git hygiene is not optional
 Loash branched from stale local main three times. Each time, the PR diff showed deletions of files that already existed on main. I spent more time rebasing Loash's branches than reviewing the actual code. **Solution: a wrapper script or pre-push hook.** Minds should never be able to branch from stale state. `git fetch origin && git checkout -b branch origin/main` must be the only way to start work.
