@@ -148,31 +148,37 @@ defmodule Smoke.AgentSim do
   def handle_info(:connect, state) do
     case do_connect(state) do
       {:ok, new_state} ->
-        # Send identify message
-        identify_msg = Jason.encode!(%{
-          "type" => "identify",
-          "agent_id" => state.agent_id,
-          "token" => state.token,
-          "name" => "smoke-#{state.agent_id}",
-          "status" => "idle",
-          "capabilities" => state.capabilities,
-          "client_type" => "smoke_test",
-          "protocol_version" => 1
-        })
-
-        case send_frame(new_state, {:text, identify_msg}) do
-          {:ok, new_state2} ->
-            {:noreply, new_state2}
-
-          {:error, _reason} ->
-            Logger.warning("AgentSim #{state.agent_id}: failed to send identify")
-            {:noreply, new_state}
-        end
+        # Don't send identify yet -- WebSocket upgrade hasn't completed.
+        # The identify message will be sent after :done is processed
+        # (triggered by :send_identify message).
+        {:noreply, new_state}
 
       {:error, reason} ->
         Logger.warning("AgentSim #{state.agent_id}: connect failed: #{inspect(reason)}")
         # Retry after a short delay
         Process.send_after(self(), :connect, 1_000)
+        {:noreply, state}
+    end
+  end
+
+  def handle_info(:send_identify, state) do
+    identify_msg = Jason.encode!(%{
+      "type" => "identify",
+      "agent_id" => state.agent_id,
+      "token" => state.token,
+      "name" => "smoke-#{state.agent_id}",
+      "status" => "idle",
+      "capabilities" => state.capabilities,
+      "client_type" => "smoke_test",
+      "protocol_version" => 1
+    })
+
+    case send_frame(state, {:text, identify_msg}) do
+      {:ok, new_state} ->
+        {:noreply, new_state}
+
+      {:error, _reason} ->
+        Logger.warning("AgentSim #{state.agent_id}: failed to send identify")
         {:noreply, state}
     end
   end
@@ -279,6 +285,8 @@ defmodule Smoke.AgentSim do
   defp process_response({:done, ref}, state) do
     case Mint.WebSocket.new(state.conn, ref, state.response_status, state.response_headers) do
       {:ok, conn, websocket} ->
+        # WebSocket upgrade complete -- now safe to send identify
+        send(self(), :send_identify)
         %{state | conn: conn, websocket: websocket}
 
       {:error, conn, _reason} ->

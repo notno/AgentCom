@@ -102,6 +102,11 @@ defmodule AgentCom.Scheduler do
     {:noreply, state}
   end
 
+  def handle_info({:agent_idle, _info}, state) do
+    try_schedule_all()
+    {:noreply, state}
+  end
+
   # -- Non-scheduling events: explicitly ignored --
 
   def handle_info({:task_event, %{event: _other}}, state) do

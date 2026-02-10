@@ -109,9 +109,13 @@ defmodule AgentCom.AgentFSM do
     AgentCom.AgentFSMRegistry
     |> Registry.select([{{:"$1", :_, :_}, [], [:"$1"]}])
     |> Enum.map(fn agent_id ->
-      case get_state(agent_id) do
-        {:ok, state_map} -> state_map
-        {:error, :not_found} -> nil
+      try do
+        case get_state(agent_id) do
+          {:ok, state_map} -> state_map
+          {:error, :not_found} -> nil
+        end
+      catch
+        :exit, _ -> nil
       end
     end)
     |> Enum.reject(&is_nil/1)
@@ -310,6 +314,7 @@ defmodule AgentCom.AgentFSM do
           }
 
           Logger.info("AgentFSM: agent #{state.agent_id} completed task #{state.current_task_id}")
+          broadcast_agent_idle(state.agent_id)
           {:noreply, updated}
 
         {:error, {:invalid_transition, from, to}} ->
@@ -342,6 +347,7 @@ defmodule AgentCom.AgentFSM do
           }
 
           Logger.info("AgentFSM: agent #{state.agent_id} failed task #{state.current_task_id}")
+          broadcast_agent_idle(state.agent_id)
           {:noreply, updated}
 
         {:error, {:invalid_transition, from, to}} ->
@@ -500,6 +506,10 @@ defmodule AgentCom.AgentFSM do
   defp cancel_timer(ref) do
     Process.cancel_timer(ref)
     :ok
+  end
+
+  defp broadcast_agent_idle(agent_id) do
+    Phoenix.PubSub.broadcast(AgentCom.PubSub, "presence", {:agent_idle, %{agent_id: agent_id}})
   end
 
   defp reclaim_task_from_agent(_agent_id, nil), do: :ok

@@ -15,29 +15,26 @@ defmodule Smoke.Setup do
   Also restarts the Scheduler since it depends on TaskQueue.
   """
   def reset_task_queue do
-    # Stop the Scheduler first (depends on TaskQueue)
-    case GenServer.whereis(AgentCom.Scheduler) do
-      nil -> :ok
-      pid ->
-        GenServer.stop(pid, :normal, 5_000)
-    end
+    # Use Supervisor to terminate and restart children properly.
+    # GenServer.stop causes the Supervisor to auto-restart (restart: :permanent),
+    # creating a race with manual start_link calls. Supervisor.terminate_child +
+    # restart_child avoids this.
 
-    # Stop the existing TaskQueue
-    case GenServer.whereis(AgentCom.TaskQueue) do
-      nil -> :ok
-      pid ->
-        GenServer.stop(pid, :normal, 5_000)
-    end
+    # Stop Scheduler first (depends on TaskQueue)
+    Supervisor.terminate_child(AgentCom.Supervisor, AgentCom.Scheduler)
 
-    # Delete DETS files
+    # Stop TaskQueue
+    Supervisor.terminate_child(AgentCom.Supervisor, AgentCom.TaskQueue)
+
+    # Delete DETS files while processes are stopped
     File.rm("priv/task_queue.dets")
     File.rm("priv/task_dead_letter.dets")
 
-    # Restart TaskQueue (it will create fresh DETS)
-    {:ok, _pid} = AgentCom.TaskQueue.start_link([])
+    # Restart TaskQueue (will create fresh DETS)
+    Supervisor.restart_child(AgentCom.Supervisor, AgentCom.TaskQueue)
 
     # Restart Scheduler
-    {:ok, _pid} = AgentCom.Scheduler.start_link([])
+    Supervisor.restart_child(AgentCom.Supervisor, AgentCom.Scheduler)
 
     :ok
   end
