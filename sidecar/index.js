@@ -4,6 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
 const writeFileAtomic = require('write-file-atomic');
+const { exec } = require('child_process');
+const chokidar = require('chokidar');
 
 // =============================================================================
 // 1. Config Loader
@@ -107,16 +109,291 @@ function saveQueue(queue) {
 }
 
 // =============================================================================
-// 4. Wake Agent (stub -- implemented in Task 2)
+// 4. Wake Command Execution
 // =============================================================================
 
+const RETRY_DELAYS = [5000, 15000, 30000]; // 5s, 15s, 30s per CONTEXT.md
+
+/**
+ * Interpolate template variables in wake command string.
+ * Supported: ${TASK_ID}, ${TASK_JSON}, ${TASK_DESCRIPTION}
+ */
+function interpolateWakeCommand(command, task) {
+  return command
+    .replace(/\$\{TASK_ID\}/g, task.task_id)
+    .replace(/\$\{TASK_JSON\}/g, JSON.stringify(task).replace(/"/g, '\\"'))
+    .replace(/\$\{TASK_DESCRIPTION\}/g, (task.description || '').replace(/"/g, '\\"'));
+}
+
+/**
+ * Execute a shell command and return a promise.
+ */
+function execCommand(command) {
+  return new Promise((resolve, reject) => {
+    exec(command, {
+      timeout: 60000,      // Kill if wake command itself hangs
+      shell: true,         // Required for Windows .bat/.cmd files (per research pitfall #2)
+      windowsHide: true    // Prevent cmd window popup on Windows
+    }, (error, stdout, stderr) => {
+      if (error) {
+        reject({ code: error.code, signal: error.signal, stderr, message: error.message });
+      } else {
+        resolve({ code: 0, stdout, stderr });
+      }
+    });
+  });
+}
+
+/**
+ * Wake the agent with configurable command, retry logic, and confirmation timeout.
+ * Status flow: accepted -> waking -> waking_confirmation -> working -> (removed)
+ */
 async function wakeAgent(task, hub) {
-  // Full implementation in Task 2: wake command execution with retry + result watching
-  log('wake_stub', { task_id: task.task_id, message: 'wake command not yet implemented' });
+  const wakeCommand = _config.wake_command;
+
+  if (!wakeCommand) {
+    log('wake_skipped', { task_id: task.task_id, reason: 'no wake_command configured' });
+    // Update status to working directly (agent expected to self-start)
+    task.status = 'working';
+    saveQueue(_queue);
+    return;
+  }
+
+  // Update status to waking
+  task.status = 'waking';
+  saveQueue(_queue);
+
+  const interpolatedCommand = interpolateWakeCommand(wakeCommand, task);
+
+  for (let attempt = 1; attempt <= RETRY_DELAYS.length + 1; attempt++) {
+    task.wake_attempts = attempt;
+    saveQueue(_queue);
+
+    log('wake_attempt', { task_id: task.task_id, attempt, command: interpolatedCommand });
+
+    try {
+      const result = await execCommand(interpolatedCommand);
+      log('wake_success', { task_id: task.task_id, attempt, exit_code: 0, stdout: result.stdout.trim() });
+
+      // Successful wake -- start confirmation timeout
+      task.status = 'waking_confirmation';
+      saveQueue(_queue);
+
+      startConfirmationTimeout(task, hub);
+      return; // Exit retry loop on success
+
+    } catch (err) {
+      log('wake_error', { task_id: task.task_id, attempt, error: err.message, stderr: err.stderr });
+
+      if (attempt <= RETRY_DELAYS.length) {
+        const delay = RETRY_DELAYS[attempt - 1];
+        log('wake_retry', { task_id: task.task_id, attempt, next_attempt: attempt + 1, delay_ms: delay });
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        // All retries exhausted
+        log('wake_failed', { task_id: task.task_id, attempts: attempt, error: err.message });
+        task.status = 'failed';
+        saveQueue(_queue);
+
+        hub.sendTaskFailed(task.task_id, 'wake_failed_after_3_attempts');
+
+        // Clear active task
+        _queue.active = null;
+        saveQueue(_queue);
+        return;
+      }
+    }
+  }
+}
+
+/**
+ * Start confirmation timeout -- wait for .started file within timeout period.
+ * If timeout expires, treat as failure and go through retry logic.
+ */
+function startConfirmationTimeout(task, hub) {
+  const timeout = _config.confirmation_timeout_ms || 30000;
+
+  log('confirmation_wait', { task_id: task.task_id, timeout_ms: timeout });
+
+  const timer = setTimeout(() => {
+    // Check if task is still in waking_confirmation (might have been confirmed already)
+    if (!_queue.active || _queue.active.task_id !== task.task_id || _queue.active.status !== 'waking_confirmation') {
+      return; // Already handled
+    }
+
+    log('confirmation_timeout', { task_id: task.task_id, timeout_ms: timeout });
+
+    // Treat as wake failure -- report to hub
+    task.status = 'failed';
+    saveQueue(_queue);
+
+    hub.sendTaskFailed(task.task_id, 'confirmation_timeout');
+
+    _queue.active = null;
+    saveQueue(_queue);
+  }, timeout);
+
+  // Store timer reference on task for cleanup
+  task._confirmationTimer = timer;
+}
+
+/**
+ * Handle confirmation: .started file detected.
+ */
+function handleConfirmation(taskId) {
+  if (!_queue.active || _queue.active.task_id !== taskId) {
+    log('confirmation_ignored', { task_id: taskId, reason: 'not_active_task' });
+    return;
+  }
+
+  if (_queue.active.status !== 'waking_confirmation') {
+    log('confirmation_ignored', { task_id: taskId, reason: 'unexpected_status', status: _queue.active.status });
+    return;
+  }
+
+  // Clear confirmation timer
+  if (_queue.active._confirmationTimer) {
+    clearTimeout(_queue.active._confirmationTimer);
+    delete _queue.active._confirmationTimer;
+  }
+
+  log('confirmation_received', { task_id: taskId });
+  _queue.active.status = 'working';
+  saveQueue(_queue);
+}
+
+/**
+ * Handle task result: .json file detected in results directory.
+ */
+function handleResult(taskId, filePath, hub) {
+  if (!_queue.active || _queue.active.task_id !== taskId) {
+    log('result_ignored', { task_id: taskId, reason: 'not_active_task' });
+    return;
+  }
+
+  let result;
+  try {
+    const data = fs.readFileSync(filePath, 'utf8');
+    result = JSON.parse(data);
+  } catch (err) {
+    log('result_parse_error', { task_id: taskId, error: err.message, file: filePath });
+    // Treat unparseable result as failure
+    hub.sendTaskFailed(taskId, 'result_parse_error: ' + err.message);
+    _queue.active = null;
+    saveQueue(_queue);
+    cleanupResultFiles(taskId);
+    return;
+  }
+
+  // Determine success/failure from result content
+  if (result.status === 'success') {
+    log('task_complete', { task_id: taskId, output: result.output });
+    hub.sendTaskComplete(taskId, result);
+  } else {
+    const reason = result.reason || result.error || 'unknown';
+    log('task_failed', { task_id: taskId, reason });
+    hub.sendTaskFailed(taskId, reason);
+  }
+
+  // Clear confirmation timer if still running
+  if (_queue.active._confirmationTimer) {
+    clearTimeout(_queue.active._confirmationTimer);
+  }
+
+  // Clear active task
+  _queue.active = null;
+  saveQueue(_queue);
+
+  // Clean up result files
+  cleanupResultFiles(taskId);
+}
+
+/**
+ * Delete result and started files for a completed/failed task.
+ */
+function cleanupResultFiles(taskId) {
+  const resultsDir = _config.results_dir;
+  const resultFile = path.join(resultsDir, `${taskId}.json`);
+  const startedFile = path.join(resultsDir, `${taskId}.started`);
+
+  try {
+    if (fs.existsSync(resultFile)) fs.unlinkSync(resultFile);
+  } catch (err) {
+    log('cleanup_error', { file: resultFile, error: err.message });
+  }
+  try {
+    if (fs.existsSync(startedFile)) fs.unlinkSync(startedFile);
+  } catch (err) {
+    log('cleanup_error', { file: startedFile, error: err.message });
+  }
 }
 
 // =============================================================================
-// 5. HubConnection Class
+// 5. Result File Watcher
+// =============================================================================
+
+let _resultWatcher = null;
+
+/**
+ * Start watching the results directory for task completion files.
+ * Expects files named: {task_id}.started (confirmation) and {task_id}.json (result)
+ */
+function startResultWatcher(hub) {
+  const resultsDir = _config.results_dir;
+
+  // Create results directory if it doesn't exist
+  fs.mkdirSync(resultsDir, { recursive: true });
+
+  _resultWatcher = chokidar.watch(resultsDir, {
+    ignoreInitial: true,
+    awaitWriteFinish: {
+      stabilityThreshold: 500,  // Wait 500ms for file to finish writing
+      pollInterval: 100
+    }
+  });
+
+  _resultWatcher.on('add', (filePath) => {
+    const filename = path.basename(filePath);
+
+    // Handle .started files (confirmation)
+    if (filename.endsWith('.started')) {
+      const taskId = filename.replace('.started', '');
+      log('result_watcher_started_file', { task_id: taskId, file: filePath });
+      handleConfirmation(taskId);
+      return;
+    }
+
+    // Handle .json files (result)
+    if (filename.endsWith('.json')) {
+      const taskId = filename.replace('.json', '');
+      log('result_watcher_result_file', { task_id: taskId, file: filePath });
+      handleResult(taskId, filePath, hub);
+      return;
+    }
+
+    // Ignore other files
+    log('result_watcher_unknown_file', { file: filePath });
+  });
+
+  _resultWatcher.on('error', (err) => {
+    log('result_watcher_error', { error: err.message });
+  });
+
+  log('result_watcher_started', { results_dir: resultsDir });
+}
+
+/**
+ * Stop the result file watcher.
+ */
+function stopResultWatcher() {
+  if (_resultWatcher) {
+    _resultWatcher.close();
+    _resultWatcher = null;
+  }
+}
+
+// =============================================================================
+// 6. HubConnection Class
 // =============================================================================
 
 class HubConnection {
@@ -377,12 +654,14 @@ class HubConnection {
 }
 
 // =============================================================================
-// 6. Graceful Shutdown
+// 7. Graceful Shutdown
 // =============================================================================
 
 function setupGracefulShutdown(hub) {
   const shutdown = (signal) => {
     log('shutdown', { signal });
+    // Stop result watcher
+    stopResultWatcher();
     // Save current queue state before closing
     saveQueue(_queue);
     hub.shutdown();
@@ -402,7 +681,7 @@ function setupGracefulShutdown(hub) {
 }
 
 // =============================================================================
-// 7. Main Entry Point
+// 8. Main Entry Point
 // =============================================================================
 
 function main() {
@@ -426,6 +705,9 @@ function main() {
   // Create connection and connect
   const hub = new HubConnection(config);
   hub.connect();
+
+  // Start watching results directory for task completion files
+  startResultWatcher(hub);
 
   // Set up graceful shutdown
   setupGracefulShutdown(hub);
