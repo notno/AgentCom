@@ -8,11 +8,23 @@ A distributed agent coordination system where AI "Minds" (LLM sessions) receive 
 
 Reliable autonomous work execution: ideas enter a queue and emerge as reviewed, merged PRs — without human hand-holding for safe changes.
 
+## Current Milestone: v1.1 Hardening
+
+**Goal:** Shore up the v1.0 foundation with comprehensive tests, data resilience, security hardening, and operational visibility.
+
+**Target features:**
+- Comprehensive test coverage (GenServers, pipelines, sidecar, edge cases)
+- DETS backup, compaction, and corruption recovery
+- Input validation at WebSocket and HTTP boundaries
+- Structured logging, metrics endpoint, and alerting
+- Rate limiting for flood protection
+- Operations documentation
+
 ## Requirements
 
 ### Validated
 
-<!-- Shipped and confirmed valuable. Inferred from existing codebase. -->
+<!-- Shipped and confirmed valuable. -->
 
 - ✓ Token-based agent authentication (generation, verification, per-agent) — existing
 - ✓ WebSocket real-time messaging (direct agent-to-agent, broadcast) — existing
@@ -24,25 +36,34 @@ Reliable autonomous work execution: ideas enter a queue and emerge as reviewed, 
 - ✓ Per-agent analytics and activity metrics — existing
 - ✓ Basic HTML dashboard — existing
 - ✓ PubSub-based real-time event distribution — existing
+- ✓ Always-on sidecar process per Mind (WebSocket relay, OpenClaw wake trigger) — v1.0
+- ✓ DETS-backed global task queue with priority lanes and retry semantics — v1.0
+- ✓ Per-agent state machine (idle → assigned → working → done/failed/blocked) — v1.0
+- ✓ Central scheduler that matches queued tasks to idle agents by capability — v1.0
+- ✓ Real-time dashboard showing queue depth, agent states, task flow, system health — v1.0
+- ✓ Git wrapper enforcing branch-from-current-main and PR conventions — v1.0
+- ✓ One-command onboarding automation (token + sidecar + config + verify) — v1.0
+- ✓ Smoke test harness (2 agents, fake low-token tasks, validates full pipeline) — v1.0
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Always-on sidecar process per Mind (WebSocket relay, OpenClaw wake trigger)
-- [ ] DETS-backed global task queue with priority lanes and retry semantics
-- [ ] Per-agent state machine (idle → assigned → working → done/failed/blocked)
-- [ ] Central scheduler that matches queued tasks to idle agents by capability
-- [ ] Real-time dashboard showing queue depth, agent states, task flow, system health
-- [ ] Git wrapper enforcing branch-from-current-main and PR conventions
-- [ ] One-command onboarding automation (token + sidecar + config + verify)
-- [ ] PR review gatekeeper role (auto-merge safe changes, escalate risky ones to Nathan)
-- [ ] Smoke test harness (2 agents, fake low-token tasks, validates full pipeline)
+- [ ] Comprehensive test coverage for all GenServers and core pipelines
+- [ ] Sidecar test suite (WebSocket relay, queue management, wake trigger, git workflow)
+- [ ] DETS backup, compaction, and corruption recovery mechanisms
+- [ ] Input validation and sanitization at WebSocket and HTTP boundaries
+- [ ] Structured logging with consistent format (task_id, agent_id, phase) across all modules
+- [ ] Metrics endpoint exposing queue depth, task latency, agent utilization, error rates
+- [ ] Configurable alerting (webhook/push) for system anomalies
+- [ ] Rate limiting to prevent message/request flooding from misbehaving agents
+- [ ] Operations documentation (setup, monitoring, troubleshooting)
 
 ### Out of Scope
 
 <!-- Explicit boundaries. Includes reasoning to prevent re-adding. -->
 
+- PR review gatekeeper role — deferred, needs 50+ tasks of production data to calibrate heuristics
 - Claude Code CLI agent runtime — deferred to v2+, research feasibility first
 - Cross-hub federation — one hub is sufficient for current scale
 - Multi-Mind task decomposition — breaking big tasks into parallel subtasks, future optimization
@@ -86,4 +107,4 @@ Flere-Imsaho's role evolves from coordinator to **gatekeeper with merge authorit
 | FIFO + priority lanes scheduling | Good enough for 4-5 agents, optimize later | — Pending |
 
 ---
-*Last updated: 2026-02-09 after initialization*
+*Last updated: 2026-02-11 after milestone v1.1 start*
