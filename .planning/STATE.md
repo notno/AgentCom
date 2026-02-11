@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Phase 6 (Dashboard) in progress. Backend data layer complete (Plan 01). Frontend and notifications remaining.
+**Current focus:** Phase 6 (Dashboard) in progress. Backend (Plan 01) and frontend (Plan 02) complete. Notifications remaining (Plan 03).
 
 ## Current Position
 
 Phase: 6 of 8 (Dashboard)
-Plan: 1 of 3 in current phase (plan 01 complete)
-Status: Dashboard backend complete -- DashboardState GenServer + DashboardSocket WebSocket + JSON API endpoint. Plans 02-03 remaining.
-Last activity: 2026-02-10 -- Completed 06-01-PLAN.md (Dashboard Backend Data Layer)
+Plan: 2 of 3 in current phase (plans 01-02 complete)
+Status: Dashboard backend + frontend complete. Command center HTML with real-time WebSocket. Plan 03 (notifications) remaining.
+Last activity: 2026-02-10 -- Completed 06-02-PLAN.md (Dashboard Command Center Frontend)
 
-Progress: [████████░░] 85%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12
+- Total plans completed: 13
 - Average duration: 4 min
-- Total execution time: 0.85 hours
+- Total execution time: 0.90 hours
 
 **By Phase:**
 
@@ -32,11 +32,11 @@ Progress: [████████░░] 85%
 | 03-agent-state | 2/2 | 6 min | 3 min |
 | 04-scheduler | 1/1 | 2 min | 2 min |
 | 05-smoke-test | 2/2 | 10 min | 5 min |
-| 06-dashboard | 1/3 | 5 min | 5 min |
+| 06-dashboard | 2/3 | 8 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 04-01 (2 min), 05-01 (5 min), 05-02 (5 min), 06-01 (5 min)
-- Trend: Consistent 5 min for feature plans
+- Last 5 plans: 05-01 (5 min), 05-02 (5 min), 06-01 (5 min), 06-02 (3 min)
+- Trend: Consistent 3-5 min for feature plans
 
 *Updated after each plan completion*
 
@@ -96,6 +96,9 @@ Recent decisions affecting current work:
 - [06-01]: Event batching via 100ms flush timer in DashboardSocket to prevent PubSub flood to browser
 - [06-01]: DashboardState tracks hourly stats in-memory (resets on restart) -- same ephemeral pattern as Analytics
 - [06-01]: Health heuristics: agent offline (WARNING), queue growing 3x (WARNING), >50% failure (CRITICAL), stuck >5min (WARNING)
+- [06-02]: Incremental events trigger snapshot re-request rather than client-side state merge -- simpler, avoids stale data drift
+- [06-02]: Relative times re-rendered every 30s via setInterval to keep timestamps current without server push
+- [06-02]: Queue expand button collapsed by default to keep command center dense
 
 ### Pending Todos
 
@@ -109,5 +112,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 06-01-PLAN.md (Dashboard Backend Data Layer)
+Stopped at: Completed 06-02-PLAN.md (Dashboard Command Center Frontend)
 Resume file: None
