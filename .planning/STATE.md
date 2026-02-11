@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Phase 6 (Dashboard) in progress. Backend (Plan 01) and frontend (Plan 02) complete. Notifications remaining (Plan 03).
+**Current focus:** Phase 6 (Dashboard) complete. All 3 plans done: backend data layer, command center frontend, push notifications. Human-verified. Ready for Phase 7 or 8.
 
 ## Current Position
 
-Phase: 6 of 8 (Dashboard)
-Plan: 2 of 3 in current phase (plans 01-02 complete)
-Status: Dashboard backend + frontend complete. Command center HTML with real-time WebSocket. Plan 03 (notifications) remaining.
-Last activity: 2026-02-10 -- Completed 06-02-PLAN.md (Dashboard Command Center Frontend)
+Phase: 6 of 8 (Dashboard) -- COMPLETE
+Plan: 3 of 3 in current phase (all plans complete)
+Status: Phase 6 complete. Dashboard backend, frontend, and push notifications all done and human-verified.
+Last activity: 2026-02-10 -- Completed 06-03-PLAN.md (Dashboard Notifications + Human Verification)
 
-Progress: [█████████░] 88%
+Progress: [██████████] 93%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
+- Total plans completed: 14
 - Average duration: 4 min
-- Total execution time: 0.90 hours
+- Total execution time: 0.95 hours
 
 **By Phase:**
 
@@ -32,10 +32,10 @@ Progress: [█████████░] 88%
 | 03-agent-state | 2/2 | 6 min | 3 min |
 | 04-scheduler | 1/1 | 2 min | 2 min |
 | 05-smoke-test | 2/2 | 10 min | 5 min |
-| 06-dashboard | 2/3 | 8 min | 4 min |
+| 06-dashboard | 3/3 | 11 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 05-01 (5 min), 05-02 (5 min), 06-01 (5 min), 06-02 (3 min)
+- Last 5 plans: 05-02 (5 min), 06-01 (5 min), 06-02 (3 min), 06-03 (3 min)
 - Trend: Consistent 3-5 min for feature plans
 
 *Updated after each plan completion*
@@ -99,6 +99,9 @@ Recent decisions affecting current work:
 - [06-02]: Incremental events trigger snapshot re-request rather than client-side state merge -- simpler, avoids stale data drift
 - [06-02]: Relative times re-rendered every 30s via setInterval to keep timestamps current without server push
 - [06-02]: Queue expand button collapsed by default to keep command center dense
+- [06-03]: VAPID keys generated ephemerally on startup if env vars not set -- notifications reset on restart, acceptable for v1
+- [06-03]: Push notification delivery errors caught silently, failed subscriptions removed (progressive enhancement)
+- [06-03]: Health check polling at 60s interval piggybacks on DashboardState.snapshot() rather than separate tracking
 
 ### Pending Todos
 
@@ -112,5 +115,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 06-02-PLAN.md (Dashboard Command Center Frontend)
+Stopped at: Completed 06-03-PLAN.md (Dashboard Notifications + Human Verification). Phase 6 complete.
 Resume file: None
