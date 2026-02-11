@@ -134,12 +134,14 @@ Plans:
 **Depends on**: Phase 1, Phase 4 (needs Auth, Sidecar, Scheduler all working; built after smoke test passes)
 **Requirements**: ONBD-01
 **Success Criteria** (what must be TRUE):
-  1. Running add-agent.sh with agent name generates auth token, creates sidecar config, installs as pm2 process, and verifies hub connection (verifiable by running script on a new machine and seeing agent appear in hub)
+  1. Running add-agent with agent name generates auth token, creates sidecar config, installs as pm2 process, and verifies hub connection (verifiable by running script on a new machine and seeing agent appear in hub)
   2. Newly onboarded agent receives and completes a test task without manual intervention (verifiable by queuing a task after onboarding and observing completion)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 08-01: TBD
+- [ ] 08-01-PLAN.md -- Hub registration and config API endpoints (unauthenticated onboard + default-repo)
+- [ ] 08-02-PLAN.md -- add-agent.js onboarding script with Culture ship names and test task verification
+- [ ] 08-03-PLAN.md -- remove-agent.js teardown + agentcom-submit.js task submission CLI
 
 ## Progress
 
@@ -160,8 +162,8 @@ Phases 1 and 2 are parallel. Phase 3 follows Phase 2. Phase 4 requires Phases 1+
 | 5. Smoke Test | 2/2 | ✓ Complete | 2026-02-10 |
 | 6. Dashboard | 3/3 | ✓ Complete | 2026-02-10 |
 | 7. Git Workflow | 2/2 | ✓ Complete | 2026-02-11 |
-| 8. Onboarding | 0/TBD | Not started | - |
+| 8. Onboarding | 0/3 | Not started | - |
 
 ---
 *Roadmap created: 2026-02-09*
-*Last updated: 2026-02-11 — Phase 7 complete*
+*Last updated: 2026-02-11 — Phase 8 planned*
