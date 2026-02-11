@@ -32,6 +32,9 @@ defmodule AgentCom.Endpoint do
   - POST   /api/tasks/:task_id/retry — Retry a dead-letter task (auth required)
   - WS     /ws/dashboard         — WebSocket for dashboard real-time updates
   - GET    /api/dashboard/state  — Full dashboard state snapshot (JSON, no auth)
+  - GET    /sw.js               — Service worker for push notifications
+  - GET    /api/dashboard/vapid-key — VAPID public key for push subscription
+  - POST   /api/dashboard/push-subscribe — Register push subscription
   - WS     /ws                   — WebSocket for agent connections
   """
   use Plug.Router
@@ -708,6 +711,24 @@ defmodule AgentCom.Endpoint do
   get "/api/dashboard/state" do
     snapshot = AgentCom.DashboardState.snapshot()
     send_json(conn, 200, snapshot)
+  end
+
+  get "/sw.js" do
+    conn
+    |> put_resp_content_type("application/javascript")
+    |> put_resp_header("service-worker-allowed", "/")
+    |> send_resp(200, AgentCom.Dashboard.service_worker())
+  end
+
+  get "/api/dashboard/vapid-key" do
+    key = AgentCom.DashboardNotifier.get_vapid_public_key()
+    send_json(conn, 200, %{"vapid_public_key" => key})
+  end
+
+  post "/api/dashboard/push-subscribe" do
+    subscription = conn.body_params
+    AgentCom.DashboardNotifier.subscribe(subscription)
+    send_json(conn, 200, %{"status" => "subscribed"})
   end
 
   match _ do

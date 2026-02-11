@@ -26,6 +26,7 @@ defmodule AgentCom.MixProject do
       {:bandit, "~> 1.0"},
       {:websock_adapter, "~> 0.5"},
       {:plug, "~> 1.15"},
+      {:web_push_elixir, "~> 0.4"},
       {:fresh, "~> 0.4.4", only: [:dev, :test]}
     ]
   end

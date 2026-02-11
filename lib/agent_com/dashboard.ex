@@ -5,6 +5,40 @@ defmodule AgentCom.Dashboard do
   Connects to /ws/dashboard for live state push with exponential backoff reconnect.
   """
 
+  @doc "Returns the service worker JavaScript for handling push notifications."
+  def service_worker do
+    """
+    self.addEventListener('push', function(event) {
+      const data = event.data ? event.data.json() : {title: 'AgentCom', body: 'New notification'};
+      event.waitUntil(
+        self.registration.showNotification(data.title, {
+          body: data.body,
+          icon: data.icon || '/favicon.ico',
+          badge: data.badge,
+          tag: 'agentcom-alert',
+          renotify: true
+        })
+      );
+    });
+
+    self.addEventListener('notificationclick', function(event) {
+      event.notification.close();
+      event.waitUntil(
+        clients.matchAll({type: 'window'}).then(function(clientList) {
+          for (var i = 0; i < clientList.length; i++) {
+            if (clientList[i].url.includes('/dashboard') && 'focus' in clientList[i]) {
+              return clientList[i].focus();
+            }
+          }
+          if (clients.openWindow) {
+            return clients.openWindow('/dashboard');
+          }
+        })
+      );
+    });
+    """
+  end
+
   def render do
     """
     <!DOCTYPE html>
@@ -252,6 +286,19 @@ defmodule AgentCom.Dashboard do
           text-align: center; color: #555; padding: 20px; font-size: 0.85em;
         }
 
+        /* === Notification Button === */
+        .notif-btn {
+          background: none; border: 1px solid #7eb8da; color: #7eb8da;
+          padding: 5px 12px; border-radius: 4px; font-size: 0.8em;
+          cursor: pointer; transition: all 0.2s ease;
+        }
+        .notif-btn:hover { background: rgba(126, 184, 218, 0.15); }
+        .notif-status {
+          font-size: 0.7em; color: #888; margin-left: 8px;
+        }
+        .notif-status.blocked { color: #ef4444; }
+        .notif-status.active { color: #4ade80; }
+
         /* === Scrollable table wrapper === */
         .table-wrap { overflow-x: auto; max-height: 400px; overflow-y: auto; }
         .table-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -265,6 +312,10 @@ defmodule AgentCom.Dashboard do
       <div class="header">
         <div class="header-top">
           <div class="header-title">AgentCom Command Center</div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button id="notif-btn" class="notif-btn" style="display:none" onclick="enableNotifications()">Enable Notifications</button>
+            <span id="notif-status" class="notif-status"></span>
+          </div>
           <div class="header-metrics">
             <div id="health-badge" class="health-badge" onclick="toggleHealthConditions()">
               <span class="dot ok" id="health-dot"></span>
@@ -999,6 +1050,100 @@ defmodule AgentCom.Dashboard do
         // Initialize
         // =====================================================================
         var dashConn = new DashboardConnection();
+
+        // =====================================================================
+        // Push Notifications
+        // =====================================================================
+        function initNotifications() {
+          if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+            // Browser doesn't support push notifications -- degrade gracefully
+            return;
+          }
+
+          if (Notification.permission === 'granted') {
+            // Already granted, auto-register
+            registerServiceWorker();
+            var status = document.getElementById('notif-status');
+            status.textContent = 'Notifications active';
+            status.className = 'notif-status active';
+          } else if (Notification.permission === 'denied') {
+            var status = document.getElementById('notif-status');
+            status.textContent = 'Notifications blocked';
+            status.className = 'notif-status blocked';
+          } else {
+            // Show enable button
+            document.getElementById('notif-btn').style.display = 'inline-block';
+          }
+        }
+
+        function enableNotifications() {
+          var btn = document.getElementById('notif-btn');
+          btn.textContent = 'Requesting...';
+          btn.disabled = true;
+
+          Notification.requestPermission().then(function(permission) {
+            if (permission === 'granted') {
+              btn.style.display = 'none';
+              registerServiceWorker();
+              var status = document.getElementById('notif-status');
+              status.textContent = 'Notifications active';
+              status.className = 'notif-status active';
+            } else {
+              btn.style.display = 'none';
+              var status = document.getElementById('notif-status');
+              status.textContent = 'Notifications blocked';
+              status.className = 'notif-status blocked';
+            }
+          });
+        }
+
+        function registerServiceWorker() {
+          navigator.serviceWorker.register('/sw.js', {scope: '/'}).then(function(registration) {
+            return registration.pushManager.getSubscription().then(function(existing) {
+              if (existing) {
+                sendSubscriptionToServer(existing);
+                return;
+              }
+              // Fetch VAPID key from server
+              fetch('/api/dashboard/vapid-key').then(function(r) { return r.json(); }).then(function(data) {
+                var vapidKey = urlBase64ToUint8Array(data.vapid_public_key);
+                return registration.pushManager.subscribe({
+                  userVisibleOnly: true,
+                  applicationServerKey: vapidKey
+                });
+              }).then(function(subscription) {
+                if (subscription) sendSubscriptionToServer(subscription);
+              }).catch(function(err) {
+                console.warn('Push subscription failed:', err);
+              });
+            });
+          }).catch(function(err) {
+            console.warn('Service worker registration failed:', err);
+          });
+        }
+
+        function sendSubscriptionToServer(subscription) {
+          fetch('/api/dashboard/push-subscribe', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(subscription.toJSON())
+          }).catch(function(err) {
+            console.warn('Failed to send subscription to server:', err);
+          });
+        }
+
+        function urlBase64ToUint8Array(base64String) {
+          var padding = '='.repeat((4 - base64String.length % 4) % 4);
+          var base64 = (base64String + padding).replace(/\\-/g, '+').replace(/_/g, '/');
+          var rawData = atob(base64);
+          var outputArray = new Uint8Array(rawData.length);
+          for (var i = 0; i < rawData.length; ++i) {
+            outputArray[i] = rawData.charCodeAt(i);
+          }
+          return outputArray;
+        }
+
+        initNotifications();
 
         // Update relative times every 30 seconds
         setInterval(function() {
