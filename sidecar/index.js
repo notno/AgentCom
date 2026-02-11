@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
 const writeFileAtomic = require('write-file-atomic');
-const { exec } = require('child_process');
+const { exec, execSync } = require('child_process');
 const chokidar = require('chokidar');
 
 // =============================================================================
@@ -40,12 +40,20 @@ function loadConfig() {
   config.results_dir = config.results_dir || './results';
   config.log_file = config.log_file || './sidecar.log';
 
+  // Git workflow defaults (optional -- backward-compatible)
+  config.repo_dir = config.repo_dir || '';
+  config.reviewer = config.reviewer || '';
+  config.hub_api_url = config.hub_api_url || '';
+
   // Resolve relative paths against __dirname
   if (!path.isAbsolute(config.log_file)) {
     config.log_file = path.join(__dirname, config.log_file);
   }
   if (!path.isAbsolute(config.results_dir)) {
     config.results_dir = path.join(__dirname, config.results_dir);
+  }
+  if (config.repo_dir && !path.isAbsolute(config.repo_dir)) {
+    config.repo_dir = path.join(__dirname, config.repo_dir);
   }
 
   return config;
@@ -287,7 +295,24 @@ function handleResult(taskId, filePath, hub) {
 
   // Determine success/failure from result content
   if (result.status === 'success') {
-    log('task_complete', { task_id: taskId, output: result.output });
+    // Git workflow: push branch and create PR before reporting to hub
+    if (_config.repo_dir) {
+      const gitResult = runGitCommand('submit', {
+        agent_id: _config.agent_id,
+        task_id: taskId,
+        task: _queue.active
+      });
+
+      if (gitResult.status === 'ok') {
+        result.pr_url = gitResult.pr_url;
+        log('git_submit_ok', { task_id: taskId, pr_url: gitResult.pr_url });
+      } else {
+        log('git_submit_failed', { task_id: taskId, error: gitResult.error });
+        // Still report task complete, just without PR URL
+      }
+    }
+
+    log('task_complete', { task_id: taskId, output: result.output, pr_url: result.pr_url });
     hub.sendTaskComplete(taskId, result);
   } else {
     const reason = result.reason || result.error || 'unknown';
@@ -325,6 +350,33 @@ function cleanupResultFiles(taskId) {
     if (fs.existsSync(startedFile)) fs.unlinkSync(startedFile);
   } catch (err) {
     log('cleanup_error', { file: startedFile, error: err.message });
+  }
+}
+
+// =============================================================================
+// 4b. Git Workflow Integration
+// =============================================================================
+
+/**
+ * Invoke agentcom-git.js as a child process.
+ * Returns parsed JSON output. On error, returns { status: 'error', error: message }.
+ */
+function runGitCommand(command, args) {
+  const gitCliPath = path.join(__dirname, 'agentcom-git.js');
+  const argsJson = JSON.stringify(args);
+  try {
+    const output = execSync(
+      `node "${gitCliPath}" ${command} ${JSON.stringify(argsJson)}`,
+      { encoding: 'utf-8', timeout: 180000, shell: true, windowsHide: true }
+    );
+    return JSON.parse(output.trim());
+  } catch (err) {
+    // agentcom-git outputs JSON even on error (to stdout captured in err.stdout)
+    try {
+      return JSON.parse((err.stdout || '').trim());
+    } catch {
+      return { status: 'error', error: err.message };
+    }
   }
 }
 
@@ -603,7 +655,27 @@ class HubConnection {
     this.sendTaskAccepted(msg.task_id);
     log('task_received', { task_id: msg.task_id, description: msg.description });
 
-    // Start wake process (implemented in Task 2)
+    // Git workflow: create branch before waking agent
+    if (_config.repo_dir) {
+      const gitResult = runGitCommand('start-task', {
+        agent_id: this.config.agent_id,
+        task_id: msg.task_id,
+        description: msg.description || '',
+        metadata: msg.metadata || {}
+      });
+
+      if (gitResult.status === 'ok') {
+        task.branch = gitResult.branch;
+        log('git_start_task_ok', { task_id: msg.task_id, branch: gitResult.branch });
+      } else {
+        // Per CONTEXT.md: wake agent anyway with warning
+        task.git_warning = gitResult.error || 'start-task failed';
+        log('git_start_task_failed', { task_id: msg.task_id, error: gitResult.error });
+      }
+      saveQueue(_queue);
+    }
+
+    // Start wake process
     wakeAgent(task, this);
   }
 
