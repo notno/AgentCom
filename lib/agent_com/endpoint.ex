@@ -35,6 +35,9 @@ defmodule AgentCom.Endpoint do
   - GET    /sw.js               — Service worker for push notifications
   - GET    /api/dashboard/vapid-key — VAPID public key for push subscription
   - POST   /api/dashboard/push-subscribe — Register push subscription
+  - POST   /api/onboard/register — Register new agent, get token (no auth)
+  - GET    /api/config/default-repo — Get default repository URL (no auth)
+  - PUT    /api/config/default-repo — Set default repository URL (auth required)
   - WS     /ws                   — WebSocket for agent connections
   """
   use Plug.Router
@@ -729,6 +732,64 @@ defmodule AgentCom.Endpoint do
     subscription = conn.body_params
     AgentCom.DashboardNotifier.subscribe(subscription)
     send_json(conn, 200, %{"status" => "subscribed"})
+  end
+
+  # --- Onboarding: Agent registration (no auth -- solves chicken-and-egg problem) ---
+
+  post "/api/onboard/register" do
+    case conn.body_params do
+      %{"agent_id" => agent_id} when is_binary(agent_id) and agent_id != "" ->
+        # Check for existing agent with same name
+        existing = AgentCom.Auth.list()
+        already_registered = Enum.any?(existing, fn entry -> entry.agent_id == agent_id end)
+
+        if already_registered do
+          send_json(conn, 409, %{"error" => "agent_id already registered"})
+        else
+          {:ok, token} = AgentCom.Auth.generate(agent_id)
+          default_repo = AgentCom.Config.get(:default_repo)
+          host = conn.host
+          port = conn.port
+          hub_ws_url = "ws://#{host}:#{port}/ws"
+          hub_api_url = "http://#{host}:#{port}"
+
+          send_json(conn, 201, %{
+            "agent_id" => agent_id,
+            "token" => token,
+            "hub_ws_url" => hub_ws_url,
+            "hub_api_url" => hub_api_url,
+            "default_repo" => default_repo
+          })
+        end
+
+      _ ->
+        send_json(conn, 400, %{"error" => "missing or invalid field: agent_id"})
+    end
+  end
+
+  # --- Config: Default repository URL ---
+
+  get "/api/config/default-repo" do
+    value = AgentCom.Config.get(:default_repo)
+    case value do
+      nil -> send_json(conn, 200, %{"default_repo" => nil, "configured" => false})
+      _ -> send_json(conn, 200, %{"default_repo" => value, "configured" => true})
+    end
+  end
+
+  put "/api/config/default-repo" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case conn.body_params do
+        %{"url" => url} when is_binary(url) and url != "" ->
+          :ok = AgentCom.Config.put(:default_repo, url)
+          send_json(conn, 200, %{"status" => "ok", "default_repo" => url})
+        _ ->
+          send_json(conn, 400, %{"error" => "missing or invalid field: url"})
+      end
+    end
   end
 
   match _ do
