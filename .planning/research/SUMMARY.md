@@ -1,234 +1,434 @@
 # Project Research Summary
 
-**Project:** AgentCom v2 Scheduler Layer
-**Domain:** Distributed AI agent scheduler / orchestration system
-**Researched:** 2026-02-09
-**Confidence:** MEDIUM-HIGH
+**Project:** AgentCom v2 Hardening (milestone v1.1)
+**Domain:** System hardening for production Elixir/BEAM agent coordination system
+**Researched:** 2026-02-11
+**Confidence:** HIGH
 
 ## Executive Summary
 
-AgentCom v2 is a distributed AI agent scheduler that adds a coordinated task orchestration layer on top of an existing Elixir/BEAM message hub. The system coordinates 4-5 autonomous LLM agents (running in OpenClaw sessions) that write code, open PRs, and perform software development tasks. The v1 system used a pull-based polling model that wasted tokens and provided zero visibility, leading to operational failures.
+AgentCom v1.0 is a production Elixir/OTP system coordinating 5 AI agents with 22 GenServers, 9 DETS tables, and zero test coverage. This hardening milestone addresses critical production gaps: comprehensive testing, DETS resilience (backup/compaction/recovery), input validation on all 9 entry points, structured logging with telemetry metrics, and rate limiting to prevent abuse. Research confirms this is a standard "production hardening retrofit" requiring careful ordering to avoid breaking existing agents while protecting against data loss and DoS attacks.
 
-The recommended approach follows the Scheduler-Agent-Supervisor pattern (Microsoft Azure Architecture): a central scheduler on the Elixir hub matches queued tasks to idle agents, pushing assignments over WebSocket through persistent Node.js sidecars. Each agent gets a state machine (idle/assigned/working) tracked by the hub. The hub persists tasks to DETS (Erlang's disk storage), using standard OTP patterns (GenServer, DynamicSupervisor, Registry) without introducing new dependencies. The sidecar architecture solves the "LLM session not always alive" problem by maintaining persistent connectivity and waking OpenClaw sessions on-demand.
+The recommended approach is dependency-constrained phasing: **test infrastructure must come first** to validate all subsequent changes, **DETS resilience second** before increasing write volume, **input validation third** (with log-only mode to avoid breaking existing agents), **structured logging fourth** to provide visibility, and **rate limiting last** after validation establishes message types. The core technical choices are minimal dependencies (only LoggerJSON and Telemetry.Metrics added), custom implementations for rate limiting and DETS management, and leveraging BEAM/OTP primitives (ETS, pattern matching, GenServer supervision) that already exist in the stack.
 
-Key risks include: (1) coordination overhead exceeding actual work tokens—v1 already hit this problem and v2 must aggressively minimize protocol messages; (2) sidecar becoming a single point of failure per agent, requiring robust process supervision and crash recovery; (3) git workflow enforcement failing and agents branching from stale main—v1's most painful operational issue. The research identifies 10 critical pitfalls with specific prevention strategies tied to implementation phases.
+Critical risks are **DETS data loss on improper shutdown** (9 tables with no backup), **global GenServer names preventing test isolation**, **DETS compaction blocking operations**, and **WebSocket rate limiting requiring Socket-level implementation** (Plug middleware won't work). Mitigation is through rigorous test infrastructure setup, copy-and-swap compaction strategy, incremental validation rollout with logging, and ETS-based token bucket rate limiting integrated into Socket.handle_in/2.
 
 ## Key Findings
 
 ### Recommended Stack
 
-AgentCom v2 requires **zero new Elixir dependencies**—everything needed exists in OTP/Elixir stdlib. The hub-side scheduler layer uses GenServer for singleton state (Scheduler, TaskQueue), DynamicSupervisor + Registry for per-agent FSM processes, :gen_statem for agent state machines, and DETS for task persistence (consistent with v1's pattern used in 6 existing modules). Phoenix.PubSub (already a dependency) handles event distribution. The sidecar uses the `ws` npm package (already in project) with a hand-rolled reconnection wrapper—do NOT use `reconnecting-websocket` (abandoned 6 years ago). Process management via pm2 (cross-platform, Windows + Linux) keeps sidecars alive with auto-restart and log rotation.
+Research confirms minimal new dependencies. The existing Elixir/OTP stack provides everything needed except structured logging and metric definitions. Custom implementations are preferred for rate limiting (40-60 lines of ETS code), validation (150 lines of pattern matching), DETS management (200 lines coordinating backup/compaction), and alerting (100 lines monitoring thresholds).
 
 **Core technologies:**
-- **GenServer + DETS (OTP stdlib)**: Task queue and scheduler processes — proven pattern throughout v1 codebase, sufficient for 4-5 agents, avoids introducing Ecto + database for what is fundamentally a lightweight coordination system
-- **:gen_statem (OTP stdlib)**: Agent state machine behavior — native OTP, not the unmaintained GenStateMachine hex package; provides state timeouts and clean state/data separation needed for FSM lifecycle
-- **DynamicSupervisor + Registry (OTP stdlib)**: Per-agent FSM process management — canonical Elixir pattern for per-entity concurrent processes with O(1) lookup via via-tuple
-- **ws npm ^8.18.0**: WebSocket client in sidecar — de facto Node.js WebSocket library (35M+ weekly downloads), already in project dependencies
-- **pm2**: Sidecar process supervision — cross-platform with built-in log rotation and crash recovery, handles multiple sidecars per machine natively
+- **LoggerJSON ~> 7.0**: Structured JSON log output for machine-parseable logs. Official Elixir library with Google Cloud/Datadog/Elastic formatters. Uses Jason encoder already in project.
+- **Telemetry.Metrics ~> 1.0**: Metric definitions for telemetry events. Already a transitive dependency via Bandit. Formalizes metric types (counter, sum, last_value, summary, distribution).
+- **ExUnit (built-in)**: Test framework already available. Needs test helpers, factories, DETS isolation setup.
+- **Custom ETS rate limiter**: Token bucket with atomic counters. No library needed. Faster and simpler than Hammer (designed for distributed systems) or ExRated (serializes through GenServer).
+- **Custom validation module**: Pattern matching + guards for flat JSON schemas. No Ecto (massive dep for non-DB validation) or NimbleOptions (designed for library options, not payloads).
+- **Custom DetsManager GenServer**: Coordinates backup/compaction across 9 tables. No off-the-shelf solution for this topology.
 
-**Key decision: Why NOT Oban** — Oban is the standard Elixir job queue library, but requires Ecto + database adapter (15+ transitive dependencies). The codebase has zero Ecto dependency. Oban's strengths (multi-node coordination, crash-safe job persistence, complex retry policies) are valuable at high scale, but AgentCom has 4-5 agents and the existing DETS pattern is proven. Oban is the right upgrade path at 20+ agents or multi-hub deployment.
+**Already present (no change):**
+- :telemetry 1.3.0 (emit events via :telemetry.execute/3)
+- Jason 1.4.4 (JSON encoding, used by LoggerJSON)
+- :dets and :ets (Erlang stdlib, used for all persistence and rate limiting)
+
+**Alternatives explicitly rejected:**
+- Hammer rate limiter (value is Redis/Mnesia backends for distributed systems; AgentCom is single-node)
+- Ecto standalone validation (database library for non-database validation is architectural mismatch)
+- Mox for testing (requires behaviour definitions; codebase has none; testing real GenServers is more valuable)
+- TelemetryMetricsPrometheus (adds /metrics endpoint and separate port; overkill for 5-agent system; can add later)
 
 ### Expected Features
 
+Research confirms this is "production hardening" which has well-defined table stakes. Missing any of these means the system is fragile and cannot be confidently changed or scaled.
+
 **Must have (table stakes):**
-- **Persistent task queue with priority lanes** — every production scheduler needs durable work storage with urgent/high/normal/low priority; DETS-backed queue already designed in v2 plan
-- **Agent state machine (idle/assigned/working/done/failed)** — Scheduler-Agent-Supervisor pattern requires explicit agent states to know who can receive work; v1's flat presence map conflated "connected" with "available"
-- **Push-based task assignment** — pull-based polling (v1's mailbox) wastes tokens and introduces latency; push via WebSocket is how modern orchestrators deliver work; sidecar solves the "LLM session isn't always alive" problem
-- **Failure handling with retry and dead-letter** — tasks fail, agents disconnect, timeouts expire; every production queue has retry with backoff and dead-letter for permanently failed tasks
-- **Heartbeat / liveness detection** — WebSocket connection state IS the heartbeat in v2 (simpler than v1's unreliable reaper); still need timeout for "connected but not responding"
-- **Basic observability (system state query)** — Nathan's #1 complaint was zero visibility; need queryable API endpoint before HTML dashboard (API first, dashboard second)
+- **Unit and integration tests**: Zero test coverage blocks confident changes. ExUnit infrastructure with test helpers, factories, DETS isolation.
+- **Input validation on all entry points**: 9 entry points with minimal validation. Malformed payloads can crash GenServers or enable DoS. Central Validation module with pattern matching + guards.
+- **DETS backup strategy**: 9 tables, single copy, no recovery plan. Periodic file copy + manual admin trigger.
+- **Rate limiting on WebSocket and HTTP**: Any agent with valid token can spam. Security audit flagged this. ETS token bucket per {agent_id, action}.
+- **Structured logging with metadata**: Current logs are unstructured strings, unusable for debugging. LoggerJSON + Logger.metadata on key paths.
 
-**Should have (competitive advantage):**
-- **Git workflow enforcement (branch-from-current-main wrapper)** — directly addresses v1's worst pain (Loash branching from stale main 3 times); shell script bundled with sidecar makes correct workflow the only workflow
-- **PR review gatekeeper agent (Flere-Imsaho)** — autonomous agents need quality gate before merge; gatekeeper auto-merges safe changes and escalates risky ones to Nathan; creates genuine autonomous pipeline (idea → queue → PR → merged)
-- **One-command agent onboarding** — v1 onboarding was "a mess"; generate tokens, create sidecar config, install as service, verify connection—all automated
-- **Capability-based routing** — scheduler matches `needed_capabilities` on tasks to declared capabilities on agents (languages, tools, access); domain-aware routing beyond generic queue-name routing
-- **Real-time dashboard with task flow visualization** — shows full pipeline (idea → queued → assigned → working → PR → reviewed → merged); v2 answer to v1's "zero visibility"
+**Should have (differentiators):**
+- **DETS compaction**: Prevents disk waste and query slowdown on long-running hubs. Coordination with owning GenServers, copy-and-swap strategy.
+- **Telemetry events + metrics**: ~12 event types for performance analysis, scheduling efficiency, capacity planning. Foundation for future Prometheus export.
+- **Alerter with thresholds**: Proactive notification of health issues (DETS file size, dead letter count, error rate). GenServer with PubSub broadcast to dashboard.
+- **DETS health monitoring endpoint**: Admin visibility into table sizes, fragmentation, last backup time. Read-only endpoint calling :dets.info/1.
+- **Per-action rate limit granularity**: Different limits for messages vs task submissions vs channel creates. RateLimiter already keyed by {agent_id, action}.
 
-**Defer (v2+):**
-- **PR review gatekeeper** — requires proven scheduler + git workflow + clear escalation heuristics; build after 50+ tasks flow through pipeline and patterns emerge
-- **Token-aware scheduling** — factor token budget and context-window headroom into assignment decisions; needs token usage data from production to calibrate
-- **Multi-agent task decomposition** — at 4-5 agents, decomposition overhead exceeds parallel execution gains; AutoGen's agent-to-agent conversations cost 4x tokens vs directed execution
-- **Learning / affinity engine** — track which agent is best at what; sample size too small for statistical learning at 4-5 agents (need hundreds of completions per agent per category)
+**Defer (explicitly anti-features for this milestone):**
+- **Database migration (DETS to SQLite/Postgres)**: DETS works at current scale. Migration rewrites 6 GenServers. Harden DETS instead.
+- **Distributed rate limiting (Redis/Mnesia)**: Single BEAM node. External backend is complexity for zero benefit. Revisit if multi-hub happens.
+- **Full observability stack (Prometheus/Grafana)**: Overkill for 5-agent system. Adds infrastructure. Use telemetry + LoggerJSON + Alerter; export to Prometheus later.
+- **Property-based testing (StreamData)**: Diminishing returns for this system size. Standard ExUnit tests. Add later for edge-case modules.
+- **Load testing framework**: 5 agents. Testing infra costs more than insight. Existing smoke tests sufficient.
+
+**Feature dependencies discovered:**
+```
+Testing Infrastructure --> enables all features
+  |
+  +--> Input Validation (no deps)
+  +--> Structured Logging (no deps)
+  |      +--> Telemetry Events (benefits from logging)
+  |             +--> Alerter (uses telemetry + PubSub)
+  +--> Rate Limiting (benefits from validation)
+  +--> DETS Manager (benefits from logging + testing)
+        +--> Backup, Compaction, Health Monitoring
+```
 
 ### Architecture Approach
 
-AgentCom v2 adds a 4th layer (Scheduler Layer) on top of existing v1 architecture: Transport (Bandit WebSocket) → Messaging (Phoenix.PubSub + Registry) → State (Auth, Presence, Mailbox, Channels) → **NEW: Scheduling (Scheduler, TaskQueue, AgentFSM)**. The scheduler is a singleton GenServer on the hub that matches queued tasks to idle agents, reacting to events (task created, agent idle, agent disconnect) with a 30s timer sweep for stuck assignments. TaskQueue is a singleton GenServer wrapping a DETS table with CRUD operations. AgentFSM is one GenServer per connected agent, started by DynamicSupervisor and registered via Registry—each agent gets its own failure domain. Sidecars (Node.js processes on agent machines) maintain persistent WebSocket connections, receive task pushes, wake OpenClaw sessions, and forward results back.
+Research confirms the architecture must integrate 5 new components into the existing supervision tree without disrupting the 17 running children. All new components are either GenServers (DetsManager, Alerter, TelemetryHandler) or library modules (Validation, RateLimiter uses ETS table). Integration points are well-defined: DetsManager starts before all DETS-owning GenServers so they can register during init; RateLimiter is called inline in Socket and Endpoint; Validation is called at entry points before dispatch; TelemetryHandler attaches to events emitted throughout the system.
 
 **Major components:**
-1. **Scheduler (GenServer)** — matches queued tasks to idle agents; event-driven (new task, agent idle, agent disconnect) + 30s sweep; singleton on hub
-2. **TaskQueue (GenServer)** — owns global work queue; CRUD for tasks; DETS persistence; priority ordering and retry semantics; singleton on hub
-3. **AgentFSM (GenServer per agent)** — per-agent work-state tracking (idle/assigned/working/done/failed); one process per connected agent under DynamicSupervisor; registered via Registry for O(1) lookup
-4. **Sidecar (Node.js)** — always-on WebSocket client per agent machine; receives task pushes, wakes OpenClaw session, forwards results; heartbeat maintains liveness
-5. **Git Wrapper (Shell script)** — bundled with sidecar; enforces branch-from-current-main workflow; three commands: start-task, submit, status
 
-**Key patterns:**
-- Singleton GenServer for global state (Scheduler, TaskQueue) — entire v1 codebase uses this pattern
-- DynamicSupervisor + Registry for per-entity processes (AgentFSM) — canonical Elixir pattern for concurrent per-agent state machines
-- Event-driven scheduler with timer sweep — reactive to discrete events (not polling), timer is safety net for stuck assignments
-- Push-based task assignment over WebSocket — scheduler calls AgentFSM.assign() → AgentFSM sends to Socket via Registry PID → Socket pushes WebSocket frame to sidecar
+1. **AgentCom.DetsManager (NEW GenServer)**: Owns all DETS lifecycle operations. Each DETS-owning GenServer (Mailbox, Channels, MessageHistory, Threads, Config, TaskQueue — 6 modules managing 9 tables) registers with DetsManager during init. Provides backup_all(), compact_table(name), compact_all(), health() operations. Coordinates with owning GenServers for compaction (close table, copy-and-swap, reopen). Periodic backup scheduled via Process.send_after. Admin endpoints: POST /api/admin/backup, POST /api/admin/compact, GET /api/admin/dets-health.
+
+2. **AgentCom.RateLimiter (ETS-based library module)**: Per-agent token bucket using ETS atomic counters. Keyed by {agent_id, action} where action is :message, :task_submit, :channel_publish, :mailbox_poll, :onboard (by IP). Default limits: 100 messages/min, 20 task submissions/min, 50 channel publishes/min, 30 polls/min, 5 channel creates/min, 200 WS messages/min (catch-all), 3 onboards/5min. ETS table with read_concurrency: true, write_concurrency: true for lock-free operation. Called inline in Socket.handle_in/2 and Endpoint via RateLimit plug. Returns :ok or {:error, :rate_limited, retry_after_ms}.
+
+3. **AgentCom.Validation (library module)**: Central validation for all input types. Pattern matching + guards for flat JSON schemas. No external dependencies. Validates: message (from, to, payload, type, reply_to), task submission (description, priority, metadata, max_retries, capabilities), identify (agent_id, token, name, capabilities, status), channel name (alphanumeric + hyphens + underscores, 1-64 chars). Enforces limits: agent_id <= 64 chars, payload <= 64KB JSON, description <= 4096 chars, max 20 capabilities. Called at entry points (Socket, Endpoint) before dispatch to handlers.
+
+4. **AgentCom.TelemetryHandler (GenServer)**: Attaches to ~12 telemetry event types: [:agent_com, :message, :routed], [:agent_com, :task, :submitted], [:agent_com, :task, :assigned], [:agent_com, :task, :completed], [:agent_com, :task, :failed], [:agent_com, :ws, :connected], [:agent_com, :ws, :disconnected], [:agent_com, :dets, :write], [:agent_com, :scheduler, :attempt]. Logs structured metrics. Foundation for future TelemetryMetricsPrometheus if Grafana is added.
+
+5. **AgentCom.Alerter (GenServer)**: Monitors system health thresholds every 60 seconds. Checks: DETS file size (alert at 100MB per table), dead letter count (alert at 10), queued task backlog (alert at 50), error rate (alert at 20/min), agent disconnect frequency (alert at 10/hour). Broadcasts to PubSub topic "alerts" for dashboard display. Configurable thresholds via Config (DETS-backed KV store).
+
+**Updated supervision tree:**
+```
+AgentCom.Supervisor (:one_for_one)
+  |-- Phoenix.PubSub
+  |-- Registry (AgentRegistry)
+  |-- Registry (AgentFSMRegistry)
+  |
+  |-- AgentCom.DetsManager          (NEW: start before DETS GenServers)
+  |-- AgentCom.RateLimiter           (NEW: or ETS init in Application.start)
+  |-- AgentCom.TelemetryHandler      (NEW: attach before modules emit events)
+  |-- AgentCom.Alerter               (NEW: start after monitored services)
+  |
+  |-- AgentCom.Config                (registers with DetsManager)
+  |-- AgentCom.Auth
+  |-- AgentCom.Mailbox               (registers with DetsManager)
+  |-- AgentCom.Channels              (registers with DetsManager)
+  |-- AgentCom.Presence
+  |-- AgentCom.Analytics
+  |-- AgentCom.Threads               (registers with DetsManager)
+  |-- AgentCom.MessageHistory         (registers with DetsManager)
+  |-- AgentCom.Reaper
+  |-- AgentCom.AgentSupervisor
+  |-- AgentCom.TaskQueue             (registers with DetsManager)
+  |-- AgentCom.Scheduler
+  |-- AgentCom.DashboardState
+  |-- AgentCom.DashboardNotifier
+  |-- Bandit
+```
+
+**Critical architectural patterns:**
+- **DETS compaction protocol (simplified)**: DetsManager sends :compact to owning GenServer. GenServer handles inline: close table, reopen with repair: :force (Erlang's defragmentation), reply :ok. GenServer mailbox naturally buffers incoming calls during ~100-500ms compaction window. No special pause/resume needed because GenServer.call timeout (5s default) exceeds compaction time.
+- **Test isolation**: Config and Threads hardcode DETS paths to HOME/.agentcom/data/ (not configurable). Must refactor to Application.get_env before writing tests. All other GenServers use Application.get_env with priv/ defaults (can be overridden in config/test.exs). Tests use start_supervised!/1 with unique names or accept serial execution for integration tests.
+- **Rate limiting integration**: Cannot use Plug middleware for WebSocket messages (only HTTP). RateLimiter.check/2 must be called in Socket.handle_in/2 before handle_msg dispatch. HTTP endpoints use RateLimit plug. Both paths share same ETS table for per-agent tracking.
 
 ### Critical Pitfalls
 
-1. **At-least-once delivery without idempotent task execution** — task re-queued on disconnect, second agent picks it up, now two PRs for same task. Prevention: git branches named `{agent}/{task-id}` (not slug), check for existing branch/PR before starting work, track assignment generation numbers, deduplicate completions.
+Research identified 15 pitfalls across critical, moderate, and minor severity. Top 5 critical pitfalls:
 
-2. **Coordination tax exceeds the work** — v1 already hit this; more tokens on status broadcasts than code. v2 risks replicating with 7 message exchanges per task. Prevention: set hard budget (<20% coordination overhead), sidecar handles protocol at Tier 0 (zero LLM tokens), eliminate progress updates for short tasks, measure in smoke test.
+1. **DETS data loss on improper shutdown**: 9 DETS tables, no backup mechanism. DETS repair process can silently lose data after crash/kill -9/power loss. Documented in Erlang OTP issue #8513. Prevention: Periodic backup (copy .dets files while open), startup integrity checks (compare record counts), WAL for TaskQueue (highest-value table), :dets.sync after critical writes, monitor file sizes for sudden drops. Phase impact: DETS backup/compaction phase. Must address BEFORE adding features that increase write volume.
 
-3. **Sidecar becomes single point of failure per agent** — dead sidecar means permanent disconnection until manual restart. Prevention: run under pm2 with auto-restart, implement watchdog, persist state to disk on every mutation, hub alerts if agent offline >2 minutes, top-level try/catch in sidecar.
+2. **Named GenServers causing global state collision**: All 11 GenServers register with name: __MODULE__ (global singletons). Every test shares same state. Mailbox DETS accumulates messages, Channels DETS retains subscriptions between tests. Cannot use async: true. Risk of corrupting production DETS if tests run from same directory. Prevention: config/test.exs with temp DETS paths, refactor Config/Threads to use Application.get_env (currently hardcode HOME paths), start_supervised!/1 with unique names, or reset/0 functions. Phase impact: Testing phase. Must be FIRST thing addressed — retrofitting isolation after writing tests is a rewrite.
 
-4. **Agent FSM state diverges from reality** — hub thinks agent is "working" but OpenClaw session crashed 10 minutes ago. Prevention: heartbeat-with-state pattern (every 30s heartbeat includes current agent state and task ID), FSM reconciles on every heartbeat, staleness timeout transitions to "stuck" and alerts, log every FSM transition.
+3. **DETS 2GB file limit**: Thread tables grow unbounded (no eviction). MessageHistory capped at 10,000 entries, channel history capped at 200/channel but no global cap. DETS writes silently fail approaching 2GB. Documented in Erlang DETS docs. Prevention: Add eviction to Threads (keep last N messages), monitor file sizes via :dets.info(table, :file_size), alert at 500MB (warning) and 1GB (critical), consider ETS + periodic snapshotting for high-write tables. Phase impact: DETS resilience phase. Must add monitoring before compaction.
 
-5. **Git workflow enforcement that doesn't enforce** — wrapper exists but agents bypass it, or git fetch fails silently. Prevention: sidecar calls wrapper before waking agent (branch already set up when LLM session starts), verify fetch succeeded (compare local vs hub main HEAD), PR gatekeeper rejects stale-base PRs, pre-push git hook checks branch naming.
+4. **DETS compaction blocks operations**: Only way to defragment is close table, reopen with repair: :force. During this window, all calls to that GenServer fail (Mailbox.enqueue, TaskQueue.submit, Channels.publish). Messages/tasks submitted during compaction are lost. Large tables take longer to compact, extending outage. Prevention: Copy-and-swap strategy (copy to new file, swap, reopen), schedule during low-activity windows (configurable), emit telemetry for compaction start/end/duration, admin-only trigger. Phase impact: DETS resilience phase. Design compaction strategy before implementing.
 
-6. **DETS as task queue backing under concurrent load** — single-writer bottleneck, 2GB limit, no concurrent access. Under failure cascades (3 agents disconnect simultaneously), TaskQueue GenServer becomes bottleneck. Prevention: call :dets.sync/1 after every status change (not just auto-sync), ETS read cache for dashboard queries (write-through to DETS), set threshold: >10 tasks/minute sustained triggers SQLite migration.
+5. **Input validation breaking existing agent protocols**: Current code is extremely permissive (Message.new/1 accepts both atom/string keys, endpoint accepts any JSON shape). Adding strict validation rejects messages that production sidecars successfully send today. Risk of coordinated multi-repo deployment. Prevention: Log-only mode first (validate but don't reject for 1-2 weeks), version the protocol (protocol_version field, strict validation for v2+ only), validate incrementally (security-critical fields first), document current contract, coordinate sidecar validation. Phase impact: Input validation phase. Audit existing sidecar message shapes before adding validation.
 
-7. **"Looks alive" problem — sidecar connected but agent inert** — sidecar maintains WebSocket, sends heartbeats, but `openclaw cron wake` fails silently. Hub thinks agent available, assigns tasks, tasks sit in "assigned" forever. Prevention: verify wake succeeded (check exit code), task acceptance timeout (60s to send accept/reject after assignment), sidecar self-test every 5 minutes, distinguish "connected" from "available" in FSM.
-
-8. **Automated PR review that blocks everything or approves everything** — gatekeeper either over-cautious (escalates every PR, defeats purpose) or over-permissive (auto-merges bugs). Bad merge to main cascades to all agents. Prevention: mechanical criteria for auto-merge (file count, no config changes, diff size, tests pass), start conservative (docs + tests only), track false negative rate, main health check after every merge.
-
-9. **Context window starvation during task execution** — v1 saw this: Skaffen hit 86% context just waiting. Task requires reading 10 files, context loading alone consumes 30-50% window. Prevention: task includes pre-computed context budget, sidecar injects minimal context (no protocol history, no backlog), continuation mechanism for multi-window tasks, track context utilization per task.
-
-10. **Scheduler livelock under failure cascades** — agent disconnects, task re-queued, assigned to another agent, that agent's wake fails, timeout, re-queue, scheduler loops on same failed tasks while new tasks pile up. Prevention: exponential backoff on retry (immediate, 30s, 2min, cap 3 retries), circuit breaker per agent (3 consecutive failures → mark degraded, stop assigning 5min), prioritize new tasks over retried tasks, separate retry queue.
+**Additional critical pitfalls:**
+- **WebSocket rate limiting bypasses Plug**: Plug middleware only intercepts HTTP requests. WebSocket messages after upgrade are handled by Socket callbacks outside Plug pipeline. Must implement rate limiting inside Socket.handle_in/2, not Plug. Cannot reuse Hammer or PlugRateLimit.
+- **Test suite requires full application**: No subset startup. Testing single GenServer requires entire supervision tree, HTTP server, DETS I/O. Tests take 30+ seconds each, must run serially. Create config/test.exs with unique port and temp paths, extract pure functions, use start_supervised!/1 with injected deps, use Plug.Test for endpoints.
+- **Logging noise avalanche**: Current codebase has ~20 log statements. Adding structured logging to every callback creates thousands of lines/hour. Prevention: Log at appropriate levels (debug for routine, info for state transitions), set metadata once in init not every callback, do NOT log every WS message or DETS operation, configure log rotation, add :log_level config per module.
 
 ## Implications for Roadmap
 
-Based on research, the implementation must follow strict dependency ordering: **Phase 0 + Phase 1 (parallel)** → **Phase 2** → **Phase 3** (critical gate: scheduler integration) → **smoke test** → **Phases 4/5/6 (parallel)**. The smoke test after Phase 3 is the quality gate—if 10 trivial tasks don't complete reliably across 2 agents, nothing after Phase 3 matters.
+Based on research findings, hardening work must follow a strict dependency order. The architecture defines 5 major components with clear integration points, but pitfall analysis reveals that **testing infrastructure must come first** (to validate all changes), **DETS resilience second** (before increasing write volume), **input validation third** (as prerequisite for rate limiting and to avoid breaking existing agents with log-only mode), **structured logging fourth** (provides visibility for subsequent work), and **rate limiting last** (depends on validation to classify messages). Cross-cutting concerns (test isolation, DETS path configuration, supervision tree ordering) must be resolved before implementation begins.
 
-### Phase 0: Sidecar (Always-On WebSocket Relay)
-**Rationale:** Gates everything. Without persistent connectivity, scheduler cannot push tasks and system degrades to v1's broken polling model. Can be built standalone with zero hub dependencies.
-**Delivers:** Node.js sidecar with WebSocket client, reconnection with exponential backoff, local queue.json persistence, OpenClaw wake trigger, heartbeat
-**Addresses:** Push-based task assignment (table stakes), sidecar as single point of failure (Pitfall 3), "looks alive" problem (Pitfall 7)
-**Avoids:** Must include process supervisor (pm2) and crash recovery as definition of done
-**Research flag:** Standard patterns (WebSocket client, process management)—skip research-phase
+### Suggested Phase Structure
 
-### Phase 1: Task Queue (Persistent Work Storage)
-**Rationale:** Parallel with Phase 0—no dependencies on new scheduler components. Scheduler cannot run without task queue to read from.
-**Delivers:** TaskQueue GenServer, DETS-backed persistence, priority lanes, retry semantics with assignment generation tracking, dead-letter queue
-**Addresses:** Persistent task queue (table stakes), failure handling (table stakes), at-least-once delivery without idempotency (Pitfall 1), DETS bottleneck (Pitfall 6)
-**Avoids:** Must call :dets.sync/1 explicitly after status changes, implement ETS read cache from day one
-**Research flag:** Standard patterns (GenServer + DETS is proven in v1 codebase)—skip research-phase
+#### Phase 1: Testing Infrastructure + Test Isolation
+**Rationale:** Every subsequent feature needs tests to verify correctness. Test isolation must be solved FIRST because retrofitting after writing hundreds of tests is a rewrite. All 11 GenServers use name: __MODULE__ (global singletons) and Config/Threads hardcode DETS paths to HOME/.agentcom/data/ (not configurable). Without isolation, tests share state and risk corrupting production data.
 
-### Phase 2: Agent FSM (Per-Agent State Machine)
-**Rationale:** Depends on TaskQueue for recovery semantics (on startup, check TaskQueue for assigned tasks). Scheduler needs both TaskQueue AND AgentFSM to function.
-**Delivers:** AgentFSM GenServer under DynamicSupervisor, Registry lookup, states (offline/idle/assigned/working/done/failed/blocked), heartbeat-with-state reconciliation
-**Addresses:** Agent state machine (table stakes), FSM state divergence (Pitfall 4)
-**Avoids:** FSM must reconcile state against sidecar-reported state on every heartbeat, not just hub-commanded state
-**Research flag:** Standard patterns (DynamicSupervisor + Registry is canonical Elixir)—skip research-phase
+**Delivers:**
+- config/test.exs with temp DETS paths for all tables
+- Refactored Config and Threads to use Application.get_env instead of hardcoded HOME paths
+- test/support/dets_helpers.ex for per-test DETS isolation
+- test/support/factory.ex for message/task/token factories
+- test/support/ws_client.ex for WebSocket test client
+- mix.exs configured with elixirc_paths for test support
+- ExUnit configuration with tag-based separation (async unit tests, serial integration tests)
+- Baseline test coverage for existing code (unit tests for pure functions, integration tests for GenServer cycles)
 
-### Phase 3: Scheduler (Task-to-Agent Matching)
-**Rationale:** Integration point. Cannot be built until Phases 0, 1, 2 complete. This is the critical gate where all components come together.
-**Delivers:** Scheduler GenServer, event-driven matching (new task, agent idle, agent disconnect), 30s sweep for stuck assignments, capability-based routing, retry backoff, per-agent circuit breakers
-**Addresses:** Scheduler (table stakes), coordination tax (Pitfall 2), scheduler livelock (Pitfall 10), context window starvation (Pitfall 9)
-**Avoids:** Must track coordination-to-work token ratio as system metric, implement exponential backoff on retry, measure overhead in smoke test
-**Research flag:** Standard patterns (event-driven GenServer)—skip research-phase
+**Addresses features:**
+- Comprehensive tests (table stakes)
+- Foundation for all other features
 
-### Phase 3.5: Smoke Test (Infrastructure Validation)
-**Rationale:** Quality gate before building anything else. 2 agents, 10 trivial tasks ("write number N to file"), measure assignment latency and completion rate. Pass criteria: 10/10 completed, <5s assignment, <500 tokens overhead, coordination tokens <20% of work tokens.
-**Delivers:** Confidence that infrastructure works end-to-end without burning LLM tokens on complex tasks
-**Addresses:** Validates Phases 0-3, tests failure scenarios (agent disconnect, task timeout, retry)
-**Avoids:** Smoke test must include failure paths, not just happy path—verify retry logic works
+**Avoids pitfalls:**
+- Pitfall 2: Global GenServer names preventing test isolation (CRITICAL)
+- Pitfall 11: DETS path collision with production data (CRITICAL)
+- Pitfall 8: Full application requirement making tests slow (MODERATE)
+- Pitfall 14: Mixing smoke and unit tests (MODERATE)
 
-### Phase 4: Dashboard v2 (Real-Time Observability)
-**Rationale:** Downstream of Phase 3—dashboard reads state from Scheduler/TaskQueue/FSM. Can be built in parallel with Phases 5 and 6 after smoke test passes.
-**Delivers:** HTML dashboard with auto-refresh, agent state cards, queue depth by priority, recent completions with PR links, state query API
-**Addresses:** Basic observability (table stakes), real-time dashboard (differentiator), sidecar health alerting (Pitfall 3)
-**Avoids:** Dashboard polls ETS cache (not GenServer), refreshes every 10-30s (not real-time streaming)
-**Research flag:** Standard patterns (HTML + SSE or polling)—skip research-phase
+**Research flag:** Standard patterns. ExUnit best practices are well-documented. Skip `/gsd:research-phase`.
 
-### Phase 5: Git Workflow Enforcement
-**Rationale:** Downstream of Phase 0 (ships with sidecar). Can be built in parallel with Phase 4 after smoke test. Low complexity, high operational value.
-**Delivers:** Shell script with three commands (start-task, submit, status), bundled with sidecar, sidecar calls before waking OpenClaw
-**Addresses:** Git workflow enforcement (differentiator), git workflow bypass (Pitfall 5)
-**Avoids:** Sidecar sets up branch BEFORE waking agent, verify git fetch succeeded (compare local vs hub main HEAD), PR gatekeeper role verifies branch freshness
-**Research flag:** Standard patterns (git commands, shell scripting)—skip research-phase
+---
 
-### Phase 6: One-Command Onboarding
-**Rationale:** Downstream of everything—needs Auth, Sidecar, Scheduler all working. Can be built in parallel with Phases 4 and 5 after smoke test.
-**Delivers:** add-agent.sh script that generates tokens, creates sidecar config, installs as service, verifies connection
-**Addresses:** One-command onboarding (differentiator)
-**Avoids:** Must include connectivity verification—new agent actually receives and completes a test task, not just connects once
-**Research flag:** Standard patterns (bash scripting, pm2 service setup)—skip research-phase
+#### Phase 2: DETS Resilience (Backup + Monitoring)
+**Rationale:** Must protect existing data BEFORE adding features that increase DETS write volume (logging, metrics, validation). Current system has 9 DETS tables with zero backup strategy. DETS data loss on improper shutdown is a documented Erlang issue. Compaction is deferred until backup and monitoring prove stable.
 
-### Phase 7 (Deferred): PR Review Gatekeeper
-**Rationale:** Capstone feature requiring full pipeline proven reliable. Build after 50+ tasks flow through and patterns emerge for escalation heuristics.
-**Delivers:** Flere-Imsaho gatekeeper agent with mechanical auto-merge criteria, escalation to Nathan for risky changes
-**Addresses:** PR review gatekeeper (differentiator), PR review failure modes (Pitfall 8)
-**Avoids:** Mechanical criteria first (file count, no config changes, diff size), LLM review layer only for advisory recommendations
-**Research flag:** Needs research-phase—escalation heuristics are domain-specific, GitHub API integration patterns
+**Delivers:**
+- AgentCom.DetsManager GenServer coordinating all DETS lifecycle operations
+- Registration protocol: each DETS-owning GenServer calls DetsManager.register_table/3 during init
+- Periodic backup: copy all 9 DETS files + tokens.json to ~/.agentcom/backups/TIMESTAMP/
+- Manual backup trigger: POST /api/admin/backup (admin-only endpoint)
+- Backup retention: keep last N backups (configurable via Config, default 5)
+- DETS health monitoring: GET /api/admin/dets-health (file sizes, record counts, last backup time)
+- File size monitoring with alerting at 500MB (warning) and 1GB (critical)
+- Startup integrity checks comparing record counts before/after open
+- Tests for backup cycle, health endpoint, integrity checks
+
+**Addresses features:**
+- DETS backup strategy (table stakes)
+- DETS health monitoring endpoint (differentiator)
+
+**Avoids pitfalls:**
+- Pitfall 1: DETS data loss on improper shutdown (CRITICAL) — backup provides recovery path
+- Pitfall 3: DETS 2GB file limit (CRITICAL) — monitoring detects growth before silent failures
+- Pitfall 10: DETS sync killing performance (MODERATE) — monitoring informs sync policy decisions
+
+**Defers:**
+- DETS compaction (requires coordination protocol design, addressed in Phase 4)
+- DETS eviction for unbounded tables like Threads (addressed in Phase 4)
+
+**Research flag:** Standard patterns. Erlang DETS documentation is comprehensive. Skip `/gsd:research-phase`.
+
+---
+
+#### Phase 3: Input Validation with Log-Only Rollout
+**Rationale:** Validation is prerequisite for rate limiting (need to classify messages by type, validate agent_id format). Must come before rate limiting. But existing production agents may send messages that strict validation would reject. Log-only mode for 1-2 weeks validates without breaking existing agents.
+
+**Delivers:**
+- AgentCom.Validation module with validation functions for all input types
+- Message validation: from, to, payload (64KB max), type, reply_to
+- Task validation: description (4096 chars max), priority, metadata (64KB max), max_retries (0-10), capabilities (max 20)
+- Identify validation: agent_id (64 chars, alphanumeric+hyphens), token (64 hex chars), name (128 chars), capabilities (max 20), status (256 chars)
+- Channel name validation: 1-64 chars, alphanumeric+hyphens+underscores
+- Log-only mode: Logger.warning for violations, do NOT reject (configurable via Config)
+- Integration into Socket.handle_in/2 (before handle_msg dispatch)
+- Integration into Endpoint route handlers (before processing)
+- Switch to strict mode after observing production logs for 1-2 weeks
+- Tests for validation logic, error response formats, log-only vs strict modes
+
+**Addresses features:**
+- Input validation on all entry points (table stakes)
+
+**Avoids pitfalls:**
+- Pitfall 5: Breaking existing agent protocols (CRITICAL) — log-only mode prevents disruption
+- Codebase gotcha: endpoint.ex lines 215, 352-358, 438-441 call String.to_integer without rescue (MODERATE) — validation prevents crashes
+
+**Research flag:** Standard patterns. Elixir pattern matching and guards are well-understood. Skip `/gsd:research-phase`.
+
+---
+
+#### Phase 4: DETS Compaction + Eviction
+**Rationale:** With backup and monitoring stable, add compaction to defragment tables and eviction to prevent unbounded growth. Compaction requires coordination with owning GenServers (close table, copy-and-swap, reopen). Threads table needs eviction to avoid 2GB limit.
+
+**Delivers:**
+- Copy-and-swap compaction strategy: open new DETS file, copy records, close old, rename, reopen
+- DetsManager.compact_table/1 and compact_all/0 operations
+- Coordination protocol: GenServer.call(owner, :compact) handled inline (close, reopen with repair: :force)
+- Scheduled compaction during configurable low-activity windows (default 3 AM, via Config)
+- Manual compaction trigger: POST /api/admin/compact (admin-only)
+- Telemetry events for compaction: [:agent_com, :dets, :compaction_started], [:agent_com, :dets, :compaction_completed] with duration
+- Eviction for Threads tables: keep last N messages per table (configurable, default 10,000)
+- Eviction for channel history: global cap in addition to per-channel cap (configurable, default 5,000)
+- Tests for compaction protocol, copy-and-swap, eviction, error handling
+
+**Addresses features:**
+- DETS compaction (differentiator)
+
+**Avoids pitfalls:**
+- Pitfall 4: DETS compaction blocking operations (CRITICAL) — copy-and-swap minimizes downtime
+- Pitfall 3: DETS 2GB file limit (CRITICAL) — eviction prevents unbounded growth
+
+**Research flag:** Needs deeper research. Copy-and-swap strategy for open DETS files has sparse documentation. Consider `/gsd:research-phase` if standard DETS repair approach proves insufficient during implementation.
+
+---
+
+#### Phase 5: Structured Logging + Telemetry Events
+**Rationale:** With validation in place and DETS stabilized, add observability. Structured logging provides debuggability. Telemetry events enable performance analysis and form foundation for future Prometheus export. Must define logging level policy to avoid noise avalanche (current codebase has only ~20 log statements).
+
+**Delivers:**
+- logger_json ~> 7.0 dependency added
+- telemetry_metrics ~> 1.0 dependency added
+- Logger configuration: LoggerJSON.Formatters.Basic in production, console formatter in dev
+- Logger.metadata set once in GenServer init/1, not per callback (agent_id, task_id, request_id, module)
+- AgentCom.TelemetryHandler GenServer attaching to ~12 event types
+- Telemetry events emitted: message routed, broadcast, task submitted/assigned/completed/failed/dead_letter, WS connected/disconnected, DETS write, mailbox enqueued, scheduler attempt
+- Log level policy: debug for routine operations, info for state transitions, warning for anomalies, error for failures
+- Do NOT log every WebSocket message, DETS operation, or ping/pong
+- config/dev.exs for human-readable development logging
+- config/test.exs with log level: :warning to reduce test noise
+- Tests for telemetry event emission, handler attachment, structured log format
+
+**Addresses features:**
+- Structured logging with metadata (table stakes)
+- Telemetry events + metrics (differentiator)
+
+**Avoids pitfalls:**
+- Pitfall 6: Logging noise avalanche (MODERATE) — level policy and selective instrumentation prevent overwhelming output
+- Pitfall 12: Telemetry on hot paths (MINOR) — coarse-grained events only, not per-message
+
+**Research flag:** Standard patterns. LoggerJSON and Telemetry are official Elixir ecosystem libraries with comprehensive docs. Skip `/gsd:research-phase`.
+
+---
+
+#### Phase 6: Alerter + Metrics Aggregation
+**Rationale:** With telemetry events flowing, add proactive monitoring. Alerter watches for threshold violations and broadcasts to dashboard. This is a differentiator feature, not table stakes, but provides operational visibility that justifies its inclusion.
+
+**Delivers:**
+- AgentCom.Alerter GenServer with 60-second check interval
+- Thresholds monitored: DETS file size (100MB), dead letter count (10), queued tasks (50), error rate (20/min), disconnect frequency (10/hour)
+- PubSub broadcast to "alerts" topic for dashboard consumption
+- Configurable thresholds via Config (DETS-backed KV store)
+- Admin endpoint: GET /api/admin/alerts for alert history
+- Tests for threshold checks, alert broadcasts, configuration changes
+
+**Addresses features:**
+- Alerter with configurable thresholds (differentiator)
+
+**Avoids pitfalls:**
+- None directly, but provides early warning for pitfalls 1, 3, 4 (DETS issues) and 7 (rate abuse)
+
+**Research flag:** Standard patterns. GenServer + PubSub patterns are well-established. Skip `/gsd:research-phase`.
+
+---
+
+#### Phase 7: Rate Limiting (WebSocket + HTTP)
+**Rationale:** Final feature. Depends on input validation (need to classify messages by type, validate agent_id). WebSocket rate limiting requires Socket-level implementation (Plug middleware won't work). HTTP rate limiting uses Plug. Both share ETS table for per-agent tracking.
+
+**Delivers:**
+- AgentCom.RateLimiter ETS-based token bucket module
+- ETS table :rate_limiter with read_concurrency: true, write_concurrency: true
+- Per-agent limits keyed by {agent_id, action}: :message (100/min), :task_submit (20/min), :channel_publish (50/min), :mailbox_poll (30/min), :channel_create (5/min), :ws_message (200/min catch-all)
+- Per-IP limit for unauthenticated endpoints: :onboard (3/5min)
+- Integration in Socket.handle_in/2: check :ws_message rate, then specific action rate
+- AgentCom.Plugs.RateLimit plug for HTTP endpoints
+- Error responses: {"type": "error", "error": "rate_limited", "retry_after_ms": N}
+- Admin endpoints: GET /api/admin/rate-limits, PUT /api/admin/rate-limits (configure limits without restart)
+- Tests for token bucket logic, rate limit enforcement, error responses, admin configuration
+
+**Addresses features:**
+- Rate limiting on WebSocket and HTTP (table stakes)
+- Per-action rate limit granularity (differentiator)
+- Configurable rate limits via admin API (differentiator)
+
+**Avoids pitfalls:**
+- Pitfall 7: WebSocket messages bypassing Plug (CRITICAL) — Socket-level implementation catches all WS traffic
+- Pitfall 13: Auth GenServer bottleneck (MODERATE) — consider moving token lookup to ETS during this phase if Auth becomes bottleneck
+
+**Research flag:** Standard patterns. Token bucket algorithm is well-documented. ETS atomic operations are standard BEAM. Skip `/gsd:research-phase`.
+
+---
 
 ### Phase Ordering Rationale
 
-- **Phases 0 and 1 are truly parallel** — sidecar has zero hub dependencies, task queue has no dependency on sidecar; can be built simultaneously by different agents
-- **Phase 2 (AgentFSM) gates Phase 3** — scheduler needs FSM API to assign tasks; basic FSM without full recovery can unblock scheduler work
-- **Phase 3 is the critical path integration point** — nothing downstream matters until scheduler works end-to-end
-- **Smoke test after Phase 3 is non-negotiable** — validates infrastructure with trivial tasks before building observability and tooling
-- **Phases 4, 5, 6 are independent after smoke test** — can be parallelized across agents once core scheduler is proven
-- **Phase 7 deferred until production data informs design** — escalation heuristics need real PRs to calibrate against
+**Dependency chain:**
+1. Testing infrastructure enables validation of all subsequent features.
+2. DETS resilience must come before features that increase write volume (logging, metrics).
+3. Input validation is prerequisite for rate limiting (classify messages, validate agent_id).
+4. Structured logging provides visibility for debugging all subsequent features.
+5. Telemetry + alerter form observability layer that measures everything built so far.
+6. Rate limiting comes last because it depends on validation and benefits from metrics for tuning.
+
+**Anti-patterns avoided:**
+- Adding rate limiting before validation (cannot classify messages without validated types)
+- Adding structured logging before DETS resilience (logging every DETS operation accelerates fragmentation)
+- Writing 200 tests then adding validation (half would break when validation rejects current behavior)
+- Adding metrics before tests (cannot verify metric accuracy without test coverage)
+
+**Integration timing:**
+- DetsManager starts before all DETS-owning GenServers (supervision tree ordering)
+- RateLimiter ETS table initialized early (needed by transport layer)
+- TelemetryHandler attaches before modules emit events
+- Alerter starts after services it monitors are running
 
 ### Research Flags
 
-**Standard patterns (skip research-phase):**
-- **Phase 0, 1, 2, 3** — GenServer + DETS pattern proven in v1 codebase, DynamicSupervisor + Registry is canonical Elixir, WebSocket client patterns are well-documented
-- **Phase 4, 5, 6** — HTML dashboards, git commands, bash scripting, pm2 service setup are all standard patterns
+**Phases needing deeper research during planning:**
+- **Phase 4 (DETS Compaction):** Copy-and-swap strategy for open DETS files has sparse documentation. Standard :dets.open_file with repair: :force is well-documented but requires table close (blocking operations). If copy-and-swap proves complex, consider `/gsd:research-phase` focused on DETS maintenance patterns.
 
-**Needs research-phase:**
-- **Phase 7 (PR gatekeeper)** — escalation heuristics are domain-specific (what makes a PR "safe" vs "risky"), GitHub API integration patterns for merge with checks
+**Phases with standard patterns (skip research-phase):**
+- **Phase 1 (Testing):** ExUnit best practices, start_supervised!/1, Plug.Test are well-documented in Elixir ecosystem.
+- **Phase 2 (DETS Backup):** File.cp! while table is open is standard Erlang practice. DETS documentation covers all necessary operations.
+- **Phase 3 (Validation):** Pattern matching and guards are core Elixir. No external resources needed.
+- **Phase 5 (Logging + Telemetry):** LoggerJSON and Telemetry.Metrics have comprehensive official documentation.
+- **Phase 6 (Alerter):** Standard GenServer + PubSub patterns.
+- **Phase 7 (Rate Limiting):** Token bucket algorithm is well-documented. ETS atomic counters are standard BEAM.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All technologies are OTP/Elixir stdlib or proven npm packages. No new Elixir dependencies. ws, pm2 are de facto standards. :gen_statem over GenStateMachine wrapper is validated by Elixir Forum consensus. |
-| Features | MEDIUM-HIGH | Table stakes features validated against Microsoft Azure SAS pattern and production queue systems (Celery, Oban, Temporal). Differentiators grounded in v1 operational experience (Flere-Imsaho's letter). Anti-features backed by multi-agent research showing coordination overhead. |
-| Architecture | HIGH | DynamicSupervisor + Registry + GenServer pattern is canonical Elixir. Sidecar pattern is well-established microservices pattern. Data flow validated against v1 codebase structure. Component responsibilities map cleanly to OTP design principles. |
-| Pitfalls | MEDIUM-HIGH | Critical pitfalls grounded in v1 post-mortem evidence (coordination overhead, git workflow failures, zero visibility). Distributed systems pitfalls (at-least-once delivery, state divergence, livelock) validated against academic research and production system patterns. |
+| Stack | HIGH | LoggerJSON and Telemetry.Metrics are official Elixir libraries with stable APIs. Custom implementations (rate limiter, validation, DETS manager) use well-documented BEAM primitives (ETS, DETS, GenServer). All alternatives evaluated with clear rationale for rejection. |
+| Features | HIGH | Based on direct AgentCom codebase analysis (all 24 source files reviewed) + CONCERNS.md + TESTING.md. Table stakes features match industry standard production hardening checklists. Differentiators are justified by operational needs (compaction for long-running hubs, telemetry for capacity planning). |
+| Architecture | HIGH | Integration points derived from codebase architecture analysis. All 22 GenServers inventoried with state dependencies mapped. New components fit naturally into existing supervision tree. DETS coordination protocol designed around Erlang stdlib guarantees. Test isolation strategy addresses actual GenServer naming and DETS path patterns in code. |
+| Pitfalls | HIGH | 15 pitfalls identified through direct codebase analysis, confirmed by official Erlang DETS documentation and documented Erlang OTP issues. Specific code locations cited for gotchas (endpoint.ex line numbers, threads.ex infinite recursion risk, etc.). Severity ratings based on production impact analysis. |
 
-**Overall confidence:** MEDIUM-HIGH
+**Overall confidence:** HIGH
 
-The stack and architecture confidence is high because they use established OTP patterns proven in the v1 codebase—no experimental technologies or unproven architectural approaches. Features and pitfalls confidence is medium-high because they are grounded in v1's operational experience (primary source) and validated against industry patterns (secondary sources), but some differentiators (token-aware scheduling, PR gatekeeper heuristics) have limited prior art in the multi-agent domain.
+All research is grounded in:
+- Direct codebase analysis (24 source files in lib/agent_com/, 5 test files, config/, mix.exs)
+- Official Erlang/Elixir documentation (DETS, ETS, Logger, Telemetry)
+- Hex package documentation for dependencies (LoggerJSON, Telemetry.Metrics)
+- Documented Erlang OTP issues (DETS data loss issue #8513)
+- Community best practices for testing, validation, rate limiting
+
+No speculative or unverified recommendations.
 
 ### Gaps to Address
 
-- **Elixir version bump (1.14 → 1.17+)** — Consider bumping before starting v2 work to get :gen_statem logger translation fix. Low risk (standard OTP patterns, no version-specific features). Validate this during Phase 0/1 setup.
+**Minor gaps:**
+- **DETS compaction downtime duration:** Research confirms close/reopen with repair: :force is required. Estimated ~100-500ms per table at current sizes, but this is an estimate. Actual measurement during implementation will inform whether copy-and-swap is necessary or if simple inline compaction suffices.
+- **Rate limit tuning:** Recommended limits (100 messages/min, 20 task submissions/min, etc.) are based on typical patterns but should be validated against actual production traffic patterns. Alerter will detect violations; limits can be tuned via admin API without code changes.
+- **Test execution time:** Recommendation is to run tests in parallel where possible (async: true for unit tests) and serially for integration tests. Actual test suite time depends on how many integration tests vs unit tests are written. Smoke tests (~60-120s) will dominate if not separated.
 
-- **Sidecar queue.json atomicity** — Simple persistence with fs.writeFileSync has partial-write-on-crash risk. Acceptable for v2 launch. Replace with SQLite or atomic write-to-temp-then-rename if corruption observed. Monitor in Phase 0.
-
-- **DETS → SQLite migration path** — DETS sufficient for 4-5 agents, <100 tasks. Set threshold: >10 tasks/minute sustained triggers migration. Document migration path (TaskQueue API abstracts backing store) but don't build until needed. Monitor in Phase 1.
-
-- **Token budget estimation** — Context budget and token-aware scheduling need real production data to calibrate. Start with coarse estimates (small/medium/large tasks) and refine after 50+ task completions. Address in Phase 1 (add metadata fields), refine in Phase 3.
-
-- **PR gatekeeper escalation heuristics** — What makes a PR "safe to auto-merge" vs "risky"? Cannot be determined without real PRs to evaluate. Start conservative (docs + tests only), expand scope based on false negative tracking. Address in Phase 7 (deferred).
-
-- **Capability matching sophistication** — Start with exact string matching ("elixir", "git", "code-review"). Fuzzy matching, affinity learning, skill levels all deferred until agent count exceeds 10 and meaningful skill differentiation emerges. Basic string matching sufficient for v2. Address in Phase 3, enhance later if needed.
+**How to handle during planning/execution:**
+- **Compaction strategy validation:** If Phase 4 implementation reveals that inline compaction (close, repair: :force, reopen) causes unacceptable downtime (>1 second), pivot to copy-and-swap. Test with actual DETS files approaching 100MB+ to measure real downtime.
+- **Rate limit tuning:** Deploy with conservative defaults. Alerter will broadcast violations. Use admin API to increase limits based on observed patterns. Log rate-limited requests for 1 week to understand agent behavior before tightening limits.
+- **Test performance optimization:** If test suite exceeds 5 minutes after Phase 1, investigate: DETS I/O (use in-memory ETS for unit tests where possible), HTTP overhead (use Plug.Test instead of real connections), GenServer startup (use start_supervised! selectively, not full app). Tag smoke tests (@tag :smoke) and exclude by default.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- AgentCom v1 codebase — lib/agent_com/ modules (application.ex, socket.ex, presence.ex, mailbox.ex, router.ex, endpoint.ex)
-- AgentCom v2 implementation plan — docs/v2-implementation-plan.md
-- AgentCom v1 post-mortem — docs/v2-letter.md (Flere-Imsaho's operational experience)
-- AgentCom task protocol — docs/task-protocol.md
-- AgentCom codebase concerns — .planning/codebase/CONCERNS.md
-- Elixir official docs — DynamicSupervisor, GenServer, Registry, :gen_statem (hexdocs.pm/elixir)
-- Erlang DETS docs — stdlib v7.2 (erlang.org/doc/man/dets)
-- Oban hexdocs — v2.20.3 (hexdocs.pm/oban)
-- ws npm package — github.com/websockets/ws (v8.19.0, 35M weekly downloads)
-- pm2 npm package — npmjs.com/package/pm2 (v6.0.14)
+- AgentCom v2 codebase — all 24 source files in lib/agent_com/, 5 test files in test/, config/, mix.exs (direct analysis)
+- AgentCom planning docs — .planning/codebase/ARCHITECTURE.md, CONCERNS.md, TESTING.md (project-specific context)
+- [Erlang DETS official documentation](https://www.erlang.org/doc/apps/stdlib/dets.html) — repair: :force, 2GB limit, sync semantics, bchunk (stdlib v7.2)
+- [LoggerJSON v7.0.4 on Hex](https://hexdocs.pm/logger_json/readme.html) — JSON formatters, configuration, metadata handling
+- [Telemetry.Metrics v1.1.0 on Hex](https://hexdocs.pm/telemetry_metrics/Telemetry.Metrics.html) — metric type definitions (counter, sum, last_value, summary, distribution)
+- [Telemetry library](https://github.com/beam-telemetry/telemetry) — event dispatching patterns, :telemetry.execute/3 API
+- [ExUnit documentation](https://hexdocs.pm/ex_unit/ExUnit.html) — test configuration, start_supervised!/1, async: true behavior
 
 ### Secondary (MEDIUM confidence)
-- Microsoft Azure: Scheduler Agent Supervisor Pattern — learn.microsoft.com/azure/architecture/patterns/scheduler-agent-supervisor
-- Elixir Forum: GenStateMachine vs :gen_statem discussion — elixirforum.com/t/69441 (community consensus to use raw :gen_statem)
-- Deloitte: AI Agent Orchestration Predictions 2026 — deloitte.com/insights (human-on-the-loop model for enterprises)
-- Multi-agent system failure research — arxiv.org/html/2503.13657v1 (Cemri, Pan, Yang, 2025: failure taxonomy)
-- Distributed systems: at-least-once delivery and idempotency — medium.com/@sinha.k/at-least-once-delivery
-- WebSocket architecture best practices — ably.com/topic/websocket-architecture-best-practices
-- Temporal error handling patterns — temporal.io/blog/error-handling-in-distributed-systems
+- [Erlang DETS data loss issue #8513](https://github.com/erlang/otp/issues/8513) — documented data loss on improper close
+- [Hammer rate limiter on GitHub](https://github.com/ExHammer/hammer) — evaluated for rate limiting, Redis/Mnesia backends
+- [ExRated on Hex](https://hexdocs.pm/ex_rated/ExRated.html) — GenServer-based rate limiter, evaluated and rejected
+- [Validating Data in Elixir (AppSignal blog)](https://blog.appsignal.com/2023/11/07/validating-data-in-elixir-using-ecto-and-nimbleoptions.html) — Ecto vs NimbleOptions comparison
+- [Easy and Robust Rate Limiting in Elixir (Alex Koutmos)](https://akoutmos.com/post/rate-limiting-with-genservers/) — GenServer + ETS rate limiting patterns
+- [Architecting GenServers for Testability (Tyler Young)](https://tylerayoung.com/2021/09/12/architecting-genservers-for-testability/) — test isolation patterns
+- [Understanding Test Concurrency in Elixir (DockYard)](https://dockyard.com/blog/2019/02/13/understanding-test-concurrency-in-elixir) — async test pitfalls with shared state
+- [Elixir Structured Logging (GenUI)](https://www.genui.com/resources/elixir-learnings-structured-logging) — Logger.metadata patterns
+- [Logger documentation (Elixir v1.19)](https://hexdocs.pm/logger/Logger.html) — metadata, levels, configuration
+- [Elixir Testing (OneUptime, 2026)](https://oneuptime.com/blog/post/2026-01-26-elixir-testing/view) — recent testing best practices
 
 ### Tertiary (LOW confidence)
-- LangChain: Multi-Agent Architecture Guide — blog.langchain.com/choosing-the-right-multi-agent-architecture
-- DEV: LangGraph vs CrewAI vs AutoGen — dev.to/pockit_tools (single source, agent framework comparison)
-- Modern queueing architectures — medium.com/@pranavprakash4777 (general queue comparison)
+- Community forum discussions on DETS performance and maintenance (various sources, used for context, not cited as authoritative)
 
 ---
-*Research completed: 2026-02-09*
+*Research completed: 2026-02-11*
 *Ready for roadmap: yes*
