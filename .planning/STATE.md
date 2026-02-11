@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Phase 8 (Onboarding) in progress. Plan 01 (API Endpoints) complete.
+**Current focus:** Phase 8 (Onboarding) in progress. Plans 01 (API Endpoints) and 03 (Teardown + Submit CLI) complete.
 
 ## Current Position
 
 Phase: 8 of 8 (Onboarding)
-Plan: 1 of 3 in current phase
-Status: Plan 08-01 complete. Registration + config API endpoints added. Ready for Plan 02 (add-agent script).
-Last activity: 2026-02-11 -- Completed 08-01-PLAN.md (Onboarding API Endpoints)
+Plan: 2 of 3 in current phase
+Status: Plans 08-01 and 08-03 complete. remove-agent.js and agentcom-submit.js created. Plan 08-02 (add-agent script) remaining.
+Last activity: 2026-02-11 -- Completed 08-03-PLAN.md (Teardown + Task Submission CLI)
 
-Progress: [██████████] 98%
+Progress: [██████████] 99%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 17
+- Total plans completed: 18
 - Average duration: 4 min
-- Total execution time: 1.12 hours
+- Total execution time: 1.15 hours
 
 **By Phase:**
 
@@ -34,10 +34,10 @@ Progress: [██████████] 98%
 | 05-smoke-test | 2/2 | 10 min | 5 min |
 | 06-dashboard | 3/3 | 11 min | 4 min |
 | 07-git-workflow | 2/2 | 9 min | 5 min |
-| 08-onboarding | 1/3 | 1 min | 1 min |
+| 08-onboarding | 2/3 | 3 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 06-02 (3 min), 06-03 (3 min), 07-01 (4 min), 07-02 (5 min), 08-01 (1 min)
+- Last 5 plans: 06-03 (3 min), 07-01 (4 min), 07-02 (5 min), 08-01 (1 min), 08-03 (2 min)
 - Trend: Consistent 1-5 min for feature plans
 
 *Updated after each plan completion*
@@ -118,6 +118,10 @@ Recent decisions affecting current work:
 - [08-01]: Duplicate agent_id check via Auth.list() before token generation -- returns 409 on conflict
 - [08-01]: Hub URLs constructed dynamically from conn.host/conn.port -- no hardcoded addresses
 - [08-01]: GET /api/config/default-repo is unauthenticated -- agents need repo URL before they have a token
+- [08-03]: remove-agent.js auto-reads token from agent config.json if --token not provided
+- [08-03]: Best-effort teardown: each step wrapped in try/catch, only exit 1 if all 3 steps fail
+- [08-03]: agentcom-submit.js stores --target in metadata.target_agent (no first-class hub field yet)
+- [08-03]: Both CLI scripts use inline httpRequest helper (standalone, no shared modules)
 
 ### Pending Todos
 
@@ -131,5 +135,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: Completed 08-01-PLAN.md (Onboarding API Endpoints). Ready for 08-02 (add-agent script).
+Stopped at: Completed 08-03-PLAN.md (Teardown + Task Submission CLI). Plan 08-02 (add-agent script) remaining.
 Resume file: None
