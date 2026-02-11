@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Phase 7 (Git Workflow) in progress. Plan 01 complete (agentcom-git CLI). Plan 02 next (sidecar integration).
+**Current focus:** Phase 7 (Git Workflow) complete. All plans done. Ready for Phase 8 (Onboarding).
 
 ## Current Position
 
 Phase: 7 of 8 (Git Workflow)
-Plan: 1 of 2 in current phase
-Status: Plan 07-01 complete (agentcom-git CLI). Ready for Plan 07-02 (sidecar integration).
-Last activity: 2026-02-11 -- Completed 07-01-PLAN.md (Git Workflow CLI)
+Plan: 2 of 2 in current phase (PHASE COMPLETE)
+Status: Phase 07 complete. All git workflow plans done. Ready for Phase 8 (Onboarding).
+Last activity: 2026-02-11 -- Completed 07-02-PLAN.md (Sidecar Git Integration)
 
-Progress: [█████████░] 94%
+Progress: [██████████] 97%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 15
+- Total plans completed: 16
 - Average duration: 4 min
-- Total execution time: 1.02 hours
+- Total execution time: 1.10 hours
 
 **By Phase:**
 
@@ -33,10 +33,10 @@ Progress: [█████████░] 94%
 | 04-scheduler | 1/1 | 2 min | 2 min |
 | 05-smoke-test | 2/2 | 10 min | 5 min |
 | 06-dashboard | 3/3 | 11 min | 4 min |
-| 07-git-workflow | 1/2 | 4 min | 4 min |
+| 07-git-workflow | 2/2 | 9 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 06-01 (5 min), 06-02 (3 min), 06-03 (3 min), 07-01 (4 min)
+- Last 5 plans: 06-01 (5 min), 06-02 (3 min), 06-03 (3 min), 07-01 (4 min), 07-02 (5 min)
 - Trend: Consistent 3-5 min for feature plans
 
 *Updated after each plan completion*
@@ -108,6 +108,11 @@ Recent decisions affecting current work:
 - [07-01]: PR body written to temp file via --body-file to avoid cross-platform shell escaping
 - [07-01]: Labels created idempotently via gh label create --force before PR creation
 - [07-01]: Config validates repo_dir exists and is a git repo at startup (fail fast with clear error)
+- [07-02]: spawnSync instead of execSync for runGitCommand -- cleaner error handling without nested try/catch
+- [07-02]: Git workflow opt-in via repo_dir config field presence -- zero impact on existing sidecars
+- [07-02]: start-task failure sets git_warning on task but still wakes agent -- graceful degradation
+- [07-02]: submit failure still reports task_complete to hub -- PR URL simply omitted, no data loss
+- [07-02]: New config fields (repo_dir, reviewer, hub_api_url) default to empty string, not required
 
 ### Pending Todos
 
@@ -121,5 +126,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: Completed 07-01-PLAN.md (Git Workflow CLI). Ready for 07-02 (sidecar integration).
+Stopped at: Completed 07-02-PLAN.md (Sidecar Git Integration). Phase 7 complete. Ready for Phase 8 (Onboarding).
 Resume file: None
