@@ -25,6 +25,7 @@ defmodule AgentCom.Application do
       {AgentCom.AgentSupervisor, []},
       {AgentCom.TaskQueue, []},
       {AgentCom.Scheduler, []},
+      {AgentCom.DashboardState, []},
       {Bandit, plug: AgentCom.Endpoint, scheme: :http, port: port()}
     ]
 
