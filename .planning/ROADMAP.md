@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Task Queue** - DETS-backed persistent work storage with priority lanes and retry
 - [x] **Phase 3: Agent State** - Per-agent finite state machine tracking work lifecycle
 - [x] **Phase 4: Scheduler** - Event-driven task-to-agent matching with capability routing
-- [ ] **Phase 5: Smoke Test** - End-to-end pipeline validation with 2 agents and trivial tasks
+- [x] **Phase 5: Smoke Test** - End-to-end pipeline validation with 2 agents and trivial tasks
 - [ ] **Phase 6: Dashboard** - Real-time observability showing queue, agents, and task flow
 - [ ] **Phase 7: Git Workflow** - Branch-from-main enforcement bundled with sidecar
 - [ ] **Phase 8: Onboarding** - One-command agent provisioning and verification
@@ -97,8 +97,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 05-01-PLAN.md — Fix sidecar generation bug + build smoke test infrastructure (AgentSim, HTTP helpers, assertions, DETS cleanup)
-- [ ] 05-02-PLAN.md — Implement TEST-01 basic pipeline, TEST-02 failure recovery, TEST-03 scale distribution tests
+- [x] 05-01-PLAN.md — Fix sidecar generation bug + build smoke test infrastructure (AgentSim, HTTP helpers, assertions, DETS cleanup)
+- [x] 05-02-PLAN.md — Implement TEST-01 basic pipeline, TEST-02 failure recovery, TEST-03 scale distribution tests
 
 ### Phase 6: Dashboard
 **Goal**: Nathan can see the full state of the system at a glance without asking any agent
@@ -155,11 +155,11 @@ Phases 1 and 2 are parallel. Phase 3 follows Phase 2. Phase 4 requires Phases 1+
 | 2. Task Queue | 2/2 | ✓ Complete | 2026-02-10 |
 | 3. Agent State | 2/2 | ✓ Complete | 2026-02-10 |
 | 4. Scheduler | 1/1 | ✓ Complete | 2026-02-10 |
-| 5. Smoke Test | 0/2 | Planned | - |
+| 5. Smoke Test | 2/2 | ✓ Complete | 2026-02-10 |
 | 6. Dashboard | 0/TBD | Not started | - |
 | 7. Git Workflow | 0/TBD | Not started | - |
 | 8. Onboarding | 0/TBD | Not started | - |
 
 ---
 *Roadmap created: 2026-02-09*
-*Last updated: 2026-02-10 — Phase 5 planned*
+*Last updated: 2026-02-10 — Phase 5 complete*
