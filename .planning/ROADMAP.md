@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Smoke Test** - End-to-end pipeline validation with 2 agents and trivial tasks
 - [x] **Phase 6: Dashboard** - Real-time observability showing queue, agents, and task flow
 - [x] **Phase 7: Git Workflow** - Branch-from-main enforcement bundled with sidecar
-- [ ] **Phase 8: Onboarding** - One-command agent provisioning and verification
+- [x] **Phase 8: Onboarding** - One-command agent provisioning and verification
 
 ## Phase Details
 
@@ -139,9 +139,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 08-01-PLAN.md -- Hub registration and config API endpoints (unauthenticated onboard + default-repo)
-- [ ] 08-02-PLAN.md -- add-agent.js onboarding script with Culture ship names and test task verification
-- [ ] 08-03-PLAN.md -- remove-agent.js teardown + agentcom-submit.js task submission CLI
+- [x] 08-01-PLAN.md -- Hub registration and config API endpoints (unauthenticated onboard + default-repo)
+- [x] 08-02-PLAN.md -- add-agent.js onboarding script with Culture ship names and test task verification
+- [x] 08-03-PLAN.md -- remove-agent.js teardown + agentcom-submit.js task submission CLI
 
 ## Progress
 
@@ -162,8 +162,8 @@ Phases 1 and 2 are parallel. Phase 3 follows Phase 2. Phase 4 requires Phases 1+
 | 5. Smoke Test | 2/2 | ✓ Complete | 2026-02-10 |
 | 6. Dashboard | 3/3 | ✓ Complete | 2026-02-10 |
 | 7. Git Workflow | 2/2 | ✓ Complete | 2026-02-11 |
-| 8. Onboarding | 0/3 | Not started | - |
+| 8. Onboarding | 3/3 | ✓ Complete | 2026-02-11 |
 
 ---
 *Roadmap created: 2026-02-09*
-*Last updated: 2026-02-11 — Phase 8 planned*
+*Last updated: 2026-02-11 — Phase 8 complete*
