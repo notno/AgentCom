@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A distributed agent coordination system where AI "Minds" (LLM sessions) receive work assignments from a central scheduler, execute autonomously, and submit results as PRs. Built on an Elixir/BEAM hub that already handles auth, messaging, presence, and WebSocket transport. v2 evolves this from a message-passing system into a GPU scheduler-style architecture with push-based task assignment.
+A distributed agent coordination system where AI "Minds" (LLM sessions) receive work assignments from a central scheduler, execute autonomously, and submit results as PRs. Built on an Elixir/BEAM hub with Node.js sidecars, using a GPU scheduler-style push architecture for task assignment. Shipped v1.0 with 8 phases: sidecar relay, task queue, agent FSM, scheduler, smoke tests, dashboard, git workflow, and one-command onboarding.
 
 ## Core Value
 
@@ -72,18 +72,21 @@ Reliable autonomous work execution: ideas enter a queue and emerge as reviewed, 
 
 ## Context
 
-AgentCom v1 was built in a single day with 5 Minds connected. It proved the concept of autonomous multi-agent collaboration but surfaced critical reliability issues:
+Shipped v1.0 on 2026-02-11 (8 phases, 19 plans, 48 commits, +12,858 LOC across 65 files in 2 days).
 
-- **Heartbeat unreliability:** Cron-triggered sessions often didn't fire, making Minds appear alive but idle
-- **Git chaos:** Agents branching from stale main, causing merge conflicts and wasted coordinator time
-- **Coordination overhead:** More tokens spent on status broadcasts and "are you there?" pings than actual work
-- **Zero visibility:** Nathan had no way to check system state without asking an agent directly
-- **Context waste:** Agents burning context windows while waiting for assignments
-- **No task handshake:** Work assigned with no confirmation it was received or started
+**Tech stack:** Elixir/BEAM hub (~3,200 LOC), Node.js sidecars (~2,800 LOC), HTML/CSS/JS dashboard.
 
-The v2 architecture (proposed by Nathan, designed by GCU Conditions Permitting) shifts from pull-based mailbox polling to push-based scheduler-driven work assignment. The existing messaging layer remains — the scheduler is built on top.
+**Architecture:** Push-based scheduler drives work to always-on sidecars via persistent WebSocket. DETS persistence for task queue, agent state, and config. PubSub for internal event distribution. pm2 for sidecar process management.
 
-Flere-Imsaho's role evolves from coordinator to **gatekeeper with merge authority**: reviews PRs, auto-merges safe changes, escalates to Nathan when PRs touch infra/config, have large deletions/rewrites, are security-sensitive, or could have chaotic ripple effects across multiple agents.
+**Current state:** All v1 problems solved (heartbeat unreliability, git chaos, coordination overhead, zero visibility, context waste, no task handshake). System operational with 5 AI agents on Tailscale mesh.
+
+**Known tech debt:**
+- queue.json atomicity (fs.writeFileSync partial-write risk on crash)
+- VAPID keys ephemeral (push subscriptions lost on hub restart)
+- Elixir version bump recommended (1.14 to 1.17+ for :gen_statem logger fix)
+- Analytics and Threads modules orphaned (not exposed via API)
+
+**Deferred:** PR review gatekeeper (Flere-Imsaho role) needs 50+ tasks of production data to calibrate merge/escalation heuristics.
 
 ## Constraints
 
@@ -100,11 +103,14 @@ Flere-Imsaho's role evolves from coordinator to **gatekeeper with merge authorit
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Branch, don't rewrite | v1 has working auth, mailbox, channels, presence, WebSocket infra | — Pending |
-| Node.js for sidecar (tentative) | Simpler to deploy alongside OpenClaw which already uses Node | — Pending |
-| OpenClaw-only for v1 | Ship proven runtime first, research Claude Code CLI for v2 | — Pending |
-| Flere-Imsaho as PR gatekeeper | Autonomous pipeline needs an LLM reviewer with merge authority | — Pending |
-| FIFO + priority lanes scheduling | Good enough for 4-5 agents, optimize later | — Pending |
+| Branch, don't rewrite | v1 has working auth, mailbox, channels, presence, WebSocket infra | ✓ Good — v1 infra intact, scheduler layered on top cleanly |
+| Node.js for sidecar | Simpler to deploy alongside OpenClaw which already uses Node | ✓ Good — zero-dependency scripts, util.parseArgs for CLI |
+| OpenClaw-only for v1 | Ship proven runtime first, research Claude Code CLI for v2 | ✓ Good — shipped with OpenClaw, Claude Code CLI deferred |
+| Flere-Imsaho as PR gatekeeper | Autonomous pipeline needs an LLM reviewer with merge authority | — Deferred to v2 (needs production data) |
+| FIFO + priority lanes scheduling | Good enough for 4-5 agents, optimize later | ✓ Good — priority lanes working, smoke tested at 4 agents |
+| DETS for persistence | Built-in Erlang, no external deps, good enough for single-hub | ✓ Good — simple, reliable, needs backup/compaction in v1.1 |
+| Unauthenticated registration endpoint | Chicken-and-egg: new agents have no token yet | ✓ Good — POST /api/onboard/register solves bootstrap |
+| Culture ship names for agents | Fun, memorable, avoids naming bikeshed | ✓ Good — 65 names from Iain M. Banks novels |
 
 ---
-*Last updated: 2026-02-11 after milestone v1.1 start*
+*Last updated: 2026-02-11 after v1.0 milestone completion*
