@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
 const writeFileAtomic = require('write-file-atomic');
-const { exec, execSync } = require('child_process');
+const { exec, execSync, spawnSync } = require('child_process');
 const chokidar = require('chokidar');
 
 // =============================================================================
@@ -363,21 +363,17 @@ function cleanupResultFiles(taskId) {
  */
 function runGitCommand(command, args) {
   const gitCliPath = path.join(__dirname, 'agentcom-git.js');
-  const argsJson = JSON.stringify(args);
-  try {
-    const output = execSync(
-      `node "${gitCliPath}" ${command} ${JSON.stringify(argsJson)}`,
-      { encoding: 'utf-8', timeout: 180000, shell: true, windowsHide: true }
-    );
-    return JSON.parse(output.trim());
-  } catch (err) {
-    // agentcom-git outputs JSON even on error (to stdout captured in err.stdout)
-    try {
-      return JSON.parse((err.stdout || '').trim());
-    } catch {
-      return { status: 'error', error: err.message };
-    }
+  const result = spawnSync('node', [gitCliPath, command, JSON.stringify(args)], {
+    encoding: 'utf-8',
+    timeout: 180000,
+    windowsHide: true
+  });
+
+  const output = (result.stdout || '').trim();
+  if (output) {
+    try { return JSON.parse(output); } catch {}
   }
+  return { status: 'error', error: result.stderr || 'no output from agentcom-git' };
 }
 
 // =============================================================================
