@@ -108,11 +108,12 @@ Plans:
   1. GET /api/dashboard/state returns JSON snapshot with queue depth, agent states, recent completions, and system health (verifiable by curl request)
   2. HTML dashboard shows agent state cards, queue depth by priority lane, and recent completions with PR links (verifiable by opening dashboard in browser)
   3. Dashboard auto-refreshes on 10-30s interval showing uptime, connected agent count, and queue throughput (verifiable by watching dashboard update without manual reload)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 06-01: TBD
-- [ ] 06-02: TBD
+- [ ] 06-01-PLAN.md -- DashboardState GenServer + DashboardSocket WebSocket handler + JSON API endpoint
+- [ ] 06-02-PLAN.md -- Command center HTML/CSS/JS dashboard (replace existing polling dashboard)
+- [ ] 06-03-PLAN.md -- Web Push notification infrastructure + human verification checkpoint
 
 ### Phase 7: Git Workflow
 **Goal**: Agents always branch from current main and submit work as properly formatted PRs
