@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Phase 5 (Smoke Test) complete. All smoke tests pass. Ready for Phases 6-8.
+**Current focus:** Phase 6 (Dashboard) in progress. Backend data layer complete (Plan 01). Frontend and notifications remaining.
 
 ## Current Position
 
-Phase: 5 of 8 (Smoke Test) -- COMPLETE
-Plan: 2 of 2 in current phase (all plans complete)
-Status: Phase 5 complete. All 3 smoke test scenarios pass (basic pipeline, failure recovery, scale distribution). Quality gate passed for Phases 1-4.
-Last activity: 2026-02-10 -- Completed 05-02-PLAN.md (Smoke Test Scenarios)
+Phase: 6 of 8 (Dashboard)
+Plan: 1 of 3 in current phase (plan 01 complete)
+Status: Dashboard backend complete -- DashboardState GenServer + DashboardSocket WebSocket + JSON API endpoint. Plans 02-03 remaining.
+Last activity: 2026-02-10 -- Completed 06-01-PLAN.md (Dashboard Backend Data Layer)
 
-Progress: [████████░░] 81%
+Progress: [████████░░] 85%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
+- Total plans completed: 12
 - Average duration: 4 min
-- Total execution time: 0.77 hours
+- Total execution time: 0.85 hours
 
 **By Phase:**
 
@@ -32,10 +32,11 @@ Progress: [████████░░] 81%
 | 03-agent-state | 2/2 | 6 min | 3 min |
 | 04-scheduler | 1/1 | 2 min | 2 min |
 | 05-smoke-test | 2/2 | 10 min | 5 min |
+| 06-dashboard | 1/3 | 5 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-02 (3 min), 04-01 (2 min), 05-01 (5 min), 05-02 (5 min)
-- Trend: Consistent 5 min for smoke test plans (infrastructure + scenarios)
+- Last 5 plans: 04-01 (2 min), 05-01 (5 min), 05-02 (5 min), 06-01 (5 min)
+- Trend: Consistent 5 min for feature plans
 
 *Updated after each plan completion*
 
@@ -91,6 +92,10 @@ Recent decisions affecting current work:
 - [05-02]: AgentFSM.list_all catches :exit for FSMs stopping during enumeration (defensive concurrency)
 - [05-02]: Setup uses Supervisor.terminate_child/restart_child for clean DETS reset (avoids restart loops)
 - [05-02]: AgentSim sends identify after WebSocket upgrade completes (correct connection sequencing)
+- [06-01]: No auth on /api/dashboard/state and /ws/dashboard -- local network only, matching existing /dashboard pattern
+- [06-01]: Event batching via 100ms flush timer in DashboardSocket to prevent PubSub flood to browser
+- [06-01]: DashboardState tracks hourly stats in-memory (resets on restart) -- same ephemeral pattern as Analytics
+- [06-01]: Health heuristics: agent offline (WARNING), queue growing 3x (WARNING), >50% failure (CRITICAL), stuck >5min (WARNING)
 
 ### Pending Todos
 
@@ -104,5 +109,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 05-02-PLAN.md (Smoke Test Scenarios) -- Phase 5 complete
+Stopped at: Completed 06-01-PLAN.md (Dashboard Backend Data Layer)
 Resume file: None
