@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Phase 5 (Smoke Test) in progress. Plan 01 complete, Plan 02 next.
+**Current focus:** Phase 5 (Smoke Test) complete. All smoke tests pass. Ready for Phases 6-8.
 
 ## Current Position
 
-Phase: 5 of 8 (Smoke Test)
-Plan: 1 of 2 in current phase
-Status: Smoke test infrastructure built. Sidecar generation bug fixed. 5 test helper modules ready. Plan 02 (smoke test scenarios) next.
-Last activity: 2026-02-10 -- Completed 05-01-PLAN.md (Smoke Test Infrastructure)
+Phase: 5 of 8 (Smoke Test) -- COMPLETE
+Plan: 2 of 2 in current phase (all plans complete)
+Status: Phase 5 complete. All 3 smoke test scenarios pass (basic pipeline, failure recovery, scale distribution). Quality gate passed for Phases 1-4.
+Last activity: 2026-02-10 -- Completed 05-02-PLAN.md (Smoke Test Scenarios)
 
-Progress: [████████░░] 77%
+Progress: [████████░░] 81%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
+- Total plans completed: 11
 - Average duration: 4 min
-- Total execution time: 0.69 hours
+- Total execution time: 0.77 hours
 
 **By Phase:**
 
@@ -31,11 +31,11 @@ Progress: [████████░░] 77%
 | 02-task-queue | 2/2 | 8 min | 4 min |
 | 03-agent-state | 2/2 | 6 min | 3 min |
 | 04-scheduler | 1/1 | 2 min | 2 min |
-| 05-smoke-test | 1/2 | 5 min | 5 min |
+| 05-smoke-test | 2/2 | 10 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-01 (3 min), 03-02 (3 min), 04-01 (2 min), 05-01 (5 min)
-- Trend: 05-01 slightly longer due to sidecar bug fix + 5 new files
+- Last 5 plans: 03-02 (3 min), 04-01 (2 min), 05-01 (5 min), 05-02 (5 min)
+- Trend: Consistent 5 min for smoke test plans (infrastructure + scenarios)
 
 *Updated after each plan completion*
 
@@ -87,6 +87,10 @@ Recent decisions affecting current work:
 - [05-01]: Used Mint.HTTP + Mint.WebSocket directly for AgentSim instead of Fresh wrapper (full control over connection lifecycle)
 - [05-01]: Used :httpc for HTTP helpers (built-in, no extra deps for test usage)
 - [05-01]: Generation tracked in Map keyed by task_id in sidecar (supports recovery edge cases)
+- [05-02]: AgentFSM broadcasts :agent_idle to PubSub on idle transition (fixes scheduler race where idle agents missed)
+- [05-02]: AgentFSM.list_all catches :exit for FSMs stopping during enumeration (defensive concurrency)
+- [05-02]: Setup uses Supervisor.terminate_child/restart_child for clean DETS reset (avoids restart loops)
+- [05-02]: AgentSim sends identify after WebSocket upgrade completes (correct connection sequencing)
 
 ### Pending Todos
 
@@ -100,5 +104,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 05-01-PLAN.md (Smoke Test Infrastructure)
+Stopped at: Completed 05-02-PLAN.md (Smoke Test Scenarios) -- Phase 5 complete
 Resume file: None
