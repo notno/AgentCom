@@ -127,9 +127,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OBS-01 | Phase 6: Dashboard | Pending |
 | OBS-02 | Phase 6: Dashboard | Pending |
 | OBS-03 | Phase 6: Dashboard | Pending |
-| GIT-01 | Phase 7: Git Workflow | Pending |
-| GIT-02 | Phase 7: Git Workflow | Pending |
-| GIT-03 | Phase 7: Git Workflow | Pending |
+| GIT-01 | Phase 7: Git Workflow | ✓ Complete |
+| GIT-02 | Phase 7: Git Workflow | ✓ Complete |
+| GIT-03 | Phase 7: Git Workflow | ✓ Complete |
 | ONBD-01 | Phase 8: Onboarding | Pending |
 | TEST-01 | Phase 5: Smoke Test | Pending |
 | TEST-02 | Phase 5: Smoke Test | Pending |

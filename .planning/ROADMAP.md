@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Scheduler** - Event-driven task-to-agent matching with capability routing
 - [x] **Phase 5: Smoke Test** - End-to-end pipeline validation with 2 agents and trivial tasks
 - [x] **Phase 6: Dashboard** - Real-time observability showing queue, agents, and task flow
-- [ ] **Phase 7: Git Workflow** - Branch-from-main enforcement bundled with sidecar
+- [x] **Phase 7: Git Workflow** - Branch-from-main enforcement bundled with sidecar
 - [ ] **Phase 8: Onboarding** - One-command agent provisioning and verification
 
 ## Phase Details
@@ -126,8 +126,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 07-01-PLAN.md -- Build agentcom-git CLI tool (start-task, submit, status commands)
-- [ ] 07-02-PLAN.md -- Wire git lifecycle into sidecar + human verification
+- [x] 07-01-PLAN.md -- Build agentcom-git CLI tool (start-task, submit, status commands)
+- [x] 07-02-PLAN.md -- Wire git lifecycle into sidecar + human verification
 
 ### Phase 8: Onboarding
 **Goal**: Adding a new agent to the system takes one command and verifies everything works
@@ -159,9 +159,9 @@ Phases 1 and 2 are parallel. Phase 3 follows Phase 2. Phase 4 requires Phases 1+
 | 4. Scheduler | 1/1 | ✓ Complete | 2026-02-10 |
 | 5. Smoke Test | 2/2 | ✓ Complete | 2026-02-10 |
 | 6. Dashboard | 3/3 | ✓ Complete | 2026-02-10 |
-| 7. Git Workflow | 0/TBD | Not started | - |
+| 7. Git Workflow | 2/2 | ✓ Complete | 2026-02-11 |
 | 8. Onboarding | 0/TBD | Not started | - |
 
 ---
 *Roadmap created: 2026-02-09*
-*Last updated: 2026-02-10 — Phase 6 complete*
+*Last updated: 2026-02-11 — Phase 7 complete*
