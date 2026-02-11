@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Phase 7 (Git Workflow) complete. All plans done. Ready for Phase 8 (Onboarding).
+**Current focus:** Phase 8 (Onboarding) in progress. Plan 01 (API Endpoints) complete.
 
 ## Current Position
 
-Phase: 7 of 8 (Git Workflow)
-Plan: 2 of 2 in current phase (PHASE COMPLETE)
-Status: Phase 07 complete. All git workflow plans done. Ready for Phase 8 (Onboarding).
-Last activity: 2026-02-11 -- Completed 07-02-PLAN.md (Sidecar Git Integration)
+Phase: 8 of 8 (Onboarding)
+Plan: 1 of 3 in current phase
+Status: Plan 08-01 complete. Registration + config API endpoints added. Ready for Plan 02 (add-agent script).
+Last activity: 2026-02-11 -- Completed 08-01-PLAN.md (Onboarding API Endpoints)
 
-Progress: [██████████] 97%
+Progress: [██████████] 98%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 16
+- Total plans completed: 17
 - Average duration: 4 min
-- Total execution time: 1.10 hours
+- Total execution time: 1.12 hours
 
 **By Phase:**
 
@@ -34,10 +34,11 @@ Progress: [██████████] 97%
 | 05-smoke-test | 2/2 | 10 min | 5 min |
 | 06-dashboard | 3/3 | 11 min | 4 min |
 | 07-git-workflow | 2/2 | 9 min | 5 min |
+| 08-onboarding | 1/3 | 1 min | 1 min |
 
 **Recent Trend:**
-- Last 5 plans: 06-01 (5 min), 06-02 (3 min), 06-03 (3 min), 07-01 (4 min), 07-02 (5 min)
-- Trend: Consistent 3-5 min for feature plans
+- Last 5 plans: 06-02 (3 min), 06-03 (3 min), 07-01 (4 min), 07-02 (5 min), 08-01 (1 min)
+- Trend: Consistent 1-5 min for feature plans
 
 *Updated after each plan completion*
 
@@ -113,6 +114,10 @@ Recent decisions affecting current work:
 - [07-02]: start-task failure sets git_warning on task but still wakes agent -- graceful degradation
 - [07-02]: submit failure still reports task_complete to hub -- PR URL simply omitted, no data loss
 - [07-02]: New config fields (repo_dir, reviewer, hub_api_url) default to empty string, not required
+- [08-01]: Registration endpoint is unauthenticated -- uses network trust model (same as /api/dashboard/state)
+- [08-01]: Duplicate agent_id check via Auth.list() before token generation -- returns 409 on conflict
+- [08-01]: Hub URLs constructed dynamically from conn.host/conn.port -- no hardcoded addresses
+- [08-01]: GET /api/config/default-repo is unauthenticated -- agents need repo URL before they have a token
 
 ### Pending Todos
 
@@ -126,5 +131,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: Completed 07-02-PLAN.md (Sidecar Git Integration). Phase 7 complete. Ready for Phase 8 (Onboarding).
+Stopped at: Completed 08-01-PLAN.md (Onboarding API Endpoints). Ready for 08-02 (add-agent script).
 Resume file: None
