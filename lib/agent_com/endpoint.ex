@@ -30,6 +30,8 @@ defmodule AgentCom.Endpoint do
   - GET    /api/tasks/stats       — Queue statistics (auth required)
   - GET    /api/tasks/:task_id    — Get task details with history (auth required)
   - POST   /api/tasks/:task_id/retry — Retry a dead-letter task (auth required)
+  - WS     /ws/dashboard         — WebSocket for dashboard real-time updates
+  - GET    /api/dashboard/state  — Full dashboard state snapshot (JSON, no auth)
   - WS     /ws                   — WebSocket for agent connections
   """
   use Plug.Router
@@ -475,6 +477,12 @@ defmodule AgentCom.Endpoint do
     end
   end
 
+  get "/ws/dashboard" do
+    conn
+    |> WebSockAdapter.upgrade(AgentCom.DashboardSocket, [], timeout: 60_000)
+    |> halt()
+  end
+
   get "/ws" do
     conn
     |> WebSockAdapter.upgrade(AgentCom.Socket, [], timeout: 60_000)
@@ -693,6 +701,13 @@ defmodule AgentCom.Endpoint do
           send_json(conn, 404, %{"error" => "task_not_found", "task_id" => task_id})
       end
     end
+  end
+
+  # --- Dashboard API (no auth -- local network only) ---
+
+  get "/api/dashboard/state" do
+    snapshot = AgentCom.DashboardState.snapshot()
+    send_json(conn, 200, snapshot)
   end
 
   match _ do
