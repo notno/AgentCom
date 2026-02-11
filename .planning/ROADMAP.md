@@ -123,10 +123,11 @@ Plans:
   1. Running agentcom-git start-task fetches origin and creates branch {agent}/{task-slug} from origin/main (verifiable by running command and checking git log shows branch from latest main)
   2. Running agentcom-git submit pushes branch and opens PR with task metadata in description (verifiable by running command and checking GitHub for new PR)
   3. Running agentcom-git status shows current branch, diff from main, and uncommitted changes (verifiable by running command with pending changes)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 07-01: TBD
+- [ ] 07-01-PLAN.md -- Build agentcom-git CLI tool (start-task, submit, status commands)
+- [ ] 07-02-PLAN.md -- Wire git lifecycle into sidecar + human verification
 
 ### Phase 8: Onboarding
 **Goal**: Adding a new agent to the system takes one command and verifies everything works
