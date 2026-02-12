@@ -181,7 +181,9 @@ defmodule AgentCom.Socket do
       "file_hints" => task["file_hints"] || task[:file_hints] || [],
       "success_criteria" => task["success_criteria"] || task[:success_criteria] || [],
       "verification_steps" => task["verification_steps"] || task[:verification_steps] || [],
-      "complexity" => format_complexity_for_ws(task["complexity"] || task[:complexity])
+      "complexity" => format_complexity_for_ws(task["complexity"] || task[:complexity]),
+      # Routing decision (Phase 19/20) -- forwarded from Scheduler
+      "routing_decision" => format_routing_decision_for_ws(task["routing_decision"] || task[:routing_decision])
     }
 
     # Notify FSM about task assignment
@@ -643,6 +645,25 @@ defmodule AgentCom.Socket do
       end
     }
   end
+
+  defp format_routing_decision_for_ws(nil), do: nil
+  defp format_routing_decision_for_ws(rd) when is_map(rd) do
+    %{
+      "effective_tier" => safe_to_string_ws(Map.get(rd, :effective_tier, Map.get(rd, "effective_tier"))),
+      "target_type" => safe_to_string_ws(Map.get(rd, :target_type, Map.get(rd, "target_type"))),
+      "selected_endpoint" => safe_to_string_ws(Map.get(rd, :selected_endpoint, Map.get(rd, "selected_endpoint"))),
+      "selected_model" => safe_to_string_ws(Map.get(rd, :selected_model, Map.get(rd, "selected_model"))),
+      "fallback_used" => Map.get(rd, :fallback_used, Map.get(rd, "fallback_used", false)),
+      "fallback_reason" => safe_to_string_ws(Map.get(rd, :fallback_reason, Map.get(rd, "fallback_reason"))),
+      "classification_reason" => safe_to_string_ws(Map.get(rd, :classification_reason, Map.get(rd, "classification_reason"))),
+      "estimated_cost_tier" => safe_to_string_ws(Map.get(rd, :estimated_cost_tier, Map.get(rd, "estimated_cost_tier")))
+    }
+  end
+
+  defp safe_to_string_ws(nil), do: nil
+  defp safe_to_string_ws(val) when is_atom(val), do: to_string(val)
+  defp safe_to_string_ws(val) when is_binary(val), do: val
+  defp safe_to_string_ws(val), do: inspect(val)
 
   defp stringify_agent(info) do
     %{
