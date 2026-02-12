@@ -27,6 +27,7 @@ defmodule AgentCom.Application do
       {AgentCom.Scheduler, []},
       {AgentCom.DashboardState, []},
       {AgentCom.DashboardNotifier, []},
+      {AgentCom.DetsBackup, []},
       {Bandit, plug: AgentCom.Endpoint, scheme: :http, port: port()}
     ]
 
