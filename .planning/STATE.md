@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 ## Current Position
 
 Phase: 15-rate-limiting
-Plan: 3 of 4 complete
+Plan: 2 of 4 complete
 Status: In Progress
-Last activity: 2026-02-12 -- Completed 15-03-PLAN.md (Admin API for rate limit overrides and whitelist)
+Last activity: 2026-02-12 -- Completed 15-02-PLAN.md (Rate limit integration into WS, HTTP, Scheduler)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 27 (v1.1)
-- Average duration: 5 min
-- Total execution time: 2.22 hours
+- Total plans completed: 26 (v1.1)
+- Average duration: 6 min
+- Total execution time: 2.30 hours
 
 **By Phase:**
 
@@ -31,10 +31,10 @@ Last activity: 2026-02-12 -- Completed 15-03-PLAN.md (Admin API for rate limit o
 | 12-input-validation | 3 | 13 min | 4 min |
 | 13-structured-logging | 4 | 38 min | 10 min |
 | 14-metrics-alerting | 4 | 17 min | 4 min |
-| 15-rate-limiting | 3 | 14 min | 5 min |
+| 15-rate-limiting | 2 | 15 min | 8 min |
 
 **Recent Trend:**
-- Last 5 plans: 15-03 (5 min), 15-02 (5 min), 15-01 (4 min), 14-04 (4 min), 14-03 (4 min)
+- Last 5 plans: 15-02 (11 min), 15-01 (4 min), 14-04 (4 min), 14-03 (4 min), 14-02 (4 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -131,6 +131,10 @@ Recent decisions affecting current work:
 - [Phase 15-03]: ETS foldl for get_overrides/0 -- fast read without DETS GenServer round-trip
 - [Phase 15-03]: parse_override_params converts human-readable tokens/min to internal units at API boundary
 - [Phase 15-03]: Whitelist routes before parameterized :agent_id routes in Plug.Router for correct matching
+- [Phase 15]: [Phase 15-02]: rate_limit_and_handle gate function between validation and handle_msg (not inline)
+- [Phase 15]: [Phase 15-02]: HTTP warn path is no-op (allow) -- no bidirectional warning channel for HTTP
+- [Phase 15]: [Phase 15-02]: IP-based rate limiting fallback for unauthenticated HTTP routes
+- [Phase 15]: [Phase 15-02]: Exempt endpoints: /health, /dashboard, /ws, /api/schemas -- critical infrastructure
 
 ### Pending Todos
 
@@ -154,5 +158,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 15-03-PLAN.md (Admin API for overrides/whitelist). Phase 15 in progress (3/4 plans).
+Stopped at: Completed 15-02-PLAN.md (Rate limit integration into WS, HTTP, Scheduler). Phase 15 in progress (2/4 plans).
 Resume file: None
