@@ -707,6 +707,7 @@ defmodule AgentCom.TaskQueue do
   end
 
   defp dets_path(filename) do
-    Application.get_env(:agent_com, :task_queue_path, "priv/#{filename}")
+    dir = Application.get_env(:agent_com, :task_queue_path, "priv")
+    Path.join(dir, filename)
   end
 end

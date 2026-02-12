@@ -257,6 +257,7 @@ defmodule AgentCom.Channels do
   end
 
   defp dets_path(name) do
-    Application.get_env(:agent_com, :channels_path, "priv/#{name}.dets")
+    dir = Application.get_env(:agent_com, :channels_path, "priv")
+    Path.join(dir, "#{name}.dets")
   end
 end
