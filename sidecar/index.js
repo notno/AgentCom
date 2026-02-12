@@ -3,9 +3,12 @@
 const fs = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
-const writeFileAtomic = require('write-file-atomic');
-const { exec, execSync, spawnSync } = require('child_process');
 const chokidar = require('chokidar');
+
+// Extracted modules
+const { loadQueue, saveQueue, cleanupResultFiles } = require('./lib/queue');
+const { interpolateWakeCommand, execCommand, RETRY_DELAYS } = require('./lib/wake');
+const { runGitCommand } = require('./lib/git-workflow');
 
 // =============================================================================
 // 1. Config Loader
@@ -98,59 +101,9 @@ const QUEUE_PATH = path.join(__dirname, 'queue.json');
 
 let _queue = { active: null, recovering: null };
 
-function loadQueue() {
-  try {
-    const data = fs.readFileSync(QUEUE_PATH, 'utf8');
-    return JSON.parse(data);
-  } catch (err) {
-    if (err.code === 'ENOENT') return { active: null, recovering: null };
-    // Corrupted file -- fall back to empty (per research pitfall #3)
-    log('queue_corrupt', { error: err.message });
-    return { active: null, recovering: null };
-  }
-}
-
-function saveQueue(queue) {
-  // Atomic write: write to temp file, then rename
-  // Per CONTEXT.md locked decision: atomic writes to prevent corruption on crash
-  writeFileAtomic.sync(QUEUE_PATH, JSON.stringify(queue, null, 2));
-}
-
 // =============================================================================
 // 4. Wake Command Execution
 // =============================================================================
-
-const RETRY_DELAYS = [5000, 15000, 30000]; // 5s, 15s, 30s per CONTEXT.md
-
-/**
- * Interpolate template variables in wake command string.
- * Supported: ${TASK_ID}, ${TASK_JSON}, ${TASK_DESCRIPTION}
- */
-function interpolateWakeCommand(command, task) {
-  return command
-    .replace(/\$\{TASK_ID\}/g, task.task_id)
-    .replace(/\$\{TASK_JSON\}/g, JSON.stringify(task).replace(/"/g, '\\"'))
-    .replace(/\$\{TASK_DESCRIPTION\}/g, (task.description || '').replace(/"/g, '\\"'));
-}
-
-/**
- * Execute a shell command and return a promise.
- */
-function execCommand(command) {
-  return new Promise((resolve, reject) => {
-    exec(command, {
-      timeout: 60000,      // Kill if wake command itself hangs
-      shell: true,         // Required for Windows .bat/.cmd files (per research pitfall #2)
-      windowsHide: true    // Prevent cmd window popup on Windows
-    }, (error, stdout, stderr) => {
-      if (error) {
-        reject({ code: error.code, signal: error.signal, stderr, message: error.message });
-      } else {
-        resolve({ code: 0, stdout, stderr });
-      }
-    });
-  });
-}
 
 /**
  * Wake the agent with configurable command, retry logic, and confirmation timeout.
@@ -163,19 +116,19 @@ async function wakeAgent(task, hub) {
     log('wake_skipped', { task_id: task.task_id, reason: 'no wake_command configured' });
     // Update status to working directly (agent expected to self-start)
     task.status = 'working';
-    saveQueue(_queue);
+    saveQueue(QUEUE_PATH, _queue);
     return;
   }
 
   // Update status to waking
   task.status = 'waking';
-  saveQueue(_queue);
+  saveQueue(QUEUE_PATH, _queue);
 
   const interpolatedCommand = interpolateWakeCommand(wakeCommand, task);
 
   for (let attempt = 1; attempt <= RETRY_DELAYS.length + 1; attempt++) {
     task.wake_attempts = attempt;
-    saveQueue(_queue);
+    saveQueue(QUEUE_PATH, _queue);
 
     log('wake_attempt', { task_id: task.task_id, attempt, command: interpolatedCommand });
 
@@ -185,7 +138,7 @@ async function wakeAgent(task, hub) {
 
       // Successful wake -- start confirmation timeout
       task.status = 'waking_confirmation';
-      saveQueue(_queue);
+      saveQueue(QUEUE_PATH, _queue);
 
       startConfirmationTimeout(task, hub);
       return; // Exit retry loop on success
@@ -201,13 +154,13 @@ async function wakeAgent(task, hub) {
         // All retries exhausted
         log('wake_failed', { task_id: task.task_id, attempts: attempt, error: err.message });
         task.status = 'failed';
-        saveQueue(_queue);
+        saveQueue(QUEUE_PATH, _queue);
 
         hub.sendTaskFailed(task.task_id, 'wake_failed_after_3_attempts');
 
         // Clear active task
         _queue.active = null;
-        saveQueue(_queue);
+        saveQueue(QUEUE_PATH, _queue);
         return;
       }
     }
@@ -233,12 +186,12 @@ function startConfirmationTimeout(task, hub) {
 
     // Treat as wake failure -- report to hub
     task.status = 'failed';
-    saveQueue(_queue);
+    saveQueue(QUEUE_PATH, _queue);
 
     hub.sendTaskFailed(task.task_id, 'confirmation_timeout');
 
     _queue.active = null;
-    saveQueue(_queue);
+    saveQueue(QUEUE_PATH, _queue);
   }, timeout);
 
   // Store timer reference on task for cleanup
@@ -267,7 +220,7 @@ function handleConfirmation(taskId) {
 
   log('confirmation_received', { task_id: taskId });
   _queue.active.status = 'working';
-  saveQueue(_queue);
+  saveQueue(QUEUE_PATH, _queue);
 }
 
 /**
@@ -288,8 +241,8 @@ function handleResult(taskId, filePath, hub) {
     // Treat unparseable result as failure
     hub.sendTaskFailed(taskId, 'result_parse_error: ' + err.message);
     _queue.active = null;
-    saveQueue(_queue);
-    cleanupResultFiles(taskId);
+    saveQueue(QUEUE_PATH, _queue);
+    cleanupResultFiles(taskId, _config.results_dir);
     return;
   }
 
@@ -327,53 +280,10 @@ function handleResult(taskId, filePath, hub) {
 
   // Clear active task
   _queue.active = null;
-  saveQueue(_queue);
+  saveQueue(QUEUE_PATH, _queue);
 
   // Clean up result files
-  cleanupResultFiles(taskId);
-}
-
-/**
- * Delete result and started files for a completed/failed task.
- */
-function cleanupResultFiles(taskId) {
-  const resultsDir = _config.results_dir;
-  const resultFile = path.join(resultsDir, `${taskId}.json`);
-  const startedFile = path.join(resultsDir, `${taskId}.started`);
-
-  try {
-    if (fs.existsSync(resultFile)) fs.unlinkSync(resultFile);
-  } catch (err) {
-    log('cleanup_error', { file: resultFile, error: err.message });
-  }
-  try {
-    if (fs.existsSync(startedFile)) fs.unlinkSync(startedFile);
-  } catch (err) {
-    log('cleanup_error', { file: startedFile, error: err.message });
-  }
-}
-
-// =============================================================================
-// 4b. Git Workflow Integration
-// =============================================================================
-
-/**
- * Invoke agentcom-git.js as a child process.
- * Returns parsed JSON output. On error, returns { status: 'error', error: message }.
- */
-function runGitCommand(command, args) {
-  const gitCliPath = path.join(__dirname, 'agentcom-git.js');
-  const result = spawnSync('node', [gitCliPath, command, JSON.stringify(args)], {
-    encoding: 'utf-8',
-    timeout: 180000,
-    windowsHide: true
-  });
-
-  const output = (result.stdout || '').trim();
-  if (output) {
-    try { return JSON.parse(output); } catch {}
-  }
-  return { status: 'error', error: result.stderr || 'no output from agentcom-git' };
+  cleanupResultFiles(taskId, _config.results_dir);
 }
 
 // =============================================================================
@@ -645,7 +555,7 @@ class HubConnection {
 
     // Persist BEFORE acknowledging (crash between accept and persist loses the task)
     _queue.active = task;
-    saveQueue(_queue);
+    saveQueue(QUEUE_PATH, _queue);
 
     // Acknowledge to hub
     this.sendTaskAccepted(msg.task_id);
@@ -668,7 +578,7 @@ class HubConnection {
         task.git_warning = gitResult.error || 'start-task failed';
         log('git_start_task_failed', { task_id: msg.task_id, error: gitResult.error });
       }
-      saveQueue(_queue);
+      saveQueue(QUEUE_PATH, _queue);
     }
 
     // Start wake process
@@ -714,7 +624,7 @@ class HubConnection {
 
     if (_queue.recovering && _queue.recovering.task_id === taskId) {
       _queue.recovering = null;
-      saveQueue(_queue);
+      saveQueue(QUEUE_PATH, _queue);
     } else {
       log('recovery_reassign_ignored', { task_id: taskId, reason: 'not_recovering_task' });
     }
@@ -736,7 +646,7 @@ class HubConnection {
     if (_queue.recovering && _queue.recovering.task_id === taskId) {
       _queue.active = _queue.recovering;
       _queue.recovering = null;
-      saveQueue(_queue);
+      saveQueue(QUEUE_PATH, _queue);
     } else {
       log('recovery_continue_ignored', { task_id: taskId, reason: 'not_recovering_task' });
     }
@@ -821,7 +731,7 @@ function setupGracefulShutdown(hub) {
     // Stop result watcher
     stopResultWatcher();
     // Save current queue state before closing
-    saveQueue(_queue);
+    saveQueue(QUEUE_PATH, _queue);
     hub.shutdown();
     // Give a moment for the close frame to send, then exit
     setTimeout(() => {
@@ -855,13 +765,13 @@ function main() {
   });
 
   // Load persisted queue state and check for incomplete tasks (crash recovery)
-  _queue = loadQueue();
+  _queue = loadQueue(QUEUE_PATH);
   if (_queue.active) {
     log('recovery_found', { task_id: _queue.active.task_id, status: _queue.active.status });
     // Move active to recovering slot -- sidecar crashed while task was in progress
     _queue.recovering = _queue.active;
     _queue.active = null;
-    saveQueue(_queue);
+    saveQueue(QUEUE_PATH, _queue);
   }
 
   // Create connection and connect
