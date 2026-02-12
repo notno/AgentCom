@@ -74,6 +74,20 @@ defmodule AgentCom.MessageHistory do
     {:reply, {:ok, seq}, %{state | seq: seq}}
   end
 
+  @impl true
+  def handle_call(:compact, _from, state) do
+    path = :dets.info(@table, :filename)
+    :ok = :dets.close(@table)
+
+    case :dets.open_file(@table, file: path, type: :set, auto_save: 5_000, repair: :force) do
+      {:ok, @table} ->
+        {:reply, :ok, state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
   def handle_call({:query, opts}, _from, state) do
     from_filter = Keyword.get(opts, :from)
     to_filter = Keyword.get(opts, :to)

@@ -123,6 +123,20 @@ defmodule AgentCom.Mailbox do
   end
 
   @impl true
+  def handle_call(:compact, _from, state) do
+    path = :dets.info(@table, :filename)
+    :ok = :dets.close(@table)
+
+    case :dets.open_file(@table, file: path, type: :set, auto_save: 5_000, repair: :force) do
+      {:ok, @table} ->
+        {:reply, :ok, state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  @impl true
   def handle_cast({:ack, agent_id, up_to_seq}, state) do
     keys_to_delete =
       :dets.select(@table, [
@@ -132,6 +146,12 @@ defmodule AgentCom.Mailbox do
       ])
 
     Enum.each(keys_to_delete, fn key -> :dets.delete(@table, key) end)
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast(:evict_expired, state) do
+    do_evict_expired()
     {:noreply, state}
   end
 
@@ -153,12 +173,6 @@ defmodule AgentCom.Mailbox do
   def handle_info(:evict_expired, state) do
     do_evict_expired()
     Process.send_after(self(), :evict_expired, @eviction_interval_ms)
-    {:noreply, state}
-  end
-
-  @impl true
-  def handle_cast(:evict_expired, state) do
-    do_evict_expired()
     {:noreply, state}
   end
 

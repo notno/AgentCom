@@ -99,6 +99,20 @@ defmodule AgentCom.Threads do
   end
 
   @impl true
+  def handle_call({:compact, table_atom}, _from, state) when table_atom in [@messages_table, @replies_table] do
+    path = :dets.info(table_atom, :filename)
+    :ok = :dets.close(table_atom)
+
+    case :dets.open_file(table_atom, file: path, type: :set, repair: :force) do
+      {:ok, ^table_atom} ->
+        {:reply, :ok, state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  @impl true
   def terminate(_reason, _state) do
     :dets.close(@messages_table)
     :dets.close(@replies_table)

@@ -54,6 +54,20 @@ defmodule AgentCom.Config do
   end
 
   @impl true
+  def handle_call(:compact, _from, state) do
+    path = :dets.info(@table, :filename)
+    :ok = :dets.close(@table)
+
+    case :dets.open_file(@table, file: path, type: :set, repair: :force) do
+      {:ok, @table} ->
+        {:reply, :ok, state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  @impl true
   def terminate(_reason, _state) do
     :dets.close(@table)
   end

@@ -548,6 +548,22 @@ defmodule AgentCom.TaskQueue do
     end
   end
 
+  # -- compact -----------------------------------------------------------------
+
+  @impl true
+  def handle_call({:compact, table_atom}, _from, state) when table_atom in [@tasks_table, @dead_letter_table] do
+    path = :dets.info(table_atom, :filename)
+    :ok = :dets.close(table_atom)
+
+    case :dets.open_file(table_atom, file: path, type: :set, auto_save: 5_000, repair: :force) do
+      {:ok, ^table_atom} ->
+        {:reply, :ok, state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
   # -- stats -------------------------------------------------------------------
 
   @impl true
