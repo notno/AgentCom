@@ -94,39 +94,39 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TEST-01 | TBD | Pending |
-| TEST-02 | TBD | Pending |
-| TEST-03 | TBD | Pending |
-| TEST-04 | TBD | Pending |
-| TEST-05 | TBD | Pending |
-| TEST-06 | TBD | Pending |
-| VALID-01 | TBD | Pending |
-| VALID-02 | TBD | Pending |
-| VALID-03 | TBD | Pending |
-| VALID-04 | TBD | Pending |
-| DETS-01 | TBD | Pending |
-| DETS-02 | TBD | Pending |
-| DETS-03 | TBD | Pending |
-| DETS-04 | TBD | Pending |
-| DETS-05 | TBD | Pending |
-| OBS-01 | TBD | Pending |
-| OBS-02 | TBD | Pending |
-| OBS-03 | TBD | Pending |
-| OBS-04 | TBD | Pending |
-| OBS-05 | TBD | Pending |
-| RATE-01 | TBD | Pending |
-| RATE-02 | TBD | Pending |
-| RATE-03 | TBD | Pending |
-| RATE-04 | TBD | Pending |
-| OPS-01 | TBD | Pending |
-| OPS-02 | TBD | Pending |
-| OPS-03 | TBD | Pending |
+| TEST-01 | Phase 9 | Pending |
+| TEST-02 | Phase 9 | Pending |
+| TEST-03 | Phase 9 | Pending |
+| TEST-04 | Phase 9 | Pending |
+| TEST-05 | Phase 9 | Pending |
+| TEST-06 | Phase 9 | Pending |
+| VALID-01 | Phase 12 | Pending |
+| VALID-02 | Phase 12 | Pending |
+| VALID-03 | Phase 12 | Pending |
+| VALID-04 | Phase 12 | Pending |
+| DETS-01 | Phase 10 | Pending |
+| DETS-02 | Phase 10 | Pending |
+| DETS-03 | Phase 11 | Pending |
+| DETS-04 | Phase 10 | Pending |
+| DETS-05 | Phase 11 | Pending |
+| OBS-01 | Phase 13 | Pending |
+| OBS-02 | Phase 13 | Pending |
+| OBS-03 | Phase 14 | Pending |
+| OBS-04 | Phase 14 | Pending |
+| OBS-05 | Phase 14 | Pending |
+| RATE-01 | Phase 15 | Pending |
+| RATE-02 | Phase 15 | Pending |
+| RATE-03 | Phase 15 | Pending |
+| RATE-04 | Phase 15 | Pending |
+| OPS-01 | Phase 16 | Pending |
+| OPS-02 | Phase 16 | Pending |
+| OPS-03 | Phase 16 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 24 total
-- Mapped to phases: 0
-- Unmapped: 24
+- Mapped to phases: 24
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-11*
-*Last updated: 2026-02-11 after initial definition*
+*Last updated: 2026-02-11 after roadmap creation*
