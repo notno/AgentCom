@@ -233,7 +233,14 @@ defmodule AgentCom.Scheduler do
           task_id: assigned_task.id,
           description: assigned_task.description,
           metadata: assigned_task.metadata,
-          generation: assigned_task.generation
+          generation: assigned_task.generation,
+          # Enrichment fields (Phase 17)
+          repo: Map.get(assigned_task, :repo),
+          branch: Map.get(assigned_task, :branch),
+          file_hints: Map.get(assigned_task, :file_hints, []),
+          success_criteria: Map.get(assigned_task, :success_criteria, []),
+          verification_steps: Map.get(assigned_task, :verification_steps, []),
+          complexity: Map.get(assigned_task, :complexity)
         }
 
         :telemetry.execute(

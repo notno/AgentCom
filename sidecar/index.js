@@ -524,7 +524,14 @@ class HubConnection {
       status: 'accepted',
       assigned_at: msg.assigned_at || Date.now(),
       generation: msg.generation || 0,
-      wake_attempts: 0
+      wake_attempts: 0,
+      // Enrichment fields (Phase 17)
+      repo: msg.repo || null,
+      branch: msg.branch || null,
+      file_hints: msg.file_hints || [],
+      success_criteria: msg.success_criteria || [],
+      verification_steps: msg.verification_steps || [],
+      complexity: msg.complexity || null
     };
 
     // Persist BEFORE acknowledging (crash between accept and persist loses the task)

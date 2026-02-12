@@ -174,7 +174,14 @@ defmodule AgentCom.Socket do
       "description" => task["description"] || task[:description] || "",
       "metadata" => task["metadata"] || task[:metadata] || %{},
       "generation" => task["generation"] || task[:generation] || 0,
-      "assigned_at" => System.system_time(:millisecond)
+      "assigned_at" => System.system_time(:millisecond),
+      # Enrichment fields (Phase 17)
+      "repo" => task["repo"] || task[:repo],
+      "branch" => task["branch"] || task[:branch],
+      "file_hints" => task["file_hints"] || task[:file_hints] || [],
+      "success_criteria" => task["success_criteria"] || task[:success_criteria] || [],
+      "verification_steps" => task["verification_steps"] || task[:verification_steps] || [],
+      "complexity" => format_complexity_for_ws(task["complexity"] || task[:complexity])
     }
 
     # Notify FSM about task assignment
@@ -566,6 +573,25 @@ defmodule AgentCom.Socket do
   defp reply_error(reason, state) do
     reply = Jason.encode!(%{"type" => "error", "error" => reason})
     {:push, {:text, reply}, state}
+  end
+
+  defp format_complexity_for_ws(nil), do: nil
+  defp format_complexity_for_ws(c) when is_map(c) do
+    %{
+      "effective_tier" => to_string(Map.get(c, :effective_tier, Map.get(c, "effective_tier"))),
+      "source" => to_string(Map.get(c, :source, Map.get(c, "source"))),
+      "explicit_tier" => case Map.get(c, :explicit_tier, Map.get(c, "explicit_tier")) do
+        nil -> nil
+        t -> to_string(t)
+      end,
+      "inferred" => case Map.get(c, :inferred, Map.get(c, "inferred")) do
+        nil -> nil
+        inf -> %{
+          "tier" => to_string(Map.get(inf, :tier, Map.get(inf, "tier"))),
+          "confidence" => Map.get(inf, :confidence, Map.get(inf, "confidence"))
+        }
+      end
+    }
   end
 
   defp stringify_agent(info) do
