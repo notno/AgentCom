@@ -10,27 +10,27 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 ## Current Position
 
 Phase: 9 of 16 (Testing Infrastructure)
-Plan: 5 of 6 in current phase
+Plan: 2 of 6 in current phase
 Status: Executing
-Last activity: 2026-02-12 -- Completed 09-05 (sidecar unit tests)
+Last activity: 2026-02-12 -- Completed 09-01 (test infrastructure foundation)
 
 Progress: [█░░░░░░░░░] 10%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1 (v1.1)
-- Average duration: 5 min
-- Total execution time: 0.08 hours
+- Total plans completed: 2 (v1.1)
+- Average duration: 6 min
+- Total execution time: 0.2 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 09-testing | 1 | 5 min | 5 min |
+| 09-testing | 2 | 12 min | 6 min |
 
 **Recent Trend:**
-- Last 5 plans: 09-05 (5 min)
+- Last 5 plans: 09-05 (5 min), 09-01 (7 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -48,6 +48,8 @@ Recent decisions affecting current work:
 - [Roadmap]: Structured logging before metrics/alerting -- telemetry events are prerequisite for aggregation
 - [09-05]: node:test (built-in) for sidecar tests -- zero external test deps
 - [09-05]: Extract functions with path params for testability -- no global state in modules
+- [Phase 09-01]: Directory-based DETS paths for multi-table modules instead of single-file paths
+- [Phase 09-01]: import_config pattern with dev/prod stubs for environment-specific config
 
 ### Pending Todos
 
@@ -60,10 +62,10 @@ None.
 - [Tech debt]: VAPID keys ephemeral -- push subscriptions lost on hub restart
 - [Tech debt]: Analytics and Threads modules orphaned (not exposed via API)
 - [Research]: DETS compaction copy-and-swap strategy has sparse documentation (Phase 11)
-- [Research]: Config and Threads hardcode DETS paths -- must refactor to Application.get_env in Phase 9
+- [Resolved 09-01]: Config and Threads now use Application.get_env for DETS paths
 
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 09-05-PLAN.md (sidecar unit tests)
+Stopped at: Completed 09-01-PLAN.md (test infrastructure foundation)
 Resume file: None
