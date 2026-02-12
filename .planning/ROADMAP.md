@@ -86,10 +86,12 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. DETS compaction/defragmentation runs on a configurable schedule without blocking normal operations for more than 1 second per table
   2. A documented and tested recovery procedure restores DETS tables from backup after corruption, with verified data integrity
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 11-01: TBD
+- [ ] 11-01-PLAN.md -- Compaction core (handle_calls in all DETS-owning GenServers + DetsBackup orchestration/scheduling)
+- [ ] 11-02-PLAN.md -- Recovery core (restore from backup, integrity verification, corruption detection, degraded mode)
+- [ ] 11-03-PLAN.md -- API endpoints + dashboard integration (manual compact/restore, compaction history, push notifications)
 
 ### Phase 12: Input Validation
 **Goal**: All external input is validated before reaching GenServers, preventing crashes and malformed state
@@ -170,7 +172,7 @@ Phases execute in numeric order: 9 -> 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16
 |-------|-----------|----------------|--------|-----------|
 | 9. Testing Infrastructure | v1.1 | 7/7 | Complete | 2026-02-11 |
 | 10. DETS Backup + Monitoring | v1.1 | 2/2 | Complete | 2026-02-11 |
-| 11. DETS Compaction + Recovery | v1.1 | 0/TBD | Not started | - |
+| 11. DETS Compaction + Recovery | v1.1 | 0/3 | Not started | - |
 | 12. Input Validation | v1.1 | 0/3 | Planned | - |
 | 13. Structured Logging + Telemetry | v1.1 | 0/TBD | Not started | - |
 | 14. Metrics + Alerting | v1.1 | 0/TBD | Not started | - |
