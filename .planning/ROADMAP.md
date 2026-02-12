@@ -137,12 +137,13 @@ Plans:
   1. A completed task includes a structured verification report showing pass/fail for each verification step
   2. Pre-built verification step types (file_exists, test_passes, git_clean, command_succeeds) work out of the box when specified in a task
   3. Mechanical verification (compile, tests, file existence) runs before any LLM-based judgment in the verification pipeline
-**Plans**: 3 plans
+**Plans**: 4 plans
 
 Plans:
 - [ ] 21-01-PLAN.md -- Verification report structure and DETS-backed Store (TDD)
 - [ ] 21-02-PLAN.md -- Sidecar verification runner with 4 check types
 - [ ] 21-03-PLAN.md -- Hub pipeline wiring and dashboard rendering
+- [ ] 21-04-PLAN.md -- Gap closure: Fix Store name registration and save/2 wiring
 
 ### Phase 22: Self-Verification Loop
 **Goal**: Agents that fail verification automatically retry with corrective action, only submitting when checks pass or retry budget is exhausted
