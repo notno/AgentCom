@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.2 Smart Agent Pipeline -- Phase 19 Complete
+**Current focus:** v1.2 Smart Agent Pipeline -- Phase 20 In Progress
 
 ## Current Position
 
-Phase: 19 of 22 (Model-Aware Scheduler)
-Plan: 4 of 4
-Status: Phase Complete
-Last activity: 2026-02-12 -- Completed 19-04 Dashboard Routing Visibility
+Phase: 20 of 22 (Sidecar Execution)
+Plan: 1 of 4
+Status: In Progress
+Last activity: 2026-02-12 -- Completed 20-01 Cost Calculator & Progress Emitter
 
 Progress: [████░░░░░░] 45%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 65 (19 v1.0 + 32 v1.1 + 14 v1.2)
+- Total plans completed: 66 (19 v1.0 + 32 v1.1 + 15 v1.2)
 - Average duration: 5 min
 - Total execution time: 4.3 hours
 
@@ -37,7 +37,7 @@ Progress: [████░░░░░░] 45%
 | 16-operations-docs | 4 | 14 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 19-04 (6 min), 19-03 (5 min), 19-02 (7 min), 21-03 (5 min), 21-01 (3 min)
+- Last 5 plans: 20-01 (2 min), 19-04 (6 min), 19-03 (5 min), 19-02 (7 min), 21-03 (5 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -55,6 +55,7 @@ Progress: [████░░░░░░] 45%
 | Phase 21 P03 | 5min | 2 tasks | 8 files |
 | Phase 19 P04 | 6min | 2 tasks | 3 files |
 | Phase 19 P03 | 5min | 2 tasks | 4 files |
+| Phase 20 P01 | 2min | 1 task (TDD) | 4 files |
 
 ## Accumulated Context
 
@@ -120,6 +121,10 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - 19-03: TTL sweep exempts trivial-tier tasks from expiry (execute locally regardless of tier availability)
 - 19-03: expire_task moves queued tasks to dead_letter with reason "ttl_expired" (reuses existing mechanism)
 - 19-03: Fallback timeout reads Config.get(:fallback_wait_ms) at timer creation time (runtime configurable)
+- 20-01: Sonnet baseline (_claude_equivalent) for Ollama savings comparison
+- 20-01: Prefix match after exact match for model variants with tags (e.g. claude-sonnet-4.5:latest)
+- 20-01: First token flushes immediately, subsequent tokens batched until interval fires
+- 20-01: Ollama models with zero tokens return null equivalent_claude_cost_usd (no savings to show)
 
 ### Pending Todos
 
@@ -147,5 +152,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 19-04-PLAN.md (Dashboard Routing Visibility) -- Phase 19 complete
+Stopped at: Completed 20-01-PLAN.md (Cost Calculator & Progress Emitter)
 Resume file: None
