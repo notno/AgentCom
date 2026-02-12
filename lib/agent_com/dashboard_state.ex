@@ -415,6 +415,10 @@ defmodule AgentCom.DashboardState do
     verification_report = Map.get(task, :verification_report)
     routing_decision = Map.get(task, :routing_decision)
 
+    # Extract execution metadata from result map (Phase 20: cost tracking)
+    result = Map.get(task, :result) || %{}
+    execution_meta = extract_execution_meta(result)
+
     entry = %{
       task_id: task_id,
       agent_id: agent_id,
@@ -423,7 +427,8 @@ defmodule AgentCom.DashboardState do
       tokens_used: tokens_used,
       completed_at: now,
       verification_report: verification_report,
-      routing_decision: format_routing_decision_for_dashboard(routing_decision)
+      routing_decision: format_routing_decision_for_dashboard(routing_decision),
+      execution_meta: execution_meta
     }
 
     # Ring buffer: prepend and cap at @ring_buffer_cap
@@ -605,6 +610,38 @@ defmodule AgentCom.DashboardState do
   defp safe_to_string_or_nil(val) when is_atom(val), do: to_string(val)
   defp safe_to_string_or_nil(val) when is_binary(val), do: val
   defp safe_to_string_or_nil(val), do: inspect(val)
+
+  # Extract execution metadata from the task result map.
+  # The dispatcher stores model_used, tokens_in, tokens_out, estimated_cost_usd,
+  # equivalent_claude_cost_usd, and execution_ms in the result map.
+  # Keys may be strings (from JSON) or atoms.
+  defp extract_execution_meta(result) when is_map(result) do
+    get = fn key ->
+      Map.get(result, key) || Map.get(result, to_string(key))
+    end
+
+    model_used = get.(:model_used)
+    tokens_in = get.(:tokens_in)
+    tokens_out = get.(:tokens_out)
+    estimated_cost_usd = get.(:estimated_cost_usd)
+    equivalent_claude_cost_usd = get.(:equivalent_claude_cost_usd)
+    execution_ms = get.(:execution_ms)
+
+    # Only include if any execution metadata is present
+    if model_used || tokens_in || tokens_out || estimated_cost_usd do
+      %{
+        model_used: model_used,
+        tokens_in: tokens_in,
+        tokens_out: tokens_out,
+        estimated_cost_usd: estimated_cost_usd,
+        equivalent_claude_cost_usd: equivalent_claude_cost_usd,
+        execution_ms: execution_ms
+      }
+    else
+      nil
+    end
+  end
+  defp extract_execution_meta(_), do: nil
 
   defp compute_routing_stats(tasks) do
     routed_tasks =

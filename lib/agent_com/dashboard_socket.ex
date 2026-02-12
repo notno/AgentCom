@@ -108,6 +108,23 @@ defmodule AgentCom.DashboardSocket do
 
   # -- PubSub events: accumulate into pending_events ---------------------------
 
+  # Execution progress events push directly (not batched) for real-time streaming.
+  # ProgressEmitter on the sidecar already batches at 100ms, so no additional
+  # batching needed here.
+  @impl true
+  def handle_info({:task_event, %{event: :execution_progress, task_id: task_id, execution_event: event}}, state) do
+    push = %{
+      "type" => "execution_event",
+      "task_id" => task_id,
+      "event_type" => event["event_type"] || Map.get(event, :event_type),
+      "text" => event["text"] || Map.get(event, :text, ""),
+      "tokens_so_far" => event["tokens_so_far"] || Map.get(event, :tokens_so_far),
+      "model" => event["model"] || Map.get(event, :model),
+      "timestamp" => event["timestamp"] || Map.get(event, :timestamp)
+    }
+    {:push, {:text, Jason.encode!(push)}, state}
+  end
+
   @impl true
   def handle_info({:task_event, event}, state) do
     formatted = %{
