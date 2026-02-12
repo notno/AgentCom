@@ -238,7 +238,8 @@ defmodule AgentCom.TaskQueue do
       success_criteria: Map.get(params, :success_criteria, Map.get(params, "success_criteria", [])),
       verification_steps: Map.get(params, :verification_steps, Map.get(params, "verification_steps", [])),
       complexity: AgentCom.Complexity.build(params),
-      routing_decision: nil
+      routing_decision: nil,
+      verification_report: nil
     }
 
     complexity = task.complexity
@@ -403,18 +404,41 @@ defmodule AgentCom.TaskQueue do
         now = System.system_time(:millisecond)
         tokens_used = Map.get(result_params, :tokens_used, Map.get(result_params, "tokens_used"))
         result = Map.get(result_params, :result, Map.get(result_params, "result"))
+        verification_report = Map.get(result_params, :verification_report, Map.get(result_params, "verification_report"))
 
         updated =
           %{task |
             status: :completed,
             result: result,
             tokens_used: tokens_used,
+            verification_report: verification_report,
             updated_at: now,
             history:
               cap_history([{:completed, now, %{tokens_used: tokens_used}} | task.history])
           }
 
         persist_task(updated, @tasks_table)
+
+        # Persist verification report to Store and emit telemetry
+        if verification_report do
+          AgentCom.Verification.Store.save(task_id, verification_report)
+
+          summary = Map.get(verification_report, "summary", %{})
+          :telemetry.execute(
+            [:agent_com, :verification, :run],
+            %{
+              duration_ms: Map.get(verification_report, "duration_ms", 0),
+              checks_passed: Map.get(summary, "passed", 0),
+              checks_failed: Map.get(summary, "failed", 0)
+            },
+            %{
+              task_id: task_id,
+              status: Map.get(verification_report, "status", "unknown"),
+              total_checks: Map.get(summary, "total", 0)
+            }
+          )
+        end
+
         broadcast_task_event(:task_completed, updated)
 
         :telemetry.execute(

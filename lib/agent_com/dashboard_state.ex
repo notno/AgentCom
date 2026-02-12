@@ -401,13 +401,16 @@ defmodule AgentCom.DashboardState do
         assigned_at -> now - assigned_at
       end
 
+    verification_report = Map.get(task, :verification_report)
+
     entry = %{
       task_id: task_id,
       agent_id: agent_id,
       description: description,
       duration_ms: duration_ms,
       tokens_used: tokens_used,
-      completed_at: now
+      completed_at: now,
+      verification_report: verification_report
     }
 
     # Ring buffer: prepend and cap at @ring_buffer_cap

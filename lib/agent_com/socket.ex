@@ -405,10 +405,12 @@ defmodule AgentCom.Socket do
     generation = msg["generation"] || 0
     result = msg["result"] || %{}
     tokens_used = msg["tokens_used"] || result["tokens_used"]
+    verification_report = msg["verification_report"]
 
     case AgentCom.TaskQueue.complete_task(task_id, generation, %{
       result: result,
-      tokens_used: tokens_used
+      tokens_used: tokens_used,
+      verification_report: verification_report
     }) do
       {:ok, _task} ->
         AgentCom.AgentFSM.task_completed(state.agent_id)

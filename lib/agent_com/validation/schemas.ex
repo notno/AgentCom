@@ -148,7 +148,8 @@ defmodule AgentCom.Validation.Schemas do
       },
       optional: %{
         "result" => :map,
-        "tokens_used" => :integer
+        "tokens_used" => :integer,
+        "verification_report" => :map
       },
       description: "Sidecar reports task completion with result."
     },

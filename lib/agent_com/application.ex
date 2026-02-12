@@ -43,6 +43,7 @@ defmodule AgentCom.Application do
       {AgentCom.Reaper, []},
       {Registry, keys: :unique, name: AgentCom.AgentFSMRegistry},
       {AgentCom.AgentSupervisor, []},
+      {AgentCom.Verification.Store, []},
       {AgentCom.TaskQueue, []},
       {AgentCom.Scheduler, []},
       {AgentCom.MetricsCollector, []},

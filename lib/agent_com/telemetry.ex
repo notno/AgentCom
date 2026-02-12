@@ -88,6 +88,12 @@ defmodule AgentCom.Telemetry do
     measurements: `%{wait_ms: integer}`
     metadata: `%{task_id, original_tier, fallback_tier}`
 
+  ### Verification
+
+  - `[:agent_com, :verification, :run]` - Verification completed for a task
+    measurements: `%{duration_ms: integer, checks_passed: integer, checks_failed: integer}`
+    metadata: `%{task_id, status, total_checks}`
+
   ### DETS Operations (span events with :start/:stop/:exception)
 
   - `[:agent_com, :dets, :backup, :start/:stop/:exception]` - Backup operation
@@ -129,6 +135,8 @@ defmodule AgentCom.Telemetry do
       # Scheduler Routing
       [:agent_com, :scheduler, :route],
       [:agent_com, :scheduler, :fallback],
+      # Verification
+      [:agent_com, :verification, :run],
       # DETS spans (start/stop/exception for each operation)
       [:agent_com, :dets, :backup, :start],
       [:agent_com, :dets, :backup, :stop],
