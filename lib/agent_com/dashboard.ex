@@ -198,6 +198,28 @@ defmodule AgentCom.Dashboard do
         .badge.completed { background: rgba(74, 222, 128, 0.15); color: #4ade80; }
         .badge.failed, .badge.dead_letter { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
 
+        /* === Verification Badges === */
+        .vbadge {
+          display: inline-block; padding: 2px 8px; border-radius: 10px;
+          font-size: 0.75em; font-weight: 600; text-transform: uppercase; cursor: default;
+        }
+        .vbadge.vpass { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+        .vbadge.vfail { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+        .vbadge.vtimeout { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+        .vbadge.vskip { background: rgba(107, 114, 128, 0.15); color: #6b7280; }
+        .vbadge.verror { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+        .verify-details { margin-top: 4px; }
+        .verify-details summary { cursor: pointer; font-size: 0.8em; color: #888; }
+        .verify-details summary:hover { color: #bbb; }
+        .verify-check { font-size: 0.8em; padding: 2px 0; display: flex; align-items: center; gap: 6px; }
+        .verify-check .vc-icon { width: 14px; text-align: center; flex-shrink: 0; }
+        .verify-check .vc-pass { color: #22c55e; }
+        .verify-check .vc-fail { color: #ef4444; }
+        .verify-check .vc-time { color: #6b7280; font-size: 0.85em; margin-left: auto; }
+        .verify-output { font-family: monospace; font-size: 0.75em; color: #999; background: #111118;
+          padding: 4px 6px; border-radius: 4px; margin: 2px 0 4px 20px; max-height: 80px;
+          overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+
         /* === Queue Cards === */
         .queue-cards { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
         .queue-card {
@@ -616,7 +638,7 @@ defmodule AgentCom.Dashboard do
                   <th onclick="sortTable('recent-table', 2)">Status <span class="sort-arrow" id="sort-2"></span></th>
                   <th onclick="sortTable('recent-table', 3)">Duration <span class="sort-arrow" id="sort-3"></span></th>
                   <th onclick="sortTable('recent-table', 4)">Tokens <span class="sort-arrow" id="sort-4"></span></th>
-                  <th onclick="sortTable('recent-table', 5)">PR <span class="sort-arrow" id="sort-5"></span></th>
+                  <th onclick="sortTable('recent-table', 5)">Verify <span class="sort-arrow" id="sort-5"></span></th>
                   <th onclick="sortTable('recent-table', 6)">Completed <span class="sort-arrow active" id="sort-6">&#9660;</span></th>
                 </tr>
               </thead>
@@ -896,6 +918,41 @@ defmodule AgentCom.Dashboard do
           if (!str) return '--';
           str = String(str);
           return str.length > len ? str.substring(0, len) + '...' : str;
+        }
+
+        function renderVerifyBadge(report) {
+          if (!report) return '<span style="color:#555">---</span>';
+          var status = report.status || 'unknown';
+          var cls = 'vskip';
+          var label = status;
+          if (status === 'pass') { cls = 'vpass'; label = 'Verified'; }
+          else if (status === 'fail') { cls = 'vfail'; label = 'Failed'; }
+          else if (status === 'error') { cls = 'verror'; label = 'Error'; }
+          else if (status === 'timeout') { cls = 'vtimeout'; label = 'Timeout'; }
+          else if (status === 'auto_pass') { cls = 'vskip'; label = 'Auto'; }
+          else if (status === 'skip') { cls = 'vskip'; label = 'Skip'; }
+
+          var summary = report.summary || {};
+          var checks = report.checks || [];
+          var html = '<span class="vbadge ' + cls + '">' + escapeHtml(label) + '</span>';
+
+          if (checks.length > 0) {
+            var sumText = (summary.passed || 0) + '/' + (summary.total || checks.length) + ' passed';
+            if (report.duration_ms) sumText += ' (' + formatDuration(report.duration_ms) + ')';
+            html += '<details class="verify-details"><summary>' + escapeHtml(sumText) + '</summary>';
+            checks.forEach(function(chk) {
+              var passed = chk.passed || chk.status === 'pass';
+              var icon = passed ? '<span class="vc-icon vc-pass">&#x2713;</span>' : '<span class="vc-icon vc-fail">&#x2717;</span>';
+              var target = chk.target ? ' ' + escapeHtml(truncate(chk.target, 30)) : '';
+              var dur = chk.duration_ms ? '<span class="vc-time">' + chk.duration_ms + 'ms</span>' : '';
+              html += '<div class="verify-check">' + icon + escapeHtml(chk.type || '') + target + dur + '</div>';
+              if (!passed && chk.output) {
+                html += '<div class="verify-output">' + escapeHtml(truncate(chk.output, 200)) + '</div>';
+              }
+            });
+            html += '</details>';
+          }
+          return html;
         }
 
         function priorityName(p) {
@@ -1555,7 +1612,7 @@ defmodule AgentCom.Dashboard do
               case 2: aVal = 'completed'; bVal = 'completed'; break;
               case 3: aVal = a.duration_ms || 0; bVal = b.duration_ms || 0; break;
               case 4: aVal = a.tokens_used || 0; bVal = b.tokens_used || 0; break;
-              case 5: aVal = ''; bVal = ''; break;
+              case 5: aVal = (a.verification_report || {}).status || ''; bVal = (b.verification_report || {}).status || ''; break;
               case 6: aVal = a.completed_at || 0; bVal = b.completed_at || 0; break;
               default: aVal = 0; bVal = 0;
             }
@@ -1582,7 +1639,7 @@ defmodule AgentCom.Dashboard do
               '<td><span class="badge completed">completed</span></td>' +
               '<td data-sort="' + (c.duration_ms || 0) + '">' + formatDuration(c.duration_ms) + '</td>' +
               '<td>' + (c.tokens_used || 0) + '</td>' +
-              '<td>---</td>' +
+              '<td>' + renderVerifyBadge(c.verification_report) + '</td>' +
               '<td data-sort="' + (c.completed_at || 0) + '">' + timeAgo(c.completed_at) + '</td>' +
               '</tr>';
           }).join('');
