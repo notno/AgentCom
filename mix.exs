@@ -27,6 +27,7 @@ defmodule AgentCom.MixProject do
       {:websock_adapter, "~> 0.5"},
       {:plug, "~> 1.15"},
       {:web_push_elixir, "~> 0.4"},
+      {:logger_json, "~> 7.0"},
       {:fresh, "~> 0.4.4", only: [:dev, :test]}
     ]
   end
