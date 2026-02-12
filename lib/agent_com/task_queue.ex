@@ -153,6 +153,11 @@ defmodule AgentCom.TaskQueue do
     GenServer.call(__MODULE__, {:reclaim_task, task_id})
   end
 
+  @doc "Store routing decision on a task. Called by Scheduler after routing."
+  def store_routing_decision(task_id, routing_decision) do
+    GenServer.call(__MODULE__, {:store_routing_decision, task_id, routing_decision})
+  end
+
   @doc "Return queue statistics: counts by status and by priority."
   def stats do
     GenServer.call(__MODULE__, :stats)
@@ -232,7 +237,8 @@ defmodule AgentCom.TaskQueue do
       file_hints: Map.get(params, :file_hints, Map.get(params, "file_hints", [])),
       success_criteria: Map.get(params, :success_criteria, Map.get(params, "success_criteria", [])),
       verification_steps: Map.get(params, :verification_steps, Map.get(params, "verification_steps", [])),
-      complexity: AgentCom.Complexity.build(params)
+      complexity: AgentCom.Complexity.build(params),
+      routing_decision: nil
     }
 
     complexity = task.complexity
@@ -613,6 +619,24 @@ defmodule AgentCom.TaskQueue do
 
       {:error, :not_found} ->
         {:reply, {:error, :not_found}, state}
+    end
+  end
+
+  # -- store_routing_decision --------------------------------------------------
+
+  @impl true
+  def handle_call({:store_routing_decision, task_id, routing_decision}, _from, state) do
+    case lookup_task(task_id) do
+      {:ok, task} ->
+        updated = %{task | routing_decision: routing_decision}
+        persist_task(updated, @tasks_table)
+        {:reply, {:ok, updated}, state}
+
+      {:error, :not_found} ->
+        {:reply, {:error, :not_found}, state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
     end
   end
 

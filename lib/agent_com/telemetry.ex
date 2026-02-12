@@ -77,6 +77,17 @@ defmodule AgentCom.Telemetry do
     measurements: `%{}`
     metadata: `%{task_id, agent_id}`
 
+  ### Scheduler Routing
+
+  - `[:agent_com, :scheduler, :route]` - Task routing decision made
+    measurements: `%{candidate_count: integer, scoring_duration_us: integer}`
+    metadata: `%{task_id, effective_tier, target_type, selected_endpoint, selected_model,
+                  fallback_used, fallback_reason, classification_reason, estimated_cost_tier}`
+
+  - `[:agent_com, :scheduler, :fallback]` - Fallback timer fired for a task
+    measurements: `%{wait_ms: integer}`
+    metadata: `%{task_id, original_tier, fallback_tier}`
+
   ### DETS Operations (span events with :start/:stop/:exception)
 
   - `[:agent_com, :dets, :backup, :start/:stop/:exception]` - Backup operation
@@ -115,6 +126,9 @@ defmodule AgentCom.Telemetry do
       # Scheduler
       [:agent_com, :scheduler, :attempt],
       [:agent_com, :scheduler, :match],
+      # Scheduler Routing
+      [:agent_com, :scheduler, :route],
+      [:agent_com, :scheduler, :fallback],
       # DETS spans (start/stop/exception for each operation)
       [:agent_com, :dets, :backup, :start],
       [:agent_com, :dets, :backup, :stop],
