@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 21 of 22 (Verification Infrastructure)
-Plan: 2 of 3
-Status: Executing
-Last activity: 2026-02-12 -- Completed 21-02 Sidecar Verification Runner
+Plan: 3 of 3
+Status: Phase Complete
+Last activity: 2026-02-12 -- Completed 21-03 Hub Pipeline Integration
 
-Progress: [██░░░░░░░░] 35%
+Progress: [███░░░░░░░] 40%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 61 (19 v1.0 + 32 v1.1 + 10 v1.2)
+- Total plans completed: 62 (19 v1.0 + 32 v1.1 + 11 v1.2)
 - Average duration: 5 min
 - Total execution time: 4.3 hours
 
@@ -37,7 +37,7 @@ Progress: [██░░░░░░░░] 35%
 | 16-operations-docs | 4 | 14 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 21-01 (3 min), 21-02 (3 min), 19-01 (4 min), 18-04 (8 min), 18-03 (11 min)
+- Last 5 plans: 21-03 (5 min), 21-01 (3 min), 21-02 (3 min), 19-01 (4 min), 18-04 (8 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -51,6 +51,7 @@ Progress: [██░░░░░░░░] 35%
 | Phase 19 P01 | 4min | 1 task (TDD) | 4 files |
 | Phase 21 P01 | 3min | 2 tasks (TDD) | 4 files |
 | Phase 21 P02 | 3min | 2 tasks | 2 files |
+| Phase 21 P03 | 5min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -99,14 +100,18 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - 21-02: verification_report as top-level WS field in task_complete (not nested in result)
 - 21-02: Git push skipped when verification fails/errors (broken code stays local)
 - 21-02: Test auto-detection priority: mix.exs > package.json > Makefile
+- 21-03: verification_report stored directly on task map (no separate Store lookup for API/dashboard)
+- 21-03: Verification.Store.save called inline in complete_task (Store starts before TaskQueue)
+- 21-03: Dashboard Verify column replaces unused PR column in recent tasks table
+- 21-03: details/summary HTML for expandable check results (no JavaScript handlers needed)
 
 ### Pending Todos
 
-1. Investigate reusing existing agents by name during onboarding (area: api)
-2. Analyze scalability bottlenecks and machine vs agent scaling tradeoffs (area: architecture)
-3. Pipeline phase discussions and research ahead of execution (area: planning)
-4. Pre-publication repo cleanup synthesized from agent audits (area: general)
-5. Multi-project fallback queue for idle agent utilization (area: architecture)
+1. Analyze scalability bottlenecks and machine vs agent scaling tradeoffs (area: architecture)
+2. Pipeline phase discussions and research ahead of execution (area: planning)
+3. Pre-publication repo cleanup synthesized from agent audits (area: general)
+4. Multi-project fallback queue for idle agent utilization (area: architecture)
+5. Dashboard task submission UI (area: ui)
 
 ### Blockers/Concerns
 
@@ -126,5 +131,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 21-01-PLAN.md (Report Store) and 21-02-PLAN.md (Sidecar Verification Runner)
+Stopped at: Completed 21-03-PLAN.md (Hub Pipeline Integration) -- Phase 21 complete
 Resume file: None
