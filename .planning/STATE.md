@@ -17,9 +17,9 @@ Last activity: 2026-02-12 -- Completed 12-01-PLAN.md (core validation module, sc
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13 (v1.1)
+- Total plans completed: 14 (v1.1)
 - Average duration: 5 min
-- Total execution time: 1.0 hours
+- Total execution time: 1.1 hours
 
 **By Phase:**
 
@@ -27,11 +27,11 @@ Last activity: 2026-02-12 -- Completed 12-01-PLAN.md (core validation module, sc
 |-------|-------|-------|----------|
 | 09-testing | 7 | 33 min | 5 min |
 | 10-dets-backup | 3 | 8 min | 3 min |
-| 11-dets-compaction | 2 | 10 min | 5 min |
+| 11-dets-compaction | 3 | 15 min | 5 min |
 | 12-input-validation | 1 | 4 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 12-01 (4 min), 11-02 (5 min), 11-01 (5 min), 10-03 (2 min), 10-02 (4 min)
+- Last 5 plans: 12-01 (4 min), 11-03 (5 min), 11-02 (5 min), 11-01 (5 min), 10-03 (2 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -75,6 +75,9 @@ Recent decisions affecting current work:
 - [Phase 11-02]: Wrap persist_task/lookup_task helpers in TaskQueue for corruption detection (not individual handlers)
 - [Phase 11-02]: Config get returns default on corruption for graceful degradation
 - [Phase 11-02]: get_table_path/1 matches each GenServer's actual env var path resolution
+- [Phase 11-03]: compact_one/1 on DetsBackup for efficient single-table compaction (avoid compacting all 9)
+- [Phase 11-03]: @dets_table_atoms shared module attribute for validated string-to-atom table name mapping
+- [Phase 11-03]: Push notifications for failures and auto-restores only (successful operations silent)
 - [Phase 12-01]: Pure Elixir validation (no external deps) -- pattern matching + guards
 - [Phase 12-01]: Schema-as-data: same maps for runtime validation and JSON discovery endpoint
 - [Phase 12-01]: ViolationTracker as pure functions + ETS, not a GenServer
@@ -96,5 +99,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 12-01-PLAN.md (core validation module, schemas, violation tracker). Phase 12 in progress (1/3 plans).
+Stopped at: Completed 11-03-PLAN.md (API endpoints + dashboard integration). Phase 11 complete (3/3 plans). Phase 12 in progress (1/3 plans).
 Resume file: None
