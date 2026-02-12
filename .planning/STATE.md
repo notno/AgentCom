@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-11)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.1 Hardening -- Phase 13 Structured Logging (complete)
+**Current focus:** v1.1 Hardening -- Phase 14 Metrics + Alerting
 
 ## Current Position
 
-Phase: 13-structured-logging
-Plan: 4 of 4 complete
-Status: Phase Complete
-Last activity: 2026-02-12 -- Completed quick task 1: Fix pre-existing compilation warnings
+Phase: 14-metrics-alerting
+Plan: 1 of 4 complete
+Status: In Progress
+Last activity: 2026-02-12 -- Completed 14-01-PLAN.md (MetricsCollector GenServer)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 20 (v1.1)
+- Total plans completed: 21 (v1.1)
 - Average duration: 5 min
-- Total execution time: 1.90 hours
+- Total execution time: 1.98 hours
 
 **By Phase:**
 
@@ -30,9 +30,10 @@ Last activity: 2026-02-12 -- Completed quick task 1: Fix pre-existing compilatio
 | 11-dets-compaction | 3 | 15 min | 5 min |
 | 12-input-validation | 3 | 13 min | 4 min |
 | 13-structured-logging | 4 | 38 min | 10 min |
+| 14-metrics-alerting | 1 | 5 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 13-04 (6 min), 13-03 (15 min), 13-02 (9 min), 13-01 (8 min), 12-03 (5 min)
+- Last 5 plans: 14-01 (5 min), 13-04 (6 min), 13-03 (15 min), 13-02 (9 min), 13-01 (8 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -101,6 +102,11 @@ Recent decisions affecting current work:
 - [Phase 13-03]: Sidecar log function/line via Error().stack frame parsing; unhandledRejection continues, uncaughtException exits
 - [Phase 13-04]: Direct LoggerJSON.Formatters.Basic invocation for log format tests (CaptureLog bypasses formatter, captures plain text)
 - [Phase 13-04]: Metadata fields tested under parsed["metadata"] nested key matching LoggerJSON actual output structure
+- [Phase 14-01]: ETS :public table for telemetry handlers (they run in emitting process, not MetricsCollector)
+- [Phase 14-01]: GenServer.cast for duration/transition recording to avoid blocking emitting processes
+- [Phase 14-01]: Snapshot cache in ETS refreshed every 10s -- /api/metrics reads cache, zero-cost reads
+- [Phase 14-01]: MetricsCollector after Scheduler, before DashboardState in supervision tree
+- [Phase 14-01]: GET /api/metrics unauthenticated (same pattern as /api/dashboard/state)
 
 ### Pending Todos
 
@@ -124,5 +130,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 13-04-PLAN.md (structured logging verification tests). Phase 13 complete (4/4 plans).
+Stopped at: Completed 14-01-PLAN.md (MetricsCollector GenServer with ETS telemetry aggregation). Phase 14 in progress (1/4 plans).
 Resume file: None
