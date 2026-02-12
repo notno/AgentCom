@@ -227,6 +227,61 @@ defmodule AgentCom.SchedulerTest do
   end
 
   # ---------------------------------------------------------------------------
+  # Routing decision (Phase 19)
+  # ---------------------------------------------------------------------------
+
+  describe "routing decision" do
+    test "routing decision is stored on assigned task" do
+      agent = TestFactory.create_agent(capabilities: ["code"])
+
+      Phoenix.PubSub.subscribe(AgentCom.PubSub, "tasks")
+
+      {:ok, task} = TestFactory.submit_task(description: "route me")
+
+      assert_receive {:task_event, %{event: :task_assigned, task_id: task_id}}, 5_000
+      assert task_id == task.id
+
+      {:ok, assigned} = TaskQueue.get(task.id)
+      assert assigned.status == :assigned
+      assert assigned.routing_decision != nil
+      assert is_map(assigned.routing_decision)
+      assert Map.has_key?(assigned.routing_decision, :effective_tier)
+      assert Map.has_key?(assigned.routing_decision, :target_type)
+      assert Map.has_key?(assigned.routing_decision, :fallback_used)
+      assert Map.has_key?(assigned.routing_decision, :classification_reason)
+      assert Map.has_key?(assigned.routing_decision, :estimated_cost_tier)
+
+      TestFactory.cleanup_agent(agent)
+    end
+
+    test "routing decision indicates fallback when no LLM endpoints are registered for standard task" do
+      agent = TestFactory.create_agent(capabilities: ["code"])
+
+      Phoenix.PubSub.subscribe(AgentCom.PubSub, "tasks")
+
+      # Force :standard tier via explicit complexity_tier param
+      # Standard tier requires Ollama endpoints; with none registered,
+      # TaskRouter returns fallback and the scheduler uses capability matching
+      {:ok, task} = TaskQueue.submit(%{
+        description: "standard tier fallback test",
+        priority: "normal",
+        submitted_by: "test-submitter",
+        complexity_tier: "standard"
+      })
+
+      assert_receive {:task_event, %{event: :task_assigned, task_id: task_id}}, 5_000
+      assert task_id == task.id
+
+      {:ok, assigned} = TaskQueue.get(task.id)
+      # Without any LLM endpoints registered, the router returns a fallback signal
+      # for :standard tier and the scheduler falls back to capability matching
+      assert assigned.routing_decision.fallback_used == true
+
+      TestFactory.cleanup_agent(agent)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # PubSub event verification
   # ---------------------------------------------------------------------------
 
