@@ -29,7 +29,7 @@ defmodule AgentCom.Analytics do
   # --- Public API ---
 
   @doc "Record a message sent by an agent."
-  def record_message(from, to, type \\ "chat") do
+  def record_message(from, to, _type \\ "chat") do
     bucket = current_bucket()
     # Increment sent count for sender
     increment(from, {:sent, bucket})
@@ -114,7 +114,7 @@ defmodule AgentCom.Analytics do
   @doc "Get hourly message breakdown for an agent (last 24h)."
   def hourly(agent_id) do
     bucket = current_bucket()
-    for i <- 23..0 do
+    for i <- 23..0//-1 do
       b = bucket - i * @bucket_duration_ms
       %{
         bucket: b,
