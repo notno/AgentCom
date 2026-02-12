@@ -2,23 +2,11 @@
 
 ## What This Is
 
-A distributed agent coordination system where AI "Minds" (LLM sessions) receive work assignments from a central scheduler, execute autonomously, and submit results as PRs. Built on an Elixir/BEAM hub with Node.js sidecars, using a GPU scheduler-style push architecture for task assignment. Shipped v1.0 with 8 phases: sidecar relay, task queue, agent FSM, scheduler, smoke tests, dashboard, git workflow, and one-command onboarding.
+A distributed agent coordination system where AI "Minds" (LLM sessions) receive work assignments from a central scheduler, execute autonomously, and submit results as PRs. Built on an Elixir/BEAM hub with Node.js sidecars, using a GPU scheduler-style push architecture for task assignment. Hardened with comprehensive tests, DETS resilience, input validation, structured observability, rate limiting, and operations documentation.
 
 ## Core Value
 
 Reliable autonomous work execution: ideas enter a queue and emerge as reviewed, merged PRs — without human hand-holding for safe changes.
-
-## Current Milestone: v1.1 Hardening
-
-**Goal:** Shore up the v1.0 foundation with comprehensive tests, data resilience, security hardening, and operational visibility.
-
-**Target features:**
-- Comprehensive test coverage (GenServers, pipelines, sidecar, edge cases)
-- DETS backup, compaction, and corruption recovery
-- Input validation at WebSocket and HTTP boundaries
-- Structured logging, metrics endpoint, and alerting
-- Rate limiting for flood protection
-- Operations documentation
 
 ## Current Milestone: v1.2 Smart Agent Pipeline
 
@@ -56,20 +44,18 @@ Reliable autonomous work execution: ideas enter a queue and emerge as reviewed, 
 - ✓ Git wrapper enforcing branch-from-current-main and PR conventions — v1.0
 - ✓ One-command onboarding automation (token + sidecar + config + verify) — v1.0
 - ✓ Smoke test harness (2 agents, fake low-token tasks, validates full pipeline) — v1.0
+- ✓ Comprehensive test infrastructure with DETS isolation, test factories, CI pipeline — v1.1
+- ✓ DETS backup, compaction, corruption recovery with degraded mode — v1.1
+- ✓ Input validation at all 27 entry points with schema-as-data and violation tracking — v1.1
+- ✓ Structured JSON logging with 22 telemetry events and token redaction — v1.1
+- ✓ Metrics endpoint with queue depth, latency percentiles, agent utilization, error rates — v1.1
+- ✓ Configurable alerter with 5 rules, cooldowns, dashboard integration — v1.1
+- ✓ Token bucket rate limiting with per-action granularity and progressive backoff — v1.1
+- ✓ Operations documentation (setup, monitoring, troubleshooting) with ExDoc — v1.1
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
-
-#### v1.1 Hardening (in progress — Phase 9 complete, Phases 10-16 remaining)
-
-- [ ] DETS backup, compaction, and corruption recovery mechanisms
-- [ ] Input validation and sanitization at WebSocket and HTTP boundaries
-- [ ] Structured logging with consistent format (task_id, agent_id, phase) across all modules
-- [ ] Metrics endpoint exposing queue depth, task latency, agent utilization, error rates
-- [ ] Configurable alerting (webhook/push) for system anomalies
-- [ ] Rate limiting to prevent message/request flooding from misbehaving agents
-- [ ] Operations documentation (setup, monitoring, troubleshooting)
 
 #### v1.2 Smart Agent Pipeline
 
@@ -90,22 +76,27 @@ Reliable autonomous work execution: ideas enter a queue and emerge as reviewed, 
 - Multi-Mind task decomposition — breaking big tasks into parallel subtasks, future optimization
 - Token budgeting — per-task token spend caps, good idea but not yet
 - Learning/affinity — tracking which Mind is best at what, future optimization
+- Database migration (DETS to SQLite/Postgres) — DETS works at current scale, migration rewrites 6 GenServers
+- Full Prometheus/Grafana stack — overkill for 5-agent system, built-in metrics sufficient
+- Distributed rate limiting (Redis/Mnesia) — single BEAM node, no benefit
 
 ## Context
 
 Shipped v1.0 on 2026-02-11 (8 phases, 19 plans, 48 commits, +12,858 LOC across 65 files in 2 days).
+Shipped v1.1 on 2026-02-12 (8 phases, 32 plans, 153 commits, +35,732 LOC across 195 files in 4 days).
 
-**Tech stack:** Elixir/BEAM hub (~3,200 LOC), Node.js sidecars (~2,800 LOC), HTML/CSS/JS dashboard.
+**Tech stack:** Elixir/BEAM hub (~18,500 LOC), Node.js sidecars (~2,800 LOC), HTML/CSS/JS dashboard, ExDoc documentation.
 
-**Architecture:** Push-based scheduler drives work to always-on sidecars via persistent WebSocket. DETS persistence for task queue, agent state, and config. PubSub for internal event distribution. pm2 for sidecar process management.
+**Architecture:** Push-based scheduler drives work to always-on sidecars via persistent WebSocket. DETS persistence for task queue, agent state, and config with automated backup/compaction/recovery. ETS-backed metrics, rate limiting, and validation tracking. PubSub for internal event distribution. pm2 for sidecar process management. LoggerJSON for structured observability.
 
-**Current state:** All v1 problems solved (heartbeat unreliability, git chaos, coordination overhead, zero visibility, context waste, no task handshake). System operational with 5 AI agents on Tailscale mesh.
+**Current state:** All v1.0 and v1.1 features shipped. System hardened with tests, validation, observability, rate limiting, and ops docs. Operational with 5 AI agents on Tailscale mesh.
 
 **Known tech debt:**
 - queue.json atomicity (fs.writeFileSync partial-write risk on crash)
 - VAPID keys ephemeral (push subscriptions lost on hub restart)
 - Elixir version bump recommended (1.14 to 1.17+ for :gen_statem logger fix)
 - Analytics and Threads modules orphaned (not exposed via API)
+- 2 test failures in mix test suite (pre-existing)
 
 **Deferred:** PR review gatekeeper (Flere-Imsaho role) needs 50+ tasks of production data to calibrate merge/escalation heuristics.
 
@@ -129,9 +120,14 @@ Shipped v1.0 on 2026-02-11 (8 phases, 19 plans, 48 commits, +12,858 LOC across 6
 | OpenClaw-only for v1 | Ship proven runtime first, research Claude Code CLI for v2 | ✓ Good — shipped with OpenClaw, Claude Code CLI deferred |
 | Flere-Imsaho as PR gatekeeper | Autonomous pipeline needs an LLM reviewer with merge authority | — Deferred to v2 (needs production data) |
 | FIFO + priority lanes scheduling | Good enough for 4-5 agents, optimize later | ✓ Good — priority lanes working, smoke tested at 4 agents |
-| DETS for persistence | Built-in Erlang, no external deps, good enough for single-hub | ✓ Good — simple, reliable, needs backup/compaction in v1.1 |
+| DETS for persistence | Built-in Erlang, no external deps, good enough for single-hub | ✓ Good — backup/compaction/recovery added in v1.1 |
 | Unauthenticated registration endpoint | Chicken-and-egg: new agents have no token yet | ✓ Good — POST /api/onboard/register solves bootstrap |
 | Culture ship names for agents | Fun, memorable, avoids naming bikeshed | ✓ Good — 65 names from Iain M. Banks novels |
+| Pure Elixir validation (no Ecto) | Flat JSON validation doesn't need ORM overhead | ✓ Good — pattern matching + guards, schema-as-data for introspection |
+| ETS for hot-path data (metrics, rate limits, validation) | Concurrent read access without GenServer bottleneck | ✓ Good — zero-cost reads, GenServer handles writes |
+| LoggerJSON with dual output | Structured JSON for machines, readable for humans | ✓ Good — stdout + rotating file, token redaction built in |
+| Lazy token bucket rate limiting | Zero background cost per agent, compute on access | ✓ Good — integer precision, monotonic time, progressive backoff |
+| ExDoc for operations docs | Built-in Elixir tooling, Mermaid support via CDN | ✓ Good — zero build step, cross-references to module docs |
 
 ---
-*Last updated: 2026-02-11 after v1.2 milestone definition*
+*Last updated: 2026-02-12 after v1.1 milestone*

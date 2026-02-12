@@ -40,3 +40,49 @@
 
 ---
 
+
+## v1.1 — Hardening (Complete)
+
+**Completed:** 2026-02-12
+**Phases:** 9-16 (32 plans, 2.6 hours total)
+**Last phase number:** 16
+
+### What Shipped
+
+| Phase | Name | What It Delivered |
+|-------|------|-------------------|
+| 9 | Testing Infrastructure | DETS isolation, test factories, WS client, GenServer + integration tests, CI pipeline |
+| 10 | DETS Backup + Monitoring | Automated backup with 3-backup retention, health endpoint, dashboard visibility |
+| 11 | DETS Compaction + Recovery | Scheduled compaction, corruption detection, backup-based recovery, degraded mode |
+| 12 | Input Validation | 27 schemas (15 WS + 12 HTTP), violation tracking, escalating disconnect backoff |
+| 13 | Structured Logging + Telemetry | LoggerJSON with dual output, 22 telemetry events, token redaction, sidecar structured logs |
+| 14 | Metrics + Alerting | ETS-backed metrics (queue depth, latency percentiles, utilization), 5 alert rules, dashboard charts |
+| 15 | Rate Limiting | Token bucket with 3-tier classification, progressive backoff, admin overrides, DETS persistence |
+| 16 | Operations Documentation | ExDoc with Mermaid diagrams, setup guide, daily operations, troubleshooting procedures |
+
+### Key Accomplishments
+
+- Comprehensive test infrastructure with DETS path isolation, test factories, and GitHub Actions CI
+- DETS data resilience: automated backups, scheduled compaction, corruption recovery with degraded mode
+- Input validation at all 27 entry points with schema-as-data, violation tracking, and escalating enforcement
+- Structured JSON logging with 22 telemetry events, file rotation, token redaction, and sidecar parity
+- Real-time metrics aggregation with configurable alerting, cooldowns, and dashboard integration (uPlot charts)
+- Token bucket rate limiting with per-action granularity, progressive backoff, and admin override API
+- Operations documentation: setup, monitoring, troubleshooting guides with Mermaid architecture diagrams
+
+### Stats
+
+- 153 commits, 195 files changed, +35,732 / -1,317 lines
+- Elixir codebase: 18,509 LOC
+- Timeline: 4 days (2026-02-08 to 2026-02-12)
+- Git range: 4701ebc..299e701
+
+### Deferred
+
+- Elixir version bump (1.14 to 1.17+) for :gen_statem logger fix
+- Sidecar queue.json atomicity (fs.writeFileSync partial-write-on-crash risk)
+- VAPID keys ephemeral (push subscriptions lost on hub restart)
+- Analytics and Threads modules orphaned (not exposed via API)
+
+---
+
