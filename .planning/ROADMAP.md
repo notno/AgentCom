@@ -3,7 +3,7 @@
 ## Milestones
 
 - [x] **v1.0 Core Architecture** - Phases 1-8 (shipped 2026-02-11)
-- [ ] **v1.1 Hardening** - Phases 9-16 (in progress)
+- [x] **v1.1 Hardening** - Phases 9-16 (shipped 2026-02-12)
 
 ## Phases
 
@@ -38,9 +38,9 @@
 - [x] **Phase 11: DETS Compaction + Recovery** - Scheduled compaction/defragmentation and documented corruption recovery
 - [x] **Phase 12: Input Validation** - Schema validation at all WebSocket and HTTP entry points with structured error responses
 - [x] **Phase 13: Structured Logging + Telemetry** - JSON logging with consistent metadata and telemetry events for key lifecycle points
-- [ ] **Phase 14: Metrics + Alerting** - Metrics endpoint and configurable alerter for system anomalies
-- [ ] **Phase 15: Rate Limiting** - Token bucket rate limiting on WebSocket and HTTP with per-action granularity
-- [ ] **Phase 16: Operations Documentation** - Setup, monitoring, and troubleshooting guides
+- [x] **Phase 14: Metrics + Alerting** - Metrics endpoint and configurable alerter for system anomalies
+- [x] **Phase 15: Rate Limiting** - Token bucket rate limiting on WebSocket and HTTP with per-action granularity
+- [x] **Phase 16: Operations Documentation** - Setup, monitoring, and troubleshooting guides
 
 ## Phase Details
 
@@ -189,4 +189,4 @@ Phases execute in numeric order: 9 -> 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16
 | 13. Structured Logging + Telemetry | v1.1 | 4/4 | Complete | 2026-02-12 |
 | 14. Metrics + Alerting | v1.1 | 4/4 | Complete | 2026-02-12 |
 | 15. Rate Limiting | v1.1 | 4/4 | Complete | 2026-02-12 |
-| 16. Operations Documentation | v1.1 | 0/TBD | Not started | - |
+| 16. Operations Documentation | v1.1 | 3/3 | Complete | 2026-02-12 |

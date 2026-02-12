@@ -48,9 +48,9 @@ Requirements for milestone v1.1 Hardening. Each maps to roadmap phases.
 
 ### Operations
 
-- [ ] **OPS-01**: Operations guide documents hub setup, configuration, and startup procedures
-- [ ] **OPS-02**: Operations guide documents monitoring, dashboard usage, and interpreting metrics
-- [ ] **OPS-03**: Operations guide documents troubleshooting common issues and recovery procedures
+- [x] **OPS-01**: Operations guide documents hub setup, configuration, and startup procedures
+- [x] **OPS-02**: Operations guide documents monitoring, dashboard usage, and interpreting metrics
+- [x] **OPS-03**: Operations guide documents troubleshooting common issues and recovery procedures
 
 ## Future Requirements
 
@@ -118,9 +118,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RATE-02 | Phase 15 | Pending |
 | RATE-03 | Phase 15 | Pending |
 | RATE-04 | Phase 15 | Pending |
-| OPS-01 | Phase 16 | Pending |
-| OPS-02 | Phase 16 | Pending |
-| OPS-03 | Phase 16 | Pending |
+| OPS-01 | Phase 16 | Complete |
+| OPS-02 | Phase 16 | Complete |
+| OPS-03 | Phase 16 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 24 total
