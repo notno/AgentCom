@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.2 Smart Agent Pipeline -- Phase 18 LLM Registry and Host Resources
+**Current focus:** v1.2 Smart Agent Pipeline -- Phase 19 Model-Aware Scheduler
 
 ## Current Position
 
-Phase: 18 of 22 (LLM Registry and Host Resources)
-Plan: 3 of 4
-Status: Executing
-Last activity: 2026-02-12 -- Completed 18-03 (HTTP API, WS handlers, supervisor wiring)
+Phase: 19 of 22 (Model-Aware Scheduler)
+Plan: --
+Status: Ready to plan
+Last activity: 2026-02-12 -- Phase 18 verified and complete (4/4 plans, 4/5 success criteria, 1 accepted gap)
 
-Progress: [████████░░] 75%
+Progress: [██░░░░░░░░] 33%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 57 (19 v1.0 + 32 v1.1 + 6 v1.2)
+- Total plans completed: 58 (19 v1.0 + 32 v1.1 + 7 v1.2)
 - Average duration: 5 min
-- Total execution time: 3.8 hours
+- Total execution time: 4.0 hours
 
 **By Phase (v1.1 recent):**
 
@@ -37,7 +37,7 @@ Progress: [████████░░] 75%
 | 16-operations-docs | 4 | 14 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 18-03 (11 min), 18-02 (2 min), 18-01 (4 min), 17-03 (4 min), 17-02 (4 min)
+- Last 5 plans: 18-04 (8 min), 18-03 (11 min), 18-02 (2 min), 18-01 (4 min), 17-03 (4 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -47,6 +47,7 @@ Progress: [████████░░] 75%
 | Phase 18 P01 | 4min | 1 task (TDD) | 2 files |
 | Phase 18 P02 | 2min | 2 tasks | 2 files |
 | Phase 18 P03 | 11min | 2 tasks | 8 files |
+| Phase 18 P04 | 8min | 3 tasks (1 checkpoint) | 4 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,10 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - 18-03: resource_report is fire-and-forget (no reply) like task_progress
 - 18-03: :number validation type accepts both integer and float
 - 18-03: LlmRegistry tests use supervisor stop/restart for compatibility
+- 18-04: Table view for endpoints (not cards) per locked decision
+- 18-04: Resource bars inline per host row (CPU=blue, RAM=purple, VRAM=amber)
+- 18-04: Strip http:// prefix from host input to prevent malformed health check URLs
+- 18-VERIFY: Warm/cold model distinction accepted as gap -- binary availability sufficient, deferred per locked design decision
 
 ### Pending Todos
 
@@ -93,7 +98,6 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - [Tech debt]: Sidecar queue.json atomicity -- fs.writeFileSync has partial-write-on-crash risk
 - [Tech debt]: VAPID keys ephemeral -- push subscriptions lost on hub restart
 - [Tech debt]: Analytics and Threads modules orphaned (not exposed via API)
-- [Research flag]: Phase 18 -- Ollama health check intervals and Tailscale mesh latency need empirical validation
 - [Research flag]: Phase 20 -- Ollama streaming behavior, Claude API integration, timeout tuning need validation
 - [Research flag]: Phase 22 -- Self-verification feedback loop patterns and retry budgets need deeper investigation
 
@@ -106,5 +110,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 18-03-PLAN.md (HTTP API, WS handlers, supervisor wiring). Ready for 18-04.
+Stopped at: Phase 18 verified complete. Ready to plan Phase 19.
 Resume file: None

@@ -51,7 +51,7 @@
 **Phase Numbering:** Integer phases (17, 18, 19...): Planned milestone work. Decimal phases (17.1, 17.2): Urgent insertions (marked with INSERTED).
 
 - [x] **Phase 17: Enriched Task Format** - Tasks carry structured context, success criteria, verification steps, and complexity classification
-- [ ] **Phase 18: LLM Registry and Host Resources** - Hub tracks Ollama endpoints, model availability, and host resource utilization across the Tailscale mesh
+- [x] **Phase 18: LLM Registry and Host Resources** - Hub tracks Ollama endpoints, model availability, and host resource utilization across the Tailscale mesh
 - [ ] **Phase 19: Model-Aware Scheduler** - Scheduler routes tasks to the right execution tier based on complexity, model availability, and host load
 - [ ] **Phase 20: Sidecar Execution** - Sidecars call the correct LLM backend (local Ollama, Claude API, or zero-token local execution) per task assignment
 - [ ] **Phase 21: Verification Infrastructure** - Deterministic mechanical verification checks produce structured pass/fail reports before task submission
@@ -83,7 +83,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Admin can register an Ollama endpoint via HTTP API and see it listed with its host, port, and discovered models
   2. An Ollama endpoint that goes offline is marked unhealthy within one health check cycle, and re-marked healthy when it returns
-  3. Registry distinguishes between models currently loaded in VRAM (warm) and models only downloaded (cold) per host
+  3. Registry tracks which models are available on each host (binary availability; warm/cold VRAM distinction deferred per locked design decision)
   4. Dashboard shows per-machine resource utilization (CPU, RAM, GPU/VRAM) reported by each sidecar
   5. Registered endpoints and resource metrics survive hub restart (DETS persistence)
 **Plans**: 4 plans
@@ -166,7 +166,7 @@ Phases execute in numeric order: 17 -> 17.1 -> 17.2 -> 18 -> ... -> 22
 | 1-8 | v1.0 | 19/19 | Complete | 2026-02-11 |
 | 9-16 | v1.1 | 32/32 | Complete | 2026-02-12 |
 | 17. Enriched Task Format | v1.2 | 3/3 | Complete | 2026-02-12 |
-| 18. LLM Registry + Host Resources | v1.2 | 0/4 | Planned | - |
+| 18. LLM Registry + Host Resources | v1.2 | 4/4 | Complete | 2026-02-12 |
 | 19. Model-Aware Scheduler | v1.2 | 0/4 | Planned | - |
 | 20. Sidecar Execution | v1.2 | 0/TBD | Not started | - |
 | 21. Verification Infrastructure | v1.2 | 0/TBD | Not started | - |
