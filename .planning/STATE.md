@@ -151,6 +151,7 @@ Recent decisions affecting current work:
 
 1. Clarify repo_url vs default_repo naming in agent onboarding (area: api)
 2. Investigate reusing existing agents by name during onboarding (area: api)
+3. Fix 2 test failures in mix test suite (area: testing)
 
 ### Blockers/Concerns
 
