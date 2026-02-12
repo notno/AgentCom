@@ -399,6 +399,18 @@ defmodule AgentCom.Socket do
     log_task_event(state.agent_id, "task_progress", task_id, msg)
     # Update timestamp to prevent overdue sweep reclamation
     AgentCom.TaskQueue.update_progress(task_id)
+
+    # Forward execution_event for dashboard streaming (Phase 20)
+    if execution_event = msg["execution_event"] do
+      Phoenix.PubSub.broadcast(AgentCom.PubSub, "tasks", {:task_event, %{
+        agent_id: state.agent_id,
+        event: :execution_progress,
+        task_id: task_id,
+        execution_event: execution_event,
+        timestamp: System.system_time(:millisecond)
+      }})
+    end
+
     {:ok, state}
   end
 

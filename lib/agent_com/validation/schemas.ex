@@ -136,9 +136,10 @@ defmodule AgentCom.Validation.Schemas do
         "task_id" => :string
       },
       optional: %{
-        "progress" => :integer
+        "progress" => :integer,
+        "execution_event" => :map
       },
-      description: "Sidecar reports task progress (prevents overdue sweep)."
+      description: "Sidecar reports task progress (prevents overdue sweep). Optional execution_event for dashboard streaming."
     },
     "task_complete" => %{
       required: %{
