@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-11)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.1 Hardening -- Phase 14 Metrics + Alerting
+**Current focus:** v1.1 Hardening -- Phase 14 Metrics + Alerting complete
 
 ## Current Position
 
 Phase: 14-metrics-alerting
-Plan: 3 of 4 complete
-Status: In Progress
-Last activity: 2026-02-12 -- Completed 14-03-PLAN.md (Dashboard metrics/alert integration)
+Plan: 4 of 4 complete
+Status: Phase Complete
+Last activity: 2026-02-12 -- Completed 14-04-PLAN.md (Dashboard metrics UI with uPlot charts and alert banner)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 23 (v1.1)
+- Total plans completed: 24 (v1.1)
 - Average duration: 5 min
-- Total execution time: 2.05 hours
+- Total execution time: 2.12 hours
 
 **By Phase:**
 
@@ -30,10 +30,10 @@ Last activity: 2026-02-12 -- Completed 14-03-PLAN.md (Dashboard metrics/alert in
 | 11-dets-compaction | 3 | 15 min | 5 min |
 | 12-input-validation | 3 | 13 min | 4 min |
 | 13-structured-logging | 4 | 38 min | 10 min |
-| 14-metrics-alerting | 3 | 13 min | 4 min |
+| 14-metrics-alerting | 4 | 17 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 14-03 (4 min), 14-02 (4 min), 14-01 (5 min), 13-04 (6 min), 13-03 (15 min)
+- Last 5 plans: 14-04 (4 min), 14-03 (4 min), 14-02 (4 min), 14-01 (5 min), 13-04 (6 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -117,6 +117,10 @@ Recent decisions affecting current work:
 - [Phase 14-03]: alert_cleared/acknowledged push notifications suppressed (UI handles via WebSocket, avoids spam)
 - [Phase 14-03]: DashboardState fetches active_alerts live from Alerter (no local state duplication)
 - [Phase 14-03]: Alert event handlers in DashboardState are no-ops (data fetched on-demand in snapshot)
+- [Phase 14-04]: uPlot via CDN (unpkg) for zero-build charting in inline HTML dashboard
+- [Phase 14-04]: 360-point rolling window for chart data (1hr at 10s intervals)
+- [Phase 14-04]: Alert banner uses highest-severity detection across unacknowledged alerts
+- [Phase 14-04]: Extend existing WebSocket onmessage handler (no second connection)
 
 ### Pending Todos
 
@@ -140,5 +144,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 14-03-PLAN.md (Dashboard metrics/alert integration). Phase 14 in progress (3/4 plans).
+Stopped at: Completed 14-04-PLAN.md (Dashboard metrics UI). Phase 14 complete (4/4 plans).
 Resume file: None
