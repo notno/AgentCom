@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.2 Smart Agent Pipeline -- Phase 21 Verification Infrastructure
+**Current focus:** v1.2 Smart Agent Pipeline -- Phase 19 Model-Aware Scheduler
 
 ## Current Position
 
-Phase: 21 of 22 (Verification Infrastructure)
-Plan: 3 of 3
-Status: Phase Complete
-Last activity: 2026-02-12 -- Completed 21-03 Hub Pipeline Integration
+Phase: 19 of 22 (Model-Aware Scheduler)
+Plan: 3 of 4
+Status: In Progress
+Last activity: 2026-02-12 -- Completed 19-03 Degraded Behavior Configuration
 
 Progress: [███░░░░░░░] 40%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 63 (19 v1.0 + 32 v1.1 + 12 v1.2)
+- Total plans completed: 64 (19 v1.0 + 32 v1.1 + 13 v1.2)
 - Average duration: 5 min
 - Total execution time: 4.3 hours
 
@@ -37,7 +37,7 @@ Progress: [███░░░░░░░] 40%
 | 16-operations-docs | 4 | 14 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 19-02 (7 min), 21-03 (5 min), 21-01 (3 min), 21-02 (3 min), 19-01 (4 min)
+- Last 5 plans: 19-03 (5 min), 19-02 (7 min), 21-03 (5 min), 21-01 (3 min), 21-02 (3 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -53,6 +53,7 @@ Progress: [███░░░░░░░] 40%
 | Phase 21 P02 | 3min | 2 tasks | 2 files |
 | Phase 19 P02 | 7min | 2 tasks | 4 files |
 | Phase 21 P03 | 5min | 2 tasks | 8 files |
+| Phase 19 P03 | 5min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -110,6 +111,10 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - 21-03: Verification.Store.save called inline in complete_task (Store starts before TaskQueue)
 - 21-03: Dashboard Verify column replaces unused PR column in recent tasks table
 - 21-03: details/summary HTML for expandable check results (no JavaScript handlers needed)
+- 19-03: Tier-down alert tracks tier_down_since timestamp, only fires after duration exceeds configurable threshold (not on brief blips)
+- 19-03: TTL sweep exempts trivial-tier tasks from expiry (execute locally regardless of tier availability)
+- 19-03: expire_task moves queued tasks to dead_letter with reason "ttl_expired" (reuses existing mechanism)
+- 19-03: Fallback timeout reads Config.get(:fallback_wait_ms) at timer creation time (runtime configurable)
 
 ### Pending Todos
 
@@ -137,5 +142,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 21-03-PLAN.md (Hub Pipeline Integration) -- Phase 21 complete
+Stopped at: Completed 19-03-PLAN.md (Degraded Behavior Configuration)
 Resume file: None
