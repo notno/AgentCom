@@ -9,6 +9,7 @@ const chokidar = require('chokidar');
 const { loadQueue, saveQueue, cleanupResultFiles } = require('./lib/queue');
 const { interpolateWakeCommand, execCommand, RETRY_DELAYS } = require('./lib/wake');
 const { runGitCommand } = require('./lib/git-workflow');
+const { initLogger, log, LEVELS } = require('./lib/log');
 
 // =============================================================================
 // 1. Config Loader
@@ -18,11 +19,7 @@ const CONFIG_PATH = path.join(__dirname, 'config.json');
 
 function loadConfig() {
   if (!fs.existsSync(CONFIG_PATH)) {
-    console.error(
-      'ERROR: config.json not found.\n' +
-      'Copy config.json.example to config.json and fill in your values:\n' +
-      '  cp config.json.example config.json\n'
-    );
+    log('error', 'config_not_found', { path: CONFIG_PATH, hint: 'cp config.json.example config.json' }, 'sidecar/config');
     process.exit(1);
   }
 
@@ -32,7 +29,7 @@ function loadConfig() {
   const required = ['agent_id', 'token', 'hub_url'];
   for (const field of required) {
     if (!config[field]) {
-      console.error(`ERROR: config.json missing required field: ${field}`);
+      log('error', 'config_missing_field', { field }, 'sidecar/config');
       process.exit(1);
     }
   }
@@ -63,33 +60,10 @@ function loadConfig() {
 }
 
 // =============================================================================
-// 2. Structured Logging
+// 2. Structured Logging (provided by lib/log.js)
 // =============================================================================
 
 let _config = null; // Will be set after config loads
-
-function log(event, data = {}) {
-  const entry = {
-    ts: new Date().toISOString(),
-    event,
-    agent_id: _config ? _config.agent_id : 'unknown',
-    ...data
-  };
-
-  const line = JSON.stringify(entry) + '\n';
-
-  // Write to log file
-  if (_config && _config.log_file) {
-    try {
-      fs.appendFileSync(_config.log_file, line);
-    } catch (err) {
-      console.error(`Failed to write to log file: ${err.message}`);
-    }
-  }
-
-  // Also console.log for pm2 stdout capture
-  console.log(`[${entry.ts}] ${event}`, Object.keys(data).length > 0 ? data : '');
-}
 
 // =============================================================================
 // 3. Queue Manager
@@ -113,7 +87,7 @@ async function wakeAgent(task, hub) {
   const wakeCommand = _config.wake_command;
 
   if (!wakeCommand) {
-    log('wake_skipped', { task_id: task.task_id, reason: 'no wake_command configured' });
+    log('info', 'wake_skipped', { task_id: task.task_id, reason: 'no wake_command configured' });
     // Update status to working directly (agent expected to self-start)
     task.status = 'working';
     saveQueue(QUEUE_PATH, _queue);
@@ -130,11 +104,11 @@ async function wakeAgent(task, hub) {
     task.wake_attempts = attempt;
     saveQueue(QUEUE_PATH, _queue);
 
-    log('wake_attempt', { task_id: task.task_id, attempt, command: interpolatedCommand });
+    log('info', 'wake_attempt', { task_id: task.task_id, attempt, command: interpolatedCommand });
 
     try {
       const result = await execCommand(interpolatedCommand);
-      log('wake_success', { task_id: task.task_id, attempt, exit_code: 0, stdout: result.stdout.trim() });
+      log('info', 'wake_success', { task_id: task.task_id, attempt, exit_code: 0, stdout: result.stdout.trim() });
 
       // Successful wake -- start confirmation timeout
       task.status = 'waking_confirmation';
@@ -144,15 +118,15 @@ async function wakeAgent(task, hub) {
       return; // Exit retry loop on success
 
     } catch (err) {
-      log('wake_error', { task_id: task.task_id, attempt, error: err.message, stderr: err.stderr });
+      log('error', 'wake_error', { task_id: task.task_id, attempt, error: err.message, stderr: err.stderr });
 
       if (attempt <= RETRY_DELAYS.length) {
         const delay = RETRY_DELAYS[attempt - 1];
-        log('wake_retry', { task_id: task.task_id, attempt, next_attempt: attempt + 1, delay_ms: delay });
+        log('warning', 'wake_retry', { task_id: task.task_id, attempt, next_attempt: attempt + 1, delay_ms: delay });
         await new Promise(resolve => setTimeout(resolve, delay));
       } else {
         // All retries exhausted
-        log('wake_failed', { task_id: task.task_id, attempts: attempt, error: err.message });
+        log('error', 'wake_failed', { task_id: task.task_id, attempts: attempt, error: err.message });
         task.status = 'failed';
         saveQueue(QUEUE_PATH, _queue);
 
@@ -174,7 +148,7 @@ async function wakeAgent(task, hub) {
 function startConfirmationTimeout(task, hub) {
   const timeout = _config.confirmation_timeout_ms || 30000;
 
-  log('confirmation_wait', { task_id: task.task_id, timeout_ms: timeout });
+  log('info', 'confirmation_wait', { task_id: task.task_id, timeout_ms: timeout });
 
   const timer = setTimeout(() => {
     // Check if task is still in waking_confirmation (might have been confirmed already)
@@ -182,7 +156,7 @@ function startConfirmationTimeout(task, hub) {
       return; // Already handled
     }
 
-    log('confirmation_timeout', { task_id: task.task_id, timeout_ms: timeout });
+    log('warning', 'confirmation_timeout', { task_id: task.task_id, timeout_ms: timeout });
 
     // Treat as wake failure -- report to hub
     task.status = 'failed';
@@ -203,12 +177,12 @@ function startConfirmationTimeout(task, hub) {
  */
 function handleConfirmation(taskId) {
   if (!_queue.active || _queue.active.task_id !== taskId) {
-    log('confirmation_ignored', { task_id: taskId, reason: 'not_active_task' });
+    log('debug', 'confirmation_ignored', { task_id: taskId, reason: 'not_active_task' });
     return;
   }
 
   if (_queue.active.status !== 'waking_confirmation') {
-    log('confirmation_ignored', { task_id: taskId, reason: 'unexpected_status', status: _queue.active.status });
+    log('debug', 'confirmation_ignored', { task_id: taskId, reason: 'unexpected_status', status: _queue.active.status });
     return;
   }
 
@@ -218,7 +192,7 @@ function handleConfirmation(taskId) {
     delete _queue.active._confirmationTimer;
   }
 
-  log('confirmation_received', { task_id: taskId });
+  log('info', 'confirmation_received', { task_id: taskId });
   _queue.active.status = 'working';
   saveQueue(QUEUE_PATH, _queue);
 }
@@ -228,7 +202,7 @@ function handleConfirmation(taskId) {
  */
 function handleResult(taskId, filePath, hub) {
   if (!_queue.active || _queue.active.task_id !== taskId) {
-    log('result_ignored', { task_id: taskId, reason: 'not_active_task' });
+    log('debug', 'result_ignored', { task_id: taskId, reason: 'not_active_task' });
     return;
   }
 
@@ -237,7 +211,7 @@ function handleResult(taskId, filePath, hub) {
     const data = fs.readFileSync(filePath, 'utf8');
     result = JSON.parse(data);
   } catch (err) {
-    log('result_parse_error', { task_id: taskId, error: err.message, file: filePath });
+    log('error', 'result_parse_error', { task_id: taskId, error: err.message, file: filePath });
     // Treat unparseable result as failure
     hub.sendTaskFailed(taskId, 'result_parse_error: ' + err.message);
     _queue.active = null;
@@ -258,18 +232,18 @@ function handleResult(taskId, filePath, hub) {
 
       if (gitResult.status === 'ok') {
         result.pr_url = gitResult.pr_url;
-        log('git_submit_ok', { task_id: taskId, pr_url: gitResult.pr_url });
+        log('info', 'git_submit_ok', { task_id: taskId, pr_url: gitResult.pr_url });
       } else {
-        log('git_submit_failed', { task_id: taskId, error: gitResult.error });
+        log('warning', 'git_submit_failed', { task_id: taskId, error: gitResult.error });
         // Still report task complete, just without PR URL
       }
     }
 
-    log('task_complete', { task_id: taskId, output: result.output, pr_url: result.pr_url });
+    log('info', 'task_complete', { task_id: taskId, output: result.output, pr_url: result.pr_url });
     hub.sendTaskComplete(taskId, result);
   } else {
     const reason = result.reason || result.error || 'unknown';
-    log('task_failed', { task_id: taskId, reason });
+    log('warning', 'task_failed', { task_id: taskId, reason });
     hub.sendTaskFailed(taskId, reason);
   }
 
@@ -316,7 +290,7 @@ function startResultWatcher(hub) {
     // Handle .started files (confirmation)
     if (filename.endsWith('.started')) {
       const taskId = filename.replace('.started', '');
-      log('result_watcher_started_file', { task_id: taskId, file: filePath });
+      log('debug', 'result_watcher_started_file', { task_id: taskId, file: filePath });
       handleConfirmation(taskId);
       return;
     }
@@ -324,20 +298,20 @@ function startResultWatcher(hub) {
     // Handle .json files (result)
     if (filename.endsWith('.json')) {
       const taskId = filename.replace('.json', '');
-      log('result_watcher_result_file', { task_id: taskId, file: filePath });
+      log('debug', 'result_watcher_result_file', { task_id: taskId, file: filePath });
       handleResult(taskId, filePath, hub);
       return;
     }
 
     // Ignore other files
-    log('result_watcher_unknown_file', { file: filePath });
+    log('debug', 'result_watcher_unknown_file', { file: filePath });
   });
 
   _resultWatcher.on('error', (err) => {
-    log('result_watcher_error', { error: err.message });
+    log('error', 'result_watcher_error', { error: err.message });
   });
 
-  log('result_watcher_started', { results_dir: resultsDir });
+  log('info', 'result_watcher_started', { results_dir: resultsDir });
 }
 
 /**
@@ -372,18 +346,18 @@ class HubConnection {
   connect() {
     if (this.shuttingDown) return;
 
-    log('ws_connecting', { hub_url: this.config.hub_url });
+    log('info', 'ws_connecting', { hub_url: this.config.hub_url });
 
     try {
       this.ws = new WebSocket(this.config.hub_url);
     } catch (err) {
-      log('ws_connect_error', { error: err.message });
+      log('error', 'ws_connect_error', { error: err.message });
       this.scheduleReconnect();
       return;
     }
 
     this.ws.on('open', () => {
-      log('ws_open');
+      log('info', 'ws_open');
       this.reconnectDelay = 1000; // Reset backoff on successful connect
       this.identify();
       this.startHeartbeat();
@@ -391,7 +365,7 @@ class HubConnection {
 
     this.ws.on('close', (code, reason) => {
       const reasonStr = reason ? reason.toString() : '';
-      log('ws_close', { code, reason: reasonStr });
+      log('warning', 'ws_close', { code, reason: reasonStr });
       this.identified = false;
       this.stopHeartbeat();
       this.scheduleReconnect();
@@ -399,7 +373,7 @@ class HubConnection {
 
     this.ws.on('error', (err) => {
       // Error also triggers 'close', so reconnect is handled there
-      log('ws_error', { error: err.message });
+      log('error', 'ws_error', { error: err.message });
     });
 
     this.ws.on('message', (data) => {
@@ -407,7 +381,7 @@ class HubConnection {
         const msg = JSON.parse(data.toString());
         this.handleMessage(msg);
       } catch (err) {
-        log('ws_message_parse_error', { error: err.message });
+        log('error', 'ws_message_parse_error', { error: err.message });
       }
     });
   }
@@ -423,7 +397,7 @@ class HubConnection {
       client_type: 'sidecar',
       protocol_version: 1
     });
-    log('identify_sent');
+    log('info', 'identify_sent');
   }
 
   scheduleReconnect() {
@@ -435,7 +409,7 @@ class HubConnection {
       this.maxReconnectDelay
     );
 
-    log('reconnect_scheduled', { delay_ms: delay, next_delay_ms: this.reconnectDelay });
+    log('info', 'reconnect_scheduled', { delay_ms: delay, next_delay_ms: this.reconnectDelay });
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
@@ -448,13 +422,13 @@ class HubConnection {
       case 'identified':
         this.identified = true;
         this.reconnectDelay = 1000; // Reset on successful identification
-        log('identified', { agent_id: msg.agent_id });
+        log('info', 'identified', { agent_id: msg.agent_id });
         // Report any recovering task to hub after identification
         this.reportRecovery();
         break;
 
       case 'error':
-        log('hub_error', { error: msg.error });
+        log('error', 'hub_error', { error: msg.error });
         break;
 
       case 'pong':
@@ -466,7 +440,7 @@ class HubConnection {
         break;
 
       case 'task_ack':
-        log('task_ack', { task_id: msg.task_id });
+        log('debug', 'task_ack', { task_id: msg.task_id });
         break;
 
       case 'task_reassign':
@@ -478,14 +452,14 @@ class HubConnection {
         break;
 
       default:
-        log('unhandled_message', { type: msg.type });
+        log('debug', 'unhandled_message', { type: msg.type });
         break;
     }
   }
 
   send(obj) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      log('send_failed', { reason: 'not_connected', type: obj.type });
+      log('warning', 'send_failed', { reason: 'not_connected', type: obj.type });
       return false;
     }
 
@@ -494,7 +468,7 @@ class HubConnection {
       this.ws.send(JSON.stringify(payload));
       return true;
     } catch (err) {
-      log('send_error', { error: err.message, type: obj.type });
+      log('error', 'send_error', { error: err.message, type: obj.type });
       return false;
     }
   }
@@ -532,7 +506,7 @@ class HubConnection {
   handleTaskAssign(msg) {
     // Check if sidecar is already busy with an active task
     if (_queue.active !== null) {
-      log('task_rejected', { task_id: msg.task_id, reason: 'busy', active_task_id: _queue.active.task_id });
+      log('warning', 'task_rejected', { task_id: msg.task_id, reason: 'busy', active_task_id: _queue.active.task_id });
       this.sendTaskRejected(msg.task_id, 'busy');
       return;
     }
@@ -559,7 +533,7 @@ class HubConnection {
 
     // Acknowledge to hub
     this.sendTaskAccepted(msg.task_id);
-    log('task_received', { task_id: msg.task_id, description: msg.description });
+    log('info', 'task_received', { task_id: msg.task_id, description: msg.description });
 
     // Git workflow: create branch before waking agent
     if (_config.repo_dir) {
@@ -572,11 +546,11 @@ class HubConnection {
 
       if (gitResult.status === 'ok') {
         task.branch = gitResult.branch;
-        log('git_start_task_ok', { task_id: msg.task_id, branch: gitResult.branch });
+        log('info', 'git_start_task_ok', { task_id: msg.task_id, branch: gitResult.branch });
       } else {
         // Per CONTEXT.md: wake agent anyway with warning
         task.git_warning = gitResult.error || 'start-task failed';
-        log('git_start_task_failed', { task_id: msg.task_id, error: gitResult.error });
+        log('warning', 'git_start_task_failed', { task_id: msg.task_id, error: gitResult.error });
       }
       saveQueue(QUEUE_PATH, _queue);
     }
@@ -597,7 +571,7 @@ class HubConnection {
     if (!_queue.recovering) return;
 
     const task = _queue.recovering;
-    log('recovery_reporting', { task_id: task.task_id, last_status: task.status });
+    log('info', 'recovery_reporting', { task_id: task.task_id, last_status: task.status });
 
     this.send({
       type: 'task_recovering',
@@ -608,7 +582,7 @@ class HubConnection {
       protocol_version: 1
     });
 
-    log('recovery_reported', { task_id: task.task_id });
+    log('info', 'recovery_reported', { task_id: task.task_id });
   }
 
   /**
@@ -617,7 +591,7 @@ class HubConnection {
    */
   handleTaskReassign(msg) {
     const taskId = msg.task_id;
-    log('recovery_reassigned', { task_id: taskId });
+    log('info', 'recovery_reassigned', { task_id: taskId });
 
     // Clean up generation tracking for reassigned task
     this.taskGenerations.delete(taskId);
@@ -626,7 +600,7 @@ class HubConnection {
       _queue.recovering = null;
       saveQueue(QUEUE_PATH, _queue);
     } else {
-      log('recovery_reassign_ignored', { task_id: taskId, reason: 'not_recovering_task' });
+      log('debug', 'recovery_reassign_ignored', { task_id: taskId, reason: 'not_recovering_task' });
     }
   }
 
@@ -636,7 +610,7 @@ class HubConnection {
    */
   handleTaskContinue(msg) {
     const taskId = msg.task_id;
-    log('recovery_continued', { task_id: taskId });
+    log('info', 'recovery_continued', { task_id: taskId });
 
     // Update generation from task_continue message (may have changed during recovery)
     if (msg.generation !== undefined) {
@@ -648,7 +622,7 @@ class HubConnection {
       _queue.recovering = null;
       saveQueue(QUEUE_PATH, _queue);
     } else {
-      log('recovery_continue_ignored', { task_id: taskId, reason: 'not_recovering_task' });
+      log('debug', 'recovery_continue_ignored', { task_id: taskId, reason: 'not_recovering_task' });
     }
   }
 
@@ -670,7 +644,7 @@ class HubConnection {
       this.pongTimer = setTimeout(() => {
         // If no pong received since we sent the ping, connection is dead
         if (!this.lastPongTime || this.lastPongTime < pingTime) {
-          log('heartbeat_timeout', { last_pong: this.lastPongTime, ping_sent: pingTime });
+          log('warning', 'heartbeat_timeout', { last_pong: this.lastPongTime, ping_sent: pingTime });
           // Force close -- this triggers 'close' event which triggers reconnect
           if (this.ws) {
             try {
@@ -727,7 +701,7 @@ class HubConnection {
 
 function setupGracefulShutdown(hub) {
   const shutdown = (signal) => {
-    log('shutdown', { signal });
+    log('info', 'shutdown', { signal });
     // Stop result watcher
     stopResultWatcher();
     // Save current queue state before closing
@@ -757,7 +731,10 @@ function main() {
   const config = loadConfig();
   _config = config;
 
-  log('startup', {
+  // Initialize structured logger with config (agent_id, log_file, log_level)
+  initLogger(config);
+
+  log('info', 'startup', {
     agent_id: config.agent_id,
     hub_url: config.hub_url,
     capabilities: config.capabilities,
@@ -767,7 +744,7 @@ function main() {
   // Load persisted queue state and check for incomplete tasks (crash recovery)
   _queue = loadQueue(QUEUE_PATH);
   if (_queue.active) {
-    log('recovery_found', { task_id: _queue.active.task_id, status: _queue.active.status });
+    log('warning', 'recovery_found', { task_id: _queue.active.task_id, status: _queue.active.status });
     // Move active to recovering slot -- sidecar crashed while task was in progress
     _queue.recovering = _queue.active;
     _queue.active = null;
@@ -784,7 +761,20 @@ function main() {
   // Set up graceful shutdown
   setupGracefulShutdown(hub);
 
-  log('ready', { agent_id: config.agent_id });
+  log('info', 'ready', { agent_id: config.agent_id });
 }
+
+// =============================================================================
+// 9. Global Error Handlers
+// =============================================================================
+
+process.on('unhandledRejection', (reason) => {
+  log('error', 'unhandled_rejection', { reason: String(reason) });
+});
+
+process.on('uncaughtException', (err) => {
+  log('error', 'uncaught_exception', { error: err.message, stack: err.stack });
+  process.exit(1);
+});
 
 main();
