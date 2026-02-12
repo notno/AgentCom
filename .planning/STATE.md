@@ -67,6 +67,7 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 
 1. Investigate reusing existing agents by name during onboarding (area: api)
 2. Fix 2 test failures in mix test suite (area: testing)
+3. Analyze scalability bottlenecks and machine vs agent scaling tradeoffs (area: architecture)
 
 ### Blockers/Concerns
 
