@@ -87,7 +87,7 @@ defmodule AgentCom.DetsBackup do
     metrics = %{
       tables: table_metrics,
       last_backup_at: state.last_backup_at,
-      last_backup_results: state.last_backup_results
+      last_backup_results: normalize_backup_results(state.last_backup_results)
     }
 
     {:reply, metrics, state}
@@ -198,6 +198,18 @@ defmodule AgentCom.DetsBackup do
       {:error, _reason} ->
         :ok
     end
+  end
+
+  defp normalize_backup_results(nil), do: nil
+
+  defp normalize_backup_results(results) when is_list(results) do
+    Enum.map(results, fn
+      {:ok, info} ->
+        %{status: "ok", table: to_string(info.table), path: info.path, size: info.size}
+
+      {:error, info} ->
+        %{status: "error", table: to_string(info.table), reason: inspect(info.reason)}
+    end)
   end
 
   defp table_metrics(table_atom) do
