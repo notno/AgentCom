@@ -6,3 +6,6 @@ config :agent_com,
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id, :agent_id]
+
+# Import environment-specific config (e.g., config/test.exs for MIX_ENV=test)
+import_config "#{config_env()}.exs"

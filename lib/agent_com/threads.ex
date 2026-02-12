@@ -135,7 +135,8 @@ defmodule AgentCom.Threads do
   end
 
   defp dets_path(name) do
-    dir = Path.join([System.get_env("HOME") || ".", ".agentcom", "data"])
+    dir = Application.get_env(:agent_com, :threads_data_dir,
+      Path.join([System.get_env("HOME") || ".", ".agentcom", "data"]))
     File.mkdir_p!(dir)
     Path.join(dir, name <> ".dets") |> String.to_charlist()
   end

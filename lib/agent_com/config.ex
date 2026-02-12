@@ -59,7 +59,8 @@ defmodule AgentCom.Config do
   end
 
   defp data_dir do
-    dir = Path.join([System.get_env("HOME") || ".", ".agentcom", "data"])
+    dir = Application.get_env(:agent_com, :config_data_dir,
+      Path.join([System.get_env("HOME") || ".", ".agentcom", "data"]))
     File.mkdir_p!(dir)
     dir
   end
