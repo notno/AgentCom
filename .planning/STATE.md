@@ -19,7 +19,7 @@ Progress: [█░░░░░░░░░] 7%
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 51 (19 v1.0 + 32 v1.1)
+- Total plans completed: 53 (19 v1.0 + 32 v1.1 + 2 v1.2)
 - Average duration: 5 min
 - Total execution time: 3.8 hours
 
@@ -37,10 +37,11 @@ Progress: [█░░░░░░░░░] 7%
 | 16-operations-docs | 4 | 14 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 17-02 (4 min), 16-04 (1 min), 16-03 (5 min), 15-04 (6 min), 16-02 (3 min)
+- Last 5 plans: 17-02 (4 min), 17-01 (4 min), 16-04 (1 min), 16-03 (5 min), 15-04 (6 min)
 - Trend: Stable
 
 *Updated after each plan completion*
+| Phase 17 P01 | 4min | 1 task (TDD) | 2 files |
 | Phase 17 P02 | 4min | 2 tasks | 6 files |
 
 ## Accumulated Context
@@ -51,6 +52,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions across 32 plans).
 
 **v1.2 decisions:**
+- 17-01: Keywords as strong signals in heuristic -- override word-count majority voting (short "refactor auth" = complex)
+- 17-01: Majority-vote for non-keyword signals with conservative tie-breaking toward :standard
+- 17-01: Empty params classify as :unknown with 0.0 confidence
 - 17-02: Enrichment validation as separate pass after schema validation (not mixed into validate_against_schema)
 - 17-02: Soft limit for verification steps set at 10 (warning, not error)
 - 17-02: Complexity field stored as nil placeholder -- Plan 03 wires module
@@ -79,5 +83,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 17-02-PLAN.md (enrichment fields + validation). Plan 03 remaining.
+Stopped at: Completed 17-01-PLAN.md (complexity heuristic engine) and 17-02-PLAN.md (enrichment fields + validation). Plan 03 remaining.
 Resume file: None
