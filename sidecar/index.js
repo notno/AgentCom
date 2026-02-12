@@ -578,7 +578,9 @@ class HubConnection {
       complexity: msg.complexity || null,
       // Verification control fields (Phase 21)
       skip_verification: msg.skip_verification || false,
-      verification_timeout_ms: msg.verification_timeout_ms || null
+      verification_timeout_ms: msg.verification_timeout_ms || null,
+      // Routing decision (Phase 20)
+      routing_decision: msg.routing_decision || null
     };
 
     // Persist BEFORE acknowledging (crash between accept and persist loses the task)
@@ -609,8 +611,71 @@ class HubConnection {
       saveQueue(QUEUE_PATH, _queue);
     }
 
-    // Start wake process
-    wakeAgent(task, this);
+    // Phase 20: Direct execution when routing_decision present
+    const routing = task.routing_decision;
+    if (routing && routing.target_type && routing.target_type !== 'wake') {
+      this.executeTask(task);
+    } else {
+      // Legacy: wake agent and watch for result file
+      wakeAgent(task, this);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase 20: Direct Execution via Execution Engine
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Execute a task directly using the execution engine (dispatcher).
+   * Called when task has a routing_decision with a concrete target_type.
+   * Streams progress events to hub via WebSocket, reports completion/failure.
+   */
+  async executeTask(task) {
+    const { dispatch } = require('./lib/execution/dispatcher');
+    const { ProgressEmitter } = require('./lib/execution/progress-emitter');
+
+    const emitter = new ProgressEmitter((events) => {
+      for (const event of events) {
+        this.send({
+          type: 'task_progress',
+          task_id: task.task_id,
+          execution_event: {
+            event_type: event.type,
+            text: event.text || event.message || '',
+            tokens_so_far: event.tokens_so_far || null,
+            model: event.model || null,
+            timestamp: Date.now()
+          }
+        });
+      }
+    }, { batchIntervalMs: 100 });
+
+    try {
+      task.status = 'working';
+      saveQueue(QUEUE_PATH, _queue);
+
+      const result = await dispatch(task, _config, (event) => emitter.emit(event));
+      emitter.flush();
+      emitter.destroy();
+
+      this.sendTaskComplete(task.task_id, {
+        status: result.status,
+        output: result.output,
+        model_used: result.model_used,
+        tokens_in: result.tokens_in,
+        tokens_out: result.tokens_out,
+        estimated_cost_usd: result.estimated_cost_usd,
+        equivalent_claude_cost_usd: result.equivalent_claude_cost_usd,
+        execution_ms: result.execution_ms
+      });
+    } catch (err) {
+      emitter.destroy();
+      log('error', 'execution_failed', { task_id: task.task_id, error: err.message });
+      this.sendTaskFailed(task.task_id, err.message);
+    }
+
+    _queue.active = null;
+    saveQueue(QUEUE_PATH, _queue);
   }
 
   // ---------------------------------------------------------------------------
