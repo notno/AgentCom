@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 18 of 22 (LLM Registry and Host Resources)
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Executing
-Last activity: 2026-02-12 -- Completed 18-02 (sidecar resource metrics and reporting)
+Last activity: 2026-02-12 -- Completed 18-03 (HTTP API, WS handlers, supervisor wiring)
 
-Progress: [██░░░░░░░░] 20%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 56 (19 v1.0 + 32 v1.1 + 5 v1.2)
+- Total plans completed: 57 (19 v1.0 + 32 v1.1 + 6 v1.2)
 - Average duration: 5 min
 - Total execution time: 3.8 hours
 
@@ -37,7 +37,7 @@ Progress: [██░░░░░░░░] 20%
 | 16-operations-docs | 4 | 14 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 18-02 (2 min), 18-01 (4 min), 17-03 (4 min), 17-02 (4 min), 17-01 (4 min)
+- Last 5 plans: 18-03 (11 min), 18-02 (2 min), 18-01 (4 min), 17-03 (4 min), 17-02 (4 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -46,6 +46,7 @@ Progress: [██░░░░░░░░] 20%
 | Phase 17 P03 | 4min | 2 tasks | 6 files |
 | Phase 18 P01 | 4min | 1 task (TDD) | 2 files |
 | Phase 18 P02 | 2min | 2 tasks | 2 files |
+| Phase 18 P03 | 11min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -73,6 +74,10 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - 18-02: VRAM from Ollama /api/ps size_vram sum (no nvidia-smi dependency)
 - 18-02: Separate resource_report WS message type rather than piggybacking on ping
 - 18-02: 5-second initial report delay after identify for connection stabilization
+- 18-03: Snapshot route before :id route to prevent parameter capture
+- 18-03: resource_report is fire-and-forget (no reply) like task_progress
+- 18-03: :number validation type accepts both integer and float
+- 18-03: LlmRegistry tests use supervisor stop/restart for compatibility
 
 ### Pending Todos
 
@@ -101,5 +106,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 18-02-PLAN.md (sidecar resource metrics). Ready for 18-03.
+Stopped at: Completed 18-03-PLAN.md (HTTP API, WS handlers, supervisor wiring). Ready for 18-04.
 Resume file: None
