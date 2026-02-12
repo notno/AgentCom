@@ -154,10 +154,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 15-01-PLAN.md -- Core RateLimiter token bucket + Config tier classification (TDD)
-- [ ] 15-02-PLAN.md -- WebSocket, HTTP, and Scheduler integration
-- [ ] 15-03-PLAN.md -- Admin API for overrides and whitelist with DETS persistence
-- [ ] 15-04-PLAN.md -- Dashboard visibility (agent cards, summary card, Sweeper, push notifications)
+- [x] 15-01-PLAN.md -- Core RateLimiter token bucket + Config tier classification (TDD)
+- [x] 15-02-PLAN.md -- WebSocket, HTTP, and Scheduler integration
+- [x] 15-03-PLAN.md -- Admin API for overrides and whitelist with DETS persistence
+- [x] 15-04-PLAN.md -- Dashboard visibility (agent cards, summary card, Sweeper, push notifications)
 
 ### Phase 16: Operations Documentation
 **Goal**: A new operator can set up, monitor, and troubleshoot the system without reading source code
@@ -188,5 +188,5 @@ Phases execute in numeric order: 9 -> 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16
 | 12. Input Validation | v1.1 | 3/3 | Complete | 2026-02-12 |
 | 13. Structured Logging + Telemetry | v1.1 | 4/4 | Complete | 2026-02-12 |
 | 14. Metrics + Alerting | v1.1 | 4/4 | Complete | 2026-02-12 |
-| 15. Rate Limiting | v1.1 | 0/TBD | Not started | - |
+| 15. Rate Limiting | v1.1 | 4/4 | Complete | 2026-02-12 |
 | 16. Operations Documentation | v1.1 | 0/TBD | Not started | - |
