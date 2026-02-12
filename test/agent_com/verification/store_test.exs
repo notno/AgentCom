@@ -12,7 +12,9 @@ defmodule AgentCom.Verification.StoreTest do
     File.mkdir_p!(tmp_dir)
     dets_path = Path.join(tmp_dir, "verification_reports_test.dets")
 
-    {:ok, pid} = Store.start_link(dets_path: dets_path, max_reports: 5)
+    # Use a unique registered name per test to avoid conflicts with default __MODULE__ name
+    test_name = :"store_test_#{:erlang.unique_integer([:positive])}"
+    {:ok, pid} = Store.start_link(dets_path: dets_path, max_reports: 5, name: test_name)
 
     on_exit(fn ->
       if Process.alive?(pid), do: GenServer.stop(pid, :normal, 5_000)
@@ -116,8 +118,9 @@ defmodule AgentCom.Verification.StoreTest do
       # Stop the GenServer
       GenServer.stop(pid, :normal)
 
-      # Restart with same DETS path
-      {:ok, new_pid} = Store.start_link(dets_path: dets_path, max_reports: 5)
+      # Restart with same DETS path (unique name to avoid conflicts)
+      restart_name = :"store_restart_#{:erlang.unique_integer([:positive])}"
+      {:ok, new_pid} = Store.start_link(dets_path: dets_path, max_reports: 5, name: restart_name)
 
       # Data should still be there
       assert {:ok, saved} = Store.get(new_pid, {"task-persist", 1})

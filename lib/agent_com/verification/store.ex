@@ -31,15 +31,34 @@ defmodule AgentCom.Verification.Store do
   # ---------------------------------------------------------------------------
 
   def start_link(opts \\ []) do
-    GenServer.start_link(__MODULE__, opts)
+    name = Keyword.get(opts, :name, __MODULE__)
+    GenServer.start_link(__MODULE__, opts, name: name)
   end
 
   @doc """
   Persist a verification report. Key is `{task_id, run_number}`.
 
+  When called with `(task_id, report_map)` where `task_id` is a binary string
+  and `report_map` is a raw map (e.g. from sidecar JSON), the function ensures
+  the required atom keys `:task_id` and `:run_number` are present, then calls
+  the registered GenServer by module name.
+
+  When called with `(pid, report)` where `pid` is a PID, it calls the GenServer
+  directly (used by tests with explicit PIDs).
+
   Returns `:ok`.
   """
-  def save(pid, report) do
+  def save(task_id, report_map) when is_binary(task_id) and is_map(report_map) do
+    report =
+      report_map
+      |> Map.put(:task_id, task_id)
+      |> Map.put_new(:run_number, Map.get(report_map, "run_number", 1))
+      |> Map.put_new(:started_at, Map.get(report_map, "started_at", System.system_time(:millisecond)))
+
+    GenServer.call(__MODULE__, {:save, report})
+  end
+
+  def save(pid, report) when is_pid(pid) do
     GenServer.call(pid, {:save, report})
   end
 
