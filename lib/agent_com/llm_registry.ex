@@ -422,8 +422,14 @@ defmodule AgentCom.LlmRegistry do
         {:error, :invalid_params}
 
       true ->
+        clean_host =
+          host
+          |> to_string()
+          |> String.replace(~r{^https?://}, "")
+          |> String.trim_trailing("/")
+
         {:ok, %{
-          host: to_string(host),
+          host: clean_host,
           port: port || 11434,
           name: Map.get(params, :name) || Map.get(params, "name"),
           source: Map.get(params, :source) || Map.get(params, "source") || :manual
