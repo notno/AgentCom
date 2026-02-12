@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 17 of 22 (Enriched Task Format)
-Plan: --
-Status: Ready to plan
-Last activity: 2026-02-12 -- Roadmap created for v1.2 Smart Agent Pipeline (6 phases, 25 requirements)
+Plan: 2 of 3 complete
+Status: Executing
+Last activity: 2026-02-12 -- Completed 17-02 enrichment fields and validation
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 7%
 
 ## Performance Metrics
 
@@ -37,10 +37,11 @@ Progress: [░░░░░░░░░░] 0%
 | 16-operations-docs | 4 | 14 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 16-04 (1 min), 16-03 (5 min), 15-04 (6 min), 16-02 (3 min), 16-01 (5 min)
+- Last 5 plans: 17-02 (4 min), 16-04 (1 min), 16-03 (5 min), 15-04 (6 min), 16-02 (3 min)
 - Trend: Stable
 
 *Updated after each plan completion*
+| Phase 17 P02 | 4min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -48,6 +49,11 @@ Progress: [░░░░░░░░░░] 0%
 
 Decisions are logged in PROJECT.md Key Decisions table.
 v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions across 32 plans).
+
+**v1.2 decisions:**
+- 17-02: Enrichment validation as separate pass after schema validation (not mixed into validate_against_schema)
+- 17-02: Soft limit for verification steps set at 10 (warning, not error)
+- 17-02: Complexity field stored as nil placeholder -- Plan 03 wires module
 
 ### Pending Todos
 
@@ -73,5 +79,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: v1.2 roadmap created. 6 phases (17-22), 25 requirements mapped. Ready to plan Phase 17.
+Stopped at: Completed 17-02-PLAN.md (enrichment fields + validation). Plan 03 remaining.
 Resume file: None
