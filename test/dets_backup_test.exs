@@ -31,6 +31,27 @@ defmodule AgentCom.DetsBackupTest do
     end)
   end
 
+  test "health_metrics returns Jason-serializable data after backup" do
+    # Run a backup so last_backup_results is populated (not nil)
+    {:ok, _results} = AgentCom.DetsBackup.backup_all()
+
+    metrics = AgentCom.DetsBackup.health_metrics()
+
+    # This is the exact operation that was crashing DashboardSocket (Jason.Encoder not implemented for Tuple)
+    json = Jason.encode!(metrics)
+    decoded = Jason.decode!(json)
+
+    # last_backup_results should be a list (not nil, since we just ran a backup)
+    assert is_list(decoded["last_backup_results"])
+    assert length(decoded["last_backup_results"]) == 9
+
+    # Each entry should have a "status" key that is either "ok" or "error"
+    Enum.each(decoded["last_backup_results"], fn entry ->
+      assert entry["status"] in ["ok", "error"],
+             "Expected status 'ok' or 'error', got: #{inspect(entry["status"])}"
+    end)
+  end
+
   test "backup retention keeps only last 3 per table" do
     # Run backup 4 times with different timestamps
     {:ok, _} = AgentCom.DetsBackup.backup_all()
