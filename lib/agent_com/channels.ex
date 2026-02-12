@@ -18,6 +18,7 @@ defmodule AgentCom.Channels do
   3. All subscribers get it in their mailbox for polling
   """
   use GenServer
+  require Logger
 
   @table :agent_channels
   @history_table :channel_history
@@ -110,6 +111,11 @@ defmodule AgentCom.Channels do
 
   def handle_call({:subscribe, channel, agent_id}, _from, state) do
     case :dets.lookup(@table, channel) do
+      {:error, reason} ->
+        Logger.error("DETS corruption detected in #{@table}: #{inspect(reason)}")
+        GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @table, reason})
+        {:reply, {:error, :table_corrupted}, state}
+
       [{^channel, info}] ->
         if agent_id in info.subscribers do
           {:reply, {:ok, :already_subscribed}, state}
@@ -141,6 +147,11 @@ defmodule AgentCom.Channels do
 
   def handle_call({:publish, channel, msg}, _from, state) do
     case :dets.lookup(@table, channel) do
+      {:error, reason} ->
+        Logger.error("DETS corruption detected in #{@table}: #{inspect(reason)}")
+        GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @table, reason})
+        {:reply, {:error, :table_corrupted}, state}
+
       [{^channel, info}] ->
         # Store in channel history
         seq = store_history(channel, msg)

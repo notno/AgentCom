@@ -9,6 +9,7 @@ defmodule AgentCom.Mailbox do
   Stored at `priv/mailbox.dets` by default.
   """
   use GenServer
+  require Logger
 
   @max_messages_per_agent 100
   @table :agent_mailbox
@@ -85,30 +86,42 @@ defmodule AgentCom.Mailbox do
       message: AgentCom.Message.to_json(msg),
       stored_at: System.system_time(:millisecond)
     }
-    :dets.insert(@table, {{agent_id, seq}, entry})
 
-    # Trim old messages if over limit
-    trim_mailbox(agent_id)
+    case :dets.insert(@table, {{agent_id, seq}, entry}) do
+      :ok ->
+        # Trim old messages if over limit
+        trim_mailbox(agent_id)
+        {:reply, {:ok, seq}, %{state | seq: seq}}
 
-    {:reply, {:ok, seq}, %{state | seq: seq}}
+      {:error, reason} ->
+        Logger.error("DETS corruption detected in #{@table}: #{inspect(reason)}")
+        GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @table, reason})
+        {:reply, {:error, :table_corrupted}, state}
+    end
   end
 
   @impl true
   def handle_call({:poll, agent_id, since_seq}, _from, state) do
-    messages =
-      :dets.select(@table, [
-        {{{agent_id, :"$1"}, :"$2"},
-         [{:>, :"$1", since_seq}],
-         [:"$2"]}
-      ])
-      |> Enum.sort_by(& &1.seq)
+    case :dets.select(@table, [
+      {{{agent_id, :"$1"}, :"$2"},
+       [{:>, :"$1", since_seq}],
+       [:"$2"]}
+    ]) do
+      {:error, reason} ->
+        Logger.error("DETS corruption detected in #{@table}: #{inspect(reason)}")
+        GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @table, reason})
+        {:reply, {:error, :table_corrupted}, state}
 
-    last_seq = case List.last(messages) do
-      nil -> since_seq
-      msg -> msg.seq
+      messages ->
+        sorted = Enum.sort_by(messages, & &1.seq)
+
+        last_seq = case List.last(sorted) do
+          nil -> since_seq
+          msg -> msg.seq
+        end
+
+        {:reply, {sorted, last_seq}, state}
     end
-
-    {:reply, {messages, last_seq}, state}
   end
 
   @impl true

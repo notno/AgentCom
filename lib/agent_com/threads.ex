@@ -10,6 +10,7 @@ defmodule AgentCom.Threads do
   then collect the full tree in chronological order.
   """
   use GenServer
+  require Logger
 
   @messages_table :thread_messages
   @replies_table :thread_replies
@@ -54,23 +55,39 @@ defmodule AgentCom.Threads do
   @impl true
   def handle_cast({:index, msg}, state) do
     msg_json = AgentCom.Message.to_json(msg)
-    :dets.insert(@messages_table, {msg.id, msg_json})
 
-    if msg.reply_to do
-      children =
-        case :dets.lookup(@replies_table, msg.reply_to) do
-          [{_, existing}] -> existing
-          [] -> []
+    case :dets.insert(@messages_table, {msg.id, msg_json}) do
+      :ok ->
+        if msg.reply_to do
+          children =
+            case :dets.lookup(@replies_table, msg.reply_to) do
+              [{_, existing}] -> existing
+              [] -> []
+              {:error, reason} ->
+                Logger.error("DETS corruption detected in #{@replies_table}: #{inspect(reason)}")
+                GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @replies_table, reason})
+                []
+            end
+
+          unless msg.id in children do
+            case :dets.insert(@replies_table, {msg.reply_to, children ++ [msg.id]}) do
+              :ok -> :ok
+              {:error, reason} ->
+                Logger.error("DETS corruption detected in #{@replies_table}: #{inspect(reason)}")
+                GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @replies_table, reason})
+            end
+          end
         end
 
-      unless msg.id in children do
-        :dets.insert(@replies_table, {msg.reply_to, children ++ [msg.id]})
-      end
-    end
+        :dets.sync(@messages_table)
+        :dets.sync(@replies_table)
+        {:noreply, state}
 
-    :dets.sync(@messages_table)
-    :dets.sync(@replies_table)
-    {:noreply, state}
+      {:error, reason} ->
+        Logger.error("DETS corruption detected in #{@messages_table}: #{inspect(reason)}")
+        GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @messages_table, reason})
+        {:noreply, state}
+    end
   end
 
   @impl true

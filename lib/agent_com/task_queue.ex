@@ -666,8 +666,16 @@ defmodule AgentCom.TaskQueue do
   end
 
   defp persist_task(task, table) do
-    :dets.insert(table, {task.id, task})
-    :dets.sync(table)
+    case :dets.insert(table, {task.id, task}) do
+      :ok ->
+        :dets.sync(table)
+        :ok
+
+      {:error, reason} ->
+        Logger.error("DETS corruption detected in #{table}: #{inspect(reason)}")
+        GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, table, reason})
+        {:error, :table_corrupted}
+    end
   end
 
   defp rebuild_priority_index do
@@ -713,6 +721,10 @@ defmodule AgentCom.TaskQueue do
     case :dets.lookup(@tasks_table, task_id) do
       [{^task_id, task}] -> {:ok, task}
       [] -> {:error, :not_found}
+      {:error, reason} ->
+        Logger.error("DETS corruption detected in #{@tasks_table}: #{inspect(reason)}")
+        GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @tasks_table, reason})
+        {:error, :table_corrupted}
     end
   end
 
@@ -720,6 +732,10 @@ defmodule AgentCom.TaskQueue do
     case :dets.lookup(@dead_letter_table, task_id) do
       [{^task_id, task}] -> {:ok, task}
       [] -> {:error, :not_found}
+      {:error, reason} ->
+        Logger.error("DETS corruption detected in #{@dead_letter_table}: #{inspect(reason)}")
+        GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @dead_letter_table, reason})
+        {:error, :table_corrupted}
     end
   end
 

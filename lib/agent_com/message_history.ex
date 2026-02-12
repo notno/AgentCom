@@ -8,6 +8,7 @@ defmodule AgentCom.MessageHistory do
   Backed by DETS for persistence across restarts.
   """
   use GenServer
+  require Logger
 
   @table :message_history
   @max_messages 10_000
@@ -68,10 +69,16 @@ defmodule AgentCom.MessageHistory do
       stored_at: System.system_time(:millisecond)
     }
 
-    :dets.insert(@table, {seq, entry})
-    trim_history()
+    case :dets.insert(@table, {seq, entry}) do
+      :ok ->
+        trim_history()
+        {:reply, {:ok, seq}, %{state | seq: seq}}
 
-    {:reply, {:ok, seq}, %{state | seq: seq}}
+      {:error, reason} ->
+        Logger.error("DETS corruption detected in #{@table}: #{inspect(reason)}")
+        GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @table, reason})
+        {:reply, {:error, :table_corrupted}, state}
+    end
   end
 
   @impl true

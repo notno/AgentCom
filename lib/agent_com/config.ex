@@ -4,6 +4,7 @@ defmodule AgentCom.Config do
   Stores settings as key-value pairs persisted across restarts.
   """
   use GenServer
+  require Logger
 
   @table :agentcom_config
   @defaults %{
@@ -41,6 +42,10 @@ defmodule AgentCom.Config do
       case :dets.lookup(@table, key) do
         [{^key, val}] -> val
         [] -> Map.get(@defaults, key)
+        {:error, reason} ->
+          Logger.error("DETS corruption detected in #{@table}: #{inspect(reason)}")
+          GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @table, reason})
+          Map.get(@defaults, key)
       end
 
     {:reply, value, state}
@@ -48,9 +53,16 @@ defmodule AgentCom.Config do
 
   @impl true
   def handle_call({:put, key, value}, _from, state) do
-    :ok = :dets.insert(@table, {key, value})
-    :dets.sync(@table)
-    {:reply, :ok, state}
+    case :dets.insert(@table, {key, value}) do
+      :ok ->
+        :dets.sync(@table)
+        {:reply, :ok, state}
+
+      {:error, reason} ->
+        Logger.error("DETS corruption detected in #{@table}: #{inspect(reason)}")
+        GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @table, reason})
+        {:reply, {:error, :table_corrupted}, state}
+    end
   end
 
   @impl true
