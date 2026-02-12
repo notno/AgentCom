@@ -21,7 +21,8 @@ defmodule AgentCom.Validation.Schemas do
     "token" => 256,
     "error" => 2_000,
     "reason" => 2_000,
-    "name" => 256
+    "name" => 256,
+    "repo" => 512
   }
 
   # --- WebSocket message schemas (15 types) ---
@@ -250,7 +251,13 @@ defmodule AgentCom.Validation.Schemas do
         "metadata" => :map,
         "max_retries" => :integer,
         "complete_by" => :integer,
-        "needed_capabilities" => {:list, :string}
+        "needed_capabilities" => {:list, :string},
+        "repo" => :string,
+        "branch" => :string,
+        "file_hints" => {:list, :map},
+        "success_criteria" => {:list, :string},
+        "verification_steps" => {:list, :map},
+        "complexity_tier" => :string
       },
       description: "Submit a task to the queue."
     },

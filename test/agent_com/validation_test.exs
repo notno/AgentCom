@@ -423,7 +423,113 @@ defmodule AgentCom.ValidationTest do
   end
 
   # ===========================================================================
-  # 10. Edge cases
+  # 10. Enrichment field validation
+  # ===========================================================================
+
+  describe "enrichment field validation" do
+    test "valid task with all enrichment fields passes validation" do
+      params = %{
+        "description" => "Build feature",
+        "repo" => "https://github.com/org/repo",
+        "branch" => "feature/branch",
+        "file_hints" => [
+          %{"path" => "src/main.ex", "reason" => "entry point"},
+          %{"path" => "test/main_test.exs"}
+        ],
+        "success_criteria" => ["All tests pass", "No warnings"],
+        "verification_steps" => [
+          %{"type" => "test_passes", "target" => "mix test", "description" => "Run tests"},
+          %{"type" => "file_exists", "target" => "src/main.ex"}
+        ],
+        "complexity_tier" => "standard"
+      }
+
+      assert {:ok, ^params} = Validation.validate_enrichment_fields(params)
+    end
+
+    test "valid task without enrichment fields passes (backward compat)" do
+      params = %{"description" => "Simple task"}
+
+      assert {:ok, ^params} = Validation.validate_enrichment_fields(params)
+    end
+
+    test "invalid file_hints (missing path) returns error" do
+      params = %{
+        "file_hints" => [
+          %{"reason" => "no path here"}
+        ]
+      }
+
+      assert {:error, errors} = Validation.validate_enrichment_fields(params)
+      assert Enum.any?(errors, &(&1.field == "file_hints[0].path" and &1.error == :required))
+    end
+
+    test "invalid file_hints (empty path) returns error" do
+      params = %{
+        "file_hints" => [
+          %{"path" => "", "reason" => "empty path"}
+        ]
+      }
+
+      assert {:error, errors} = Validation.validate_enrichment_fields(params)
+      assert Enum.any?(errors, &(&1.field == "file_hints[0].path" and &1.error == :required))
+    end
+
+    test "invalid verification_steps (missing type) returns error" do
+      params = %{
+        "verification_steps" => [
+          %{"target" => "mix test"}
+        ]
+      }
+
+      assert {:error, errors} = Validation.validate_enrichment_fields(params)
+      assert Enum.any?(errors, &(&1.field == "verification_steps[0].type" and &1.error == :required))
+    end
+
+    test "invalid verification_steps (missing target) returns error" do
+      params = %{
+        "verification_steps" => [
+          %{"type" => "test_passes"}
+        ]
+      }
+
+      assert {:error, errors} = Validation.validate_enrichment_fields(params)
+      assert Enum.any?(errors, &(&1.field == "verification_steps[0].target" and &1.error == :required))
+    end
+
+    test "invalid complexity_tier ('mega') returns error" do
+      params = %{"complexity_tier" => "mega"}
+
+      assert {:error, errors} = Validation.validate_enrichment_fields(params)
+      assert Enum.any?(errors, &(&1.field == "complexity_tier" and &1.error == :invalid_value))
+    end
+
+    test "valid complexity_tier values all pass" do
+      for tier <- ["trivial", "standard", "complex", "unknown"] do
+        params = %{"complexity_tier" => tier}
+        assert {:ok, ^params} = Validation.validate_enrichment_fields(params)
+      end
+    end
+
+    test "verification steps at soft limit (10) passes with no warning" do
+      steps = for i <- 1..10, do: %{"type" => "test_passes", "target" => "test_#{i}"}
+      params = %{"verification_steps" => steps}
+
+      assert :ok = Validation.verify_step_soft_limit(params)
+    end
+
+    test "verification steps exceeding soft limit (11) returns warning" do
+      steps = for i <- 1..11, do: %{"type" => "test_passes", "target" => "test_#{i}"}
+      params = %{"verification_steps" => steps}
+
+      assert {:warn, msg} = Validation.verify_step_soft_limit(params)
+      assert msg =~ "11 verification steps"
+      assert msg =~ "soft limit: 10"
+    end
+  end
+
+  # ===========================================================================
+  # 11. Edge cases
   # ===========================================================================
 
   describe "edge cases" do

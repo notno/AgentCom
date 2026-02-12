@@ -85,6 +85,114 @@ defmodule AgentCom.Validation do
     end
   end
 
+  @valid_complexity_tiers ~w(trivial standard complex unknown)
+
+  @doc """
+  Validate enrichment fields after standard schema validation passes.
+
+  Performs nested validation on `file_hints`, `verification_steps`, and
+  `complexity_tier` fields. Returns `{:ok, params}` or `{:error, errors}`.
+  """
+  @spec validate_enrichment_fields(map()) :: {:ok, map()} | {:error, [map()]}
+  def validate_enrichment_fields(params) when is_map(params) do
+    errors = []
+
+    # Validate file_hints items
+    errors =
+      case Map.get(params, "file_hints") do
+        nil -> errors
+        hints when is_list(hints) ->
+          hints
+          |> Enum.with_index()
+          |> Enum.reduce(errors, fn {hint, idx}, acc ->
+            cond do
+              not is_map(hint) ->
+                [%{field: "file_hints[#{idx}]", error: :wrong_type,
+                   detail: "expected object, got #{type_name(hint)}"} | acc]
+
+              not is_binary(Map.get(hint, "path")) or Map.get(hint, "path") == "" ->
+                [%{field: "file_hints[#{idx}].path", error: :required,
+                   detail: "file hint must have a non-empty string 'path'"} | acc]
+
+              Map.has_key?(hint, "reason") and not is_binary(Map.get(hint, "reason")) ->
+                [%{field: "file_hints[#{idx}].reason", error: :wrong_type,
+                   detail: "expected string, got #{type_name(Map.get(hint, "reason"))}"} | acc]
+
+              true ->
+                acc
+            end
+          end)
+        _ -> errors
+      end
+
+    # Validate verification_steps items
+    errors =
+      case Map.get(params, "verification_steps") do
+        nil -> errors
+        steps when is_list(steps) ->
+          steps
+          |> Enum.with_index()
+          |> Enum.reduce(errors, fn {step, idx}, acc ->
+            cond do
+              not is_map(step) ->
+                [%{field: "verification_steps[#{idx}]", error: :wrong_type,
+                   detail: "expected object, got #{type_name(step)}"} | acc]
+
+              not is_binary(Map.get(step, "type")) or Map.get(step, "type") == "" ->
+                [%{field: "verification_steps[#{idx}].type", error: :required,
+                   detail: "verification step must have a non-empty string 'type'"} | acc]
+
+              not is_binary(Map.get(step, "target")) or Map.get(step, "target") == "" ->
+                [%{field: "verification_steps[#{idx}].target", error: :required,
+                   detail: "verification step must have a non-empty string 'target'"} | acc]
+
+              Map.has_key?(step, "description") and not is_binary(Map.get(step, "description")) ->
+                [%{field: "verification_steps[#{idx}].description", error: :wrong_type,
+                   detail: "expected string, got #{type_name(Map.get(step, "description"))}"} | acc]
+
+              true ->
+                acc
+            end
+          end)
+        _ -> errors
+      end
+
+    # Validate complexity_tier
+    errors =
+      case Map.get(params, "complexity_tier") do
+        nil -> errors
+        tier when is_binary(tier) ->
+          if tier in @valid_complexity_tiers do
+            errors
+          else
+            [%{field: "complexity_tier", error: :invalid_value,
+               detail: "must be one of: #{Enum.join(@valid_complexity_tiers, ", ")}",
+               value: tier} | errors]
+          end
+        _ -> errors
+      end
+
+    case errors do
+      [] -> {:ok, params}
+      _ -> {:error, Enum.reverse(errors)}
+    end
+  end
+
+  @doc """
+  Check if verification_steps exceeds the soft limit (10).
+
+  Returns `:ok` or `{:warn, message}`.
+  """
+  @spec verify_step_soft_limit(map()) :: :ok | {:warn, String.t()}
+  def verify_step_soft_limit(params) when is_map(params) do
+    case Map.get(params, "verification_steps") do
+      steps when is_list(steps) and length(steps) > 10 ->
+        {:warn, "Task has #{length(steps)} verification steps (soft limit: 10). Consider splitting into smaller tasks."}
+      _ ->
+        :ok
+    end
+  end
+
   @doc """
   Convert internal error maps to JSON-friendly maps (string keys, atom error to string).
   """
