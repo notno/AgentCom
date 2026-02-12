@@ -43,9 +43,12 @@ defmodule AgentCom.Endpoint do
   - POST   /api/onboard/register — Register new agent, get token (no auth)
   - GET    /api/config/default-repo — Get default repository URL (no auth)
   - PUT    /api/config/default-repo — Set default repository URL (auth required)
+  - GET    /api/schemas           — Schema discovery (no auth)
   - WS     /ws                   — WebSocket for agent connections
   """
   use Plug.Router
+
+  alias AgentCom.Validation
 
   plug Plug.Logger
   plug :match
@@ -87,11 +90,13 @@ defmodule AgentCom.Endpoint do
     else
       authenticated_agent = conn.assigns[:authenticated_agent]
       params = conn.body_params
-      # Use authenticated agent_id as "from" — ignore any spoofed "from" field
-      from = authenticated_agent
 
-      case params do
-        %{"payload" => payload} ->
+      case Validation.validate_http(:post_message, params) do
+        {:ok, _} ->
+          # Use authenticated agent_id as "from" -- ignore any spoofed "from" field
+          from = authenticated_agent
+          payload = params["payload"]
+
           msg = AgentCom.Message.new(%{
             from: from,
             to: params["to"],
@@ -107,8 +112,8 @@ defmodule AgentCom.Endpoint do
               send_json(conn, 422, %{"status" => "failed", "error" => to_string(reason)})
           end
 
-        _ ->
-          send_json(conn, 400, %{"error" => "missing required field: payload"})
+        {:error, errors} ->
+          send_validation_error(conn, errors)
       end
     end
   end
@@ -131,12 +136,13 @@ defmodule AgentCom.Endpoint do
     if conn.halted do
       conn
     else
-      case conn.body_params do
-        %{"heartbeat_interval_ms" => ms} when is_integer(ms) and ms > 0 ->
+      case Validation.validate_http(:put_heartbeat_interval, conn.body_params) do
+        {:ok, _} ->
+          ms = conn.body_params["heartbeat_interval_ms"]
           :ok = AgentCom.Config.put(:heartbeat_interval_ms, ms)
           send_json(conn, 200, %{"heartbeat_interval_ms" => ms, "status" => "updated"})
-        _ ->
-          send_json(conn, 400, %{"error" => "missing or invalid field: heartbeat_interval_ms (positive integer)"})
+        {:error, errors} ->
+          send_validation_error(conn, errors)
       end
     end
   end
@@ -159,12 +165,13 @@ defmodule AgentCom.Endpoint do
     if conn.halted do
       conn
     else
-      case conn.body_params do
-        %{"mailbox_ttl_ms" => ms} when is_integer(ms) and ms > 0 ->
+      case Validation.validate_http(:put_mailbox_retention, conn.body_params) do
+        {:ok, _} ->
+          ms = conn.body_params["mailbox_ttl_ms"]
           AgentCom.Mailbox.set_ttl(ms)
           send_json(conn, 200, %{"mailbox_ttl_ms" => ms, "status" => "updated"})
-        _ ->
-          send_json(conn, 400, %{"error" => "missing or invalid field: mailbox_ttl_ms (positive integer)"})
+        {:error, errors} ->
+          send_validation_error(conn, errors)
       end
     end
   end
@@ -244,12 +251,13 @@ defmodule AgentCom.Endpoint do
     token = get_token(conn)
     case AgentCom.Auth.verify(token) do
       {:ok, ^agent_id} ->
-        case conn.body_params do
-          %{"seq" => seq} ->
+        case Validation.validate_http(:post_mailbox_ack, conn.body_params) do
+          {:ok, _} ->
+            seq = conn.body_params["seq"]
             AgentCom.Mailbox.ack(agent_id, seq)
             send_json(conn, 200, %{"status" => "acked", "up_to" => seq})
-          _ ->
-            send_json(conn, 400, %{"error" => "missing required field: seq"})
+          {:error, errors} ->
+            send_validation_error(conn, errors)
         end
       _ ->
         send_json(conn, 401, %{"error" => "unauthorized"})
@@ -269,8 +277,9 @@ defmodule AgentCom.Endpoint do
       conn
     else
       agent_id = conn.assigns[:authenticated_agent]
-      case conn.body_params do
-        %{"name" => name} ->
+      case Validation.validate_http(:post_channel, conn.body_params) do
+        {:ok, _} ->
+          name = conn.body_params["name"]
           opts = %{
             description: conn.body_params["description"] || "",
             created_by: agent_id
@@ -279,8 +288,8 @@ defmodule AgentCom.Endpoint do
             :ok -> send_json(conn, 201, %{"status" => "created", "channel" => name})
             {:error, :exists} -> send_json(conn, 409, %{"error" => "channel_exists"})
           end
-        _ ->
-          send_json(conn, 400, %{"error" => "missing required field: name"})
+        {:error, errors} ->
+          send_validation_error(conn, errors)
       end
     end
   end
@@ -334,8 +343,9 @@ defmodule AgentCom.Endpoint do
       conn
     else
       agent_id = conn.assigns[:authenticated_agent]
-      case conn.body_params do
-        %{"payload" => payload} ->
+      case Validation.validate_http(:post_channel_publish, conn.body_params) do
+        {:ok, _} ->
+          payload = conn.body_params["payload"]
           msg = AgentCom.Message.new(%{
             from: agent_id,
             to: nil,
@@ -347,8 +357,8 @@ defmodule AgentCom.Endpoint do
             {:ok, seq} -> send_json(conn, 200, %{"status" => "published", "seq" => seq})
             {:error, :not_found} -> send_json(conn, 404, %{"error" => "channel_not_found"})
           end
-        _ ->
-          send_json(conn, 400, %{"error" => "missing required field: payload"})
+        {:error, errors} ->
+          send_validation_error(conn, errors)
       end
     end
   end
@@ -463,12 +473,13 @@ defmodule AgentCom.Endpoint do
     if conn.halted do
       conn
     else
-      case conn.body_params do
-        %{"agent_id" => agent_id} ->
+      case Validation.validate_http(:post_admin_token, conn.body_params) do
+        {:ok, _} ->
+          agent_id = conn.body_params["agent_id"]
           {:ok, token} = AgentCom.Auth.generate(agent_id)
           send_json(conn, 201, %{"agent_id" => agent_id, "token" => token})
-        _ ->
-          send_json(conn, 400, %{"error" => "missing required field: agent_id"})
+        {:error, errors} ->
+          send_validation_error(conn, errors)
       end
     end
   end
@@ -565,8 +576,12 @@ defmodule AgentCom.Endpoint do
     else
       admin_agent = conn.assigns[:authenticated_agent]
 
-      case conn.body_params do
-        %{"agent_id" => target_agent_id, "description" => description} = params ->
+      case Validation.validate_http(:post_admin_push_task, conn.body_params) do
+        {:ok, _} ->
+          params = conn.body_params
+          target_agent_id = params["agent_id"]
+          description = params["description"]
+
           task = %{
             "task_id" => "task-" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower),
             "description" => description,
@@ -590,10 +605,8 @@ defmodule AgentCom.Endpoint do
               })
           end
 
-        _ ->
-          send_json(conn, 400, %{
-            "error" => "missing required fields: agent_id, description"
-          })
+        {:error, errors} ->
+          send_validation_error(conn, errors)
       end
     end
   end
@@ -764,8 +777,9 @@ defmodule AgentCom.Endpoint do
       agent_id = conn.assigns[:authenticated_agent]
       params = conn.body_params
 
-      case params do
-        %{"description" => description} ->
+      case Validation.validate_http(:post_task, params) do
+        {:ok, _} ->
+          description = params["description"]
           task_params = %{
             description: description,
             priority: params["priority"] || "normal",
@@ -786,8 +800,8 @@ defmodule AgentCom.Endpoint do
               })
           end
 
-        _ ->
-          send_json(conn, 400, %{"error" => "missing required field: description"})
+        {:error, errors} ->
+          send_validation_error(conn, errors)
       end
     end
   end
@@ -890,41 +904,53 @@ defmodule AgentCom.Endpoint do
   end
 
   post "/api/dashboard/push-subscribe" do
-    subscription = conn.body_params
-    AgentCom.DashboardNotifier.subscribe(subscription)
-    send_json(conn, 200, %{"status" => "subscribed"})
+    case Validation.validate_http(:post_push_subscribe, conn.body_params) do
+      {:ok, _} ->
+        subscription = conn.body_params
+        AgentCom.DashboardNotifier.subscribe(subscription)
+        send_json(conn, 200, %{"status" => "subscribed"})
+      {:error, errors} ->
+        send_validation_error(conn, errors)
+    end
   end
 
   # --- Onboarding: Agent registration (no auth -- solves chicken-and-egg problem) ---
 
   post "/api/onboard/register" do
-    case conn.body_params do
-      %{"agent_id" => agent_id} when is_binary(agent_id) and agent_id != "" ->
-        # Check for existing agent with same name
-        existing = AgentCom.Auth.list()
-        already_registered = Enum.any?(existing, fn entry -> entry.agent_id == agent_id end)
+    case Validation.validate_http(:post_onboard_register, conn.body_params) do
+      {:ok, _} ->
+        agent_id = conn.body_params["agent_id"]
 
-        if already_registered do
-          send_json(conn, 409, %{"error" => "agent_id already registered"})
+        # Additional check: non-empty string (schema ensures string type, but guard against "")
+        if agent_id == "" do
+          send_validation_error(conn, [%{field: "agent_id", error: :required, detail: "agent_id must not be empty"}])
         else
-          {:ok, token} = AgentCom.Auth.generate(agent_id)
-          default_repo = AgentCom.Config.get(:default_repo)
-          host = conn.host
-          port = conn.port
-          hub_ws_url = "ws://#{host}:#{port}/ws"
-          hub_api_url = "http://#{host}:#{port}"
+          # Check for existing agent with same name
+          existing = AgentCom.Auth.list()
+          already_registered = Enum.any?(existing, fn entry -> entry.agent_id == agent_id end)
 
-          send_json(conn, 201, %{
-            "agent_id" => agent_id,
-            "token" => token,
-            "hub_ws_url" => hub_ws_url,
-            "hub_api_url" => hub_api_url,
-            "default_repo" => default_repo
-          })
+          if already_registered do
+            send_json(conn, 409, %{"error" => "agent_id already registered"})
+          else
+            {:ok, token} = AgentCom.Auth.generate(agent_id)
+            default_repo = AgentCom.Config.get(:default_repo)
+            host = conn.host
+            port = conn.port
+            hub_ws_url = "ws://#{host}:#{port}/ws"
+            hub_api_url = "http://#{host}:#{port}"
+
+            send_json(conn, 201, %{
+              "agent_id" => agent_id,
+              "token" => token,
+              "hub_ws_url" => hub_ws_url,
+              "hub_api_url" => hub_api_url,
+              "default_repo" => default_repo
+            })
+          end
         end
 
-      _ ->
-        send_json(conn, 400, %{"error" => "missing or invalid field: agent_id"})
+      {:error, errors} ->
+        send_validation_error(conn, errors)
     end
   end
 
@@ -943,14 +969,22 @@ defmodule AgentCom.Endpoint do
     if conn.halted do
       conn
     else
-      case conn.body_params do
-        %{"url" => url} when is_binary(url) and url != "" ->
+      case Validation.validate_http(:put_default_repo, conn.body_params) do
+        {:ok, _} ->
+          url = conn.body_params["url"]
           :ok = AgentCom.Config.put(:default_repo, url)
           send_json(conn, 200, %{"status" => "ok", "default_repo" => url})
-        _ ->
-          send_json(conn, 400, %{"error" => "missing or invalid field: url"})
+        {:error, errors} ->
+          send_validation_error(conn, errors)
       end
     end
+  end
+
+  # --- Schema Discovery (no auth -- agents need to introspect before identifying) ---
+
+  get "/api/schemas" do
+    schemas = AgentCom.Validation.Schemas.to_json()
+    send_json(conn, 200, %{"schemas" => schemas, "version" => "1.0"})
   end
 
   match _ do
@@ -997,6 +1031,14 @@ defmodule AgentCom.Endpoint do
     Map.new(details, fn {k, v} -> {to_string(k), v} end)
   end
   defp format_details(details), do: details
+
+  defp send_validation_error(conn, errors) do
+    formatted = Validation.format_errors(errors)
+    send_json(conn, 422, %{
+      "error" => "validation_failed",
+      "errors" => formatted
+    })
+  end
 
   defp send_json(conn, status, data) do
     conn
