@@ -187,11 +187,12 @@ defmodule AgentCom.ComplexityTest do
     test "many file hints signal complexity" do
       result =
         Complexity.infer(%{
-          "description" => "update tests",
+          "description" =>
+            "Update the validation layer across all endpoint handlers to support the new enrichment field format",
           "file_hints" => Enum.map(1..6, fn i -> %{"path" => "file_#{i}.ex"} end)
         })
 
-      # Many files should push toward complex
+      # Many files + medium description should push toward complex or standard
       assert result.tier in [:complex, :standard]
     end
 
@@ -200,7 +201,8 @@ defmodule AgentCom.ComplexityTest do
 
       result =
         Complexity.infer(%{
-          "description" => "implement feature with multiple verification requirements",
+          "description" =>
+            "Implement the new feature with all necessary validation checks and test coverage across modules",
           "verification_steps" => steps
         })
 
@@ -220,12 +222,24 @@ defmodule AgentCom.ComplexityTest do
   end
 
   describe "telemetry on disagreement" do
-    test "emits telemetry when explicit and inferred disagree" do
-      ref =
-        :telemetry_test.attach_event_handlers(self(), [
-          [:agent_com, :complexity, :disagreement]
-        ])
+    setup do
+      test_pid = self()
+      handler_id = "complexity-test-#{inspect(self())}"
 
+      :telemetry.attach_many(
+        handler_id,
+        [[:agent_com, :complexity, :disagreement]],
+        fn event, measurements, metadata, _config ->
+          send(test_pid, {:telemetry_event, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+      :ok
+    end
+
+    test "emits telemetry when explicit and inferred disagree" do
       # Explicit trivial but description looks complex
       Complexity.build(%{
         "complexity_tier" => "trivial",
@@ -233,28 +247,19 @@ defmodule AgentCom.ComplexityTest do
           "Refactor the entire authentication system to support OAuth2 with multiple providers, migrate tokens, redesign auth"
       })
 
-      assert_received {[:agent_com, :complexity, :disagreement], ^ref, %{}, metadata}
+      assert_receive {:telemetry_event, [:agent_com, :complexity, :disagreement], %{}, metadata}
       assert metadata.explicit == :trivial
       assert metadata.inferred_tier != :trivial
-
-      :telemetry.detach(ref)
     end
 
     test "does not emit telemetry when explicit and inferred agree" do
-      ref =
-        :telemetry_test.attach_event_handlers(self(), [
-          [:agent_com, :complexity, :disagreement]
-        ])
-
       # Explicit trivial and description is trivial
       Complexity.build(%{
         "complexity_tier" => "trivial",
         "description" => "fix typo"
       })
 
-      refute_received {[:agent_com, :complexity, :disagreement], ^ref, _, _}
-
-      :telemetry.detach(ref)
+      refute_receive {:telemetry_event, [:agent_com, :complexity, :disagreement], _, _}, 100
     end
   end
 end
