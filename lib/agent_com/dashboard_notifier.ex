@@ -32,6 +32,15 @@ defmodule AgentCom.DashboardNotifier do
     GenServer.call(__MODULE__, :get_vapid_public_key)
   end
 
+  @doc """
+  Send a push notification to all subscribed browsers.
+
+  Accepts a map with :title, :body, and optional :tag keys.
+  """
+  def notify(%{title: _title, body: _body} = notification) do
+    GenServer.cast(__MODULE__, {:notify, notification})
+  end
+
   # --- GenServer callbacks ---
 
   @impl true
@@ -65,6 +74,19 @@ defmodule AgentCom.DashboardNotifier do
   @impl true
   def handle_call(:get_vapid_public_key, _from, state) do
     {:reply, state.vapid_public, state}
+  end
+
+  @impl true
+  def handle_cast({:notify, notification}, state) do
+    payload = Jason.encode!(%{
+      title: notification.title,
+      body: notification.body,
+      icon: "/favicon.ico",
+      tag: Map.get(notification, :tag, "agentcom-alert")
+    })
+
+    new_subs = send_to_all(state.subscriptions, payload)
+    {:noreply, %{state | subscriptions: new_subs}}
   end
 
   @impl true

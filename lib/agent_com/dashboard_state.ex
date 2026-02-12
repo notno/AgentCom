@@ -55,9 +55,11 @@ defmodule AgentCom.DashboardState do
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "backups")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "validation")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "alerts")
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "rate_limits")
 
     Process.send_after(self(), :check_queue_growth, @queue_check_interval_ms)
     Process.send_after(self(), :reset_hourly, @hourly_reset_interval_ms)
+    Process.send_after(self(), :reset_rate_limit_counts, 300_000)
 
     state = %{
       started_at: System.system_time(:millisecond),
@@ -67,10 +69,12 @@ defmodule AgentCom.DashboardState do
       last_known_agents: MapSet.new(),
       validation_failures: [],
       validation_failure_counts: %{},
-      validation_disconnects: []
+      validation_disconnects: [],
+      rate_limit_violations: [],
+      rate_limit_violation_counts: %{}
     }
 
-    Logger.info("started", topics: ["tasks", "presence", "backups", "validation", "alerts"])
+    Logger.info("started", topics: ["tasks", "presence", "backups", "validation", "alerts", "rate_limits"])
 
     {:ok, state}
   end
@@ -163,6 +167,20 @@ defmodule AgentCom.DashboardState do
         _ -> []
       end
 
+    rate_limits =
+      try do
+        %{
+          summary: AgentCom.RateLimiter.system_rate_summary(),
+          per_agent:
+            Enum.map(agents, fn a ->
+              {a.agent_id, AgentCom.RateLimiter.agent_rate_status(a.agent_id)}
+            end)
+            |> Enum.into(%{})
+        }
+      rescue
+        _ -> %{summary: %{}, per_agent: %{}}
+      end
+
     snapshot = %{
       uptime_ms: now - state.started_at,
       timestamp: now,
@@ -175,7 +193,8 @@ defmodule AgentCom.DashboardState do
       dets_health: dets_health,
       compaction_history: compaction_history,
       validation: validation,
-      active_alerts: active_alerts
+      active_alerts: active_alerts,
+      rate_limits: rate_limits
     }
 
     {:reply, snapshot, state}
@@ -293,6 +312,38 @@ defmodule AgentCom.DashboardState do
 
   def handle_info({:alert_acknowledged, _rule_id}, state) do
     {:noreply, state}
+  end
+
+  # -- PubSub: rate limit events ------------------------------------------------
+
+  def handle_info({:rate_limit_violation, %{agent_id: agent_id} = event}, state) do
+    # Add to ring buffer (capped at 100 like validation_failures)
+    violations = Enum.take([event | state.rate_limit_violations], @ring_buffer_cap)
+
+    # Track per-agent count for notification threshold
+    counts = Map.update(state.rate_limit_violation_counts, agent_id, 1, &(&1 + 1))
+
+    new_state = %{state | rate_limit_violations: violations, rate_limit_violation_counts: counts}
+
+    # Send push notification every 10th violation per agent
+    agent_count = Map.get(counts, agent_id, 0)
+
+    if rem(agent_count, 10) == 0 do
+      AgentCom.DashboardNotifier.notify(%{
+        title: "Rate Limit Alert",
+        body: "Agent #{agent_id} has #{agent_count} rate limit violations",
+        tag: "rate-limit-#{agent_id}"
+      })
+    end
+
+    {:noreply, new_state}
+  end
+
+  # -- Periodic: reset rate limit violation counts (every 5 minutes) -----------
+
+  def handle_info(:reset_rate_limit_counts, state) do
+    Process.send_after(self(), :reset_rate_limit_counts, 300_000)
+    {:noreply, %{state | rate_limit_violation_counts: %{}}}
   end
 
   # Catch-all for unhandled PubSub messages

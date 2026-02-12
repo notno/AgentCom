@@ -99,6 +99,14 @@ defmodule AgentCom.RateLimiter do
       %{agent_id: agent_id}
     )
 
+    # Broadcast to PubSub for DashboardState real-time tracking
+    Phoenix.PubSub.broadcast(AgentCom.PubSub, "rate_limits", {:rate_limit_violation, %{
+      agent_id: agent_id,
+      consecutive: consecutive,
+      retry_after_ms: retry_ms,
+      timestamp: System.system_time(:millisecond)
+    }})
+
     retry_ms
   end
 
@@ -365,6 +373,133 @@ defmodule AgentCom.RateLimiter do
 
     :ets.insert(@override_table, {:_loaded, true})
     :ok
+  end
+
+  # ---------------------------------------------------------------------------
+  # Dashboard API
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Return rate limit status for a single agent, suitable for dashboard display.
+
+  Returns a map with per-channel/tier usage and violation info:
+  ```
+  %{
+    ws: %{light: %{remaining: 118, capacity: 120, usage_pct: 1.7}, ...},
+    http: %{...},
+    violations: %{consecutive: 0, total_in_window: 0},
+    rate_limited: false,
+    exempt: false
+  }
+  ```
+  """
+  @spec agent_rate_status(String.t()) :: map()
+  def agent_rate_status(agent_id) do
+    channels = [:ws, :http]
+    tiers = [:light, :normal, :heavy]
+
+    per_channel =
+      for channel <- channels, into: %{} do
+        tier_data =
+          for tier <- tiers, into: %{} do
+            {cap_internal, _rate} = get_limits(agent_id, channel, tier)
+            cap_real = div(cap_internal, 1000)
+
+            remaining =
+              case :ets.lookup(@bucket_table, {agent_id, channel, tier}) do
+                [{_key, tokens, last_refill, capacity, refill_rate}] ->
+                  now = System.monotonic_time(:millisecond)
+                  elapsed = max(now - last_refill, 0)
+                  refilled = min(tokens + trunc(elapsed * refill_rate), capacity)
+                  div(refilled, 1000)
+
+                [] ->
+                  cap_real
+              end
+
+            usage_pct =
+              if cap_real > 0,
+                do: Float.round((1 - remaining / cap_real) * 100, 1),
+                else: 0.0
+
+            {tier, %{remaining: remaining, capacity: cap_real, usage_pct: usage_pct}}
+          end
+
+        {channel, tier_data}
+      end
+
+    # Violation info
+    {consecutive, total_in_window} =
+      case :ets.lookup(@bucket_table, {agent_id, :violations}) do
+        [{_key, count, _window_start, consec}] -> {consec, count}
+        [] -> {0, 0}
+      end
+
+    Map.merge(per_channel, %{
+      violations: %{consecutive: consecutive, total_in_window: total_in_window},
+      rate_limited: rate_limited?(agent_id),
+      exempt: exempt?(agent_id)
+    })
+  end
+
+  @doc """
+  Return system-wide rate limit summary for dashboard display.
+
+  Returns:
+  ```
+  %{
+    total_violations_1h: 42,
+    active_rate_limited: 1,
+    exempt_count: 2,
+    top_offenders: [%{agent_id: "buggy-agent", violations: 35, rate_limited: true}, ...]
+  }
+  ```
+  """
+  @spec system_rate_summary() :: map()
+  def system_rate_summary do
+    # Scan violation entries from ETS
+    violation_data =
+      :ets.foldl(
+        fn
+          {{agent_id, :violations}, count, _window_start, _consec}, acc when is_binary(agent_id) ->
+            [{agent_id, count} | acc]
+
+          _, acc ->
+            acc
+        end,
+        [],
+        @bucket_table
+      )
+
+    total_violations = Enum.reduce(violation_data, 0, fn {_id, count}, acc -> acc + count end)
+
+    # Count rate-limited agents
+    active_rate_limited =
+      violation_data
+      |> Enum.count(fn {agent_id, _count} -> rate_limited?(agent_id) end)
+
+    # Count exempt agents
+    exempt_count =
+      case :ets.lookup(@override_table, :whitelist) do
+        [{:whitelist, list}] -> length(list)
+        [] -> 0
+      end
+
+    # Top offenders (top 3 by violation count)
+    top_offenders =
+      violation_data
+      |> Enum.sort_by(fn {_id, count} -> count end, :desc)
+      |> Enum.take(3)
+      |> Enum.map(fn {agent_id, count} ->
+        %{agent_id: agent_id, violations: count, rate_limited: rate_limited?(agent_id)}
+      end)
+
+    %{
+      total_violations_1h: total_violations,
+      active_rate_limited: active_rate_limited,
+      exempt_count: exempt_count,
+      top_offenders: top_offenders
+    }
   end
 
   # ---------------------------------------------------------------------------
