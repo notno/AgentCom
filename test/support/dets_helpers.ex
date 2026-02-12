@@ -32,6 +32,7 @@ defmodule AgentCom.TestHelpers.DetsHelpers do
     Application.put_env(:agent_com, :config_data_dir, Path.join(tmp_dir, "config"))
     Application.put_env(:agent_com, :threads_data_dir, Path.join(tmp_dir, "threads"))
     Application.put_env(:agent_com, :llm_registry_data_dir, Path.join(tmp_dir, "llm_registry"))
+    Application.put_env(:agent_com, :backup_dir, Path.join(tmp_dir, "backups"))
 
     # Ensure subdirectories exist
     File.mkdir_p!(Path.join(tmp_dir, "task_queue"))
@@ -39,6 +40,7 @@ defmodule AgentCom.TestHelpers.DetsHelpers do
     File.mkdir_p!(Path.join(tmp_dir, "config"))
     File.mkdir_p!(Path.join(tmp_dir, "threads"))
     File.mkdir_p!(Path.join(tmp_dir, "llm_registry"))
+    File.mkdir_p!(Path.join(tmp_dir, "backups"))
 
     tmp_dir
   end
@@ -54,6 +56,7 @@ defmodule AgentCom.TestHelpers.DetsHelpers do
     # Stop order: downstream consumers first, then data stores
     stop_order = [
       AgentCom.Scheduler,
+      AgentCom.DetsBackup,
       AgentCom.TaskQueue,
       AgentCom.MessageHistory,
       AgentCom.Mailbox,

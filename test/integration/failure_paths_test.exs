@@ -222,13 +222,19 @@ defmodule AgentCom.Integration.FailurePathsTest do
       raise "Timeout waiting for FSM #{agent_id} to terminate"
     end
 
-    case AgentCom.AgentFSM.get_state(agent_id) do
-      {:error, :not_found} ->
-        :ok
+    try do
+      case AgentCom.AgentFSM.get_state(agent_id) do
+        {:error, :not_found} ->
+          :ok
 
-      {:ok, _} ->
-        Process.sleep(50)
-        do_poll_fsm_gone(agent_id, deadline)
+        {:ok, _} ->
+          Process.sleep(50)
+          do_poll_fsm_gone(agent_id, deadline)
+      end
+    catch
+      :exit, _ ->
+        # FSM terminated mid-call — that means it's gone, which is success
+        :ok
     end
   end
 end

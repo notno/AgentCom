@@ -1,6 +1,16 @@
 defmodule AgentCom.DetsBackupTest do
   use ExUnit.Case, async: false
 
+  setup do
+    tmp_dir = AgentCom.TestHelpers.DetsHelpers.full_test_setup()
+
+    on_exit(fn ->
+      AgentCom.TestHelpers.DetsHelpers.full_test_teardown(tmp_dir)
+    end)
+
+    %{tmp_dir: tmp_dir}
+  end
+
   test "health_metrics returns data for all 9 tables" do
     metrics = AgentCom.DetsBackup.health_metrics()
     assert is_map(metrics)
