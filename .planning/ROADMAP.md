@@ -37,7 +37,7 @@
 - [x] **Phase 10: DETS Backup + Monitoring** - Automated backup, manual trigger, and health monitoring for all DETS tables
 - [x] **Phase 11: DETS Compaction + Recovery** - Scheduled compaction/defragmentation and documented corruption recovery
 - [x] **Phase 12: Input Validation** - Schema validation at all WebSocket and HTTP entry points with structured error responses
-- [ ] **Phase 13: Structured Logging + Telemetry** - JSON logging with consistent metadata and telemetry events for key lifecycle points
+- [x] **Phase 13: Structured Logging + Telemetry** - JSON logging with consistent metadata and telemetry events for key lifecycle points
 - [ ] **Phase 14: Metrics + Alerting** - Metrics endpoint and configurable alerter for system anomalies
 - [ ] **Phase 15: Rate Limiting** - Token bucket rate limiting on WebSocket and HTTP with per-action granularity
 - [ ] **Phase 16: Operations Documentation** - Setup, monitoring, and troubleshooting guides
@@ -121,10 +121,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 13-01-PLAN.md -- LoggerJSON + config infrastructure, AgentCom.Telemetry module, dual output (stdout + file rotation)
-- [ ] 13-02-PLAN.md -- Core module migration: AgentFSM, TaskQueue, Scheduler, DetsBackup, Presence, Reaper (structured logging + telemetry events)
-- [ ] 13-03-PLAN.md -- Supporting module migration + sidecar: remaining Elixir modules, PUT /api/admin/log-level, Node.js structured logging
-- [ ] 13-04-PLAN.md -- Test suite: per-module JSON assertion tests, telemetry event tests, sidecar log tests
+- [x] 13-01-PLAN.md -- LoggerJSON + config infrastructure, AgentCom.Telemetry module, dual output (stdout + file rotation)
+- [x] 13-02-PLAN.md -- Core module migration: AgentFSM, TaskQueue, Scheduler, DetsBackup, Presence, Reaper (structured logging + telemetry events)
+- [x] 13-03-PLAN.md -- Supporting module migration + sidecar: remaining Elixir modules, PUT /api/admin/log-level, Node.js structured logging
+- [x] 13-04-PLAN.md -- Test suite: per-module JSON assertion tests, telemetry event tests, sidecar log tests
 
 ### Phase 14: Metrics + Alerting
 **Goal**: Operators can see system health at a glance and get notified of anomalies before they become outages
@@ -181,7 +181,7 @@ Phases execute in numeric order: 9 -> 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16
 | 10. DETS Backup + Monitoring | v1.1 | 3/3 | Complete | 2026-02-12 |
 | 11. DETS Compaction + Recovery | v1.1 | 3/3 | Complete | 2026-02-12 |
 | 12. Input Validation | v1.1 | 3/3 | Complete | 2026-02-12 |
-| 13. Structured Logging + Telemetry | v1.1 | 0/4 | Not started | - |
+| 13. Structured Logging + Telemetry | v1.1 | 4/4 | Complete | 2026-02-12 |
 | 14. Metrics + Alerting | v1.1 | 0/TBD | Not started | - |
 | 15. Rate Limiting | v1.1 | 0/TBD | Not started | - |
 | 16. Operations Documentation | v1.1 | 0/TBD | Not started | - |
