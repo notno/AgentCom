@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 18 of 22 (LLM Registry and Host Resources)
-Plan: --
-Status: Ready to plan
-Last activity: 2026-02-12 -- Phase 17 verified and complete (3/3 plans, 5/5 success criteria)
+Plan: 2 of 4
+Status: Executing
+Last activity: 2026-02-12 -- Completed 18-02 (sidecar resource metrics and reporting)
 
-Progress: [█░░░░░░░░░] 17%
+Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 54 (19 v1.0 + 32 v1.1 + 3 v1.2)
+- Total plans completed: 55 (19 v1.0 + 32 v1.1 + 4 v1.2)
 - Average duration: 5 min
 - Total execution time: 3.8 hours
 
@@ -44,6 +44,7 @@ Progress: [█░░░░░░░░░] 17%
 | Phase 17 P01 | 4min | 1 task (TDD) | 2 files |
 | Phase 17 P02 | 4min | 2 tasks | 6 files |
 | Phase 17 P03 | 4min | 2 tasks | 6 files |
+| Phase 18 P02 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -62,6 +63,10 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - 17-03: Complexity.build called for every submission (heuristic always runs for observability)
 - 17-03: Enrichment fields propagated with additive-only pattern and safe defaults at every pipeline stage
 - 17-03: TaskQueue emits disagreement telemetry with task_id context for pipeline-level observability
+- 18-02: CPU percent from os.loadavg[0] / core count (simple, cross-platform, 1-min average)
+- 18-02: VRAM from Ollama /api/ps size_vram sum (no nvidia-smi dependency)
+- 18-02: Separate resource_report WS message type rather than piggybacking on ping
+- 18-02: 5-second initial report delay after identify for connection stabilization
 
 ### Pending Todos
 
@@ -91,5 +96,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Phase 17 verified complete. Ready to plan Phase 18.
+Stopped at: Completed 18-02-PLAN.md (sidecar resource metrics). Ready for 18-03.
 Resume file: None
