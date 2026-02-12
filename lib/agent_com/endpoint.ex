@@ -49,6 +49,13 @@ defmodule AgentCom.Endpoint do
   - POST   /api/alerts/:rule_id/acknowledge — Acknowledge alert (auth required)
   - GET    /api/config/alert-thresholds — Get alert thresholds (auth required)
   - PUT    /api/config/alert-thresholds — Update alert thresholds (auth required)
+  - GET    /api/admin/rate-limits           — Rate limit overview: defaults, overrides, whitelist (auth required)
+  - PUT    /api/admin/rate-limits/:agent_id — Set per-agent rate limit overrides (auth required)
+  - DELETE /api/admin/rate-limits/:agent_id — Remove per-agent overrides (auth required)
+  - GET    /api/admin/rate-limits/whitelist — Get exempt agent whitelist (auth required)
+  - PUT    /api/admin/rate-limits/whitelist — Replace entire whitelist (auth required)
+  - POST   /api/admin/rate-limits/whitelist — Add agent to whitelist (auth required)
+  - DELETE /api/admin/rate-limits/whitelist/:agent_id — Remove agent from whitelist (auth required)
   - GET    /api/schemas           — Schema discovery (no auth)
   - WS     /ws                   — WebSocket for agent connections
   """
@@ -96,10 +103,14 @@ defmodule AgentCom.Endpoint do
     if conn.halted do
       conn
     else
-      authenticated_agent = conn.assigns[:authenticated_agent]
-      params = conn.body_params
+      conn = AgentCom.Plugs.RateLimit.call(conn, action: :post_message)
+      if conn.halted do
+        conn
+      else
+        authenticated_agent = conn.assigns[:authenticated_agent]
+        params = conn.body_params
 
-      case Validation.validate_http(:post_message, params) do
+        case Validation.validate_http(:post_message, params) do
         {:ok, _} ->
           # Use authenticated agent_id as "from" -- ignore any spoofed "from" field
           from = authenticated_agent
@@ -118,6 +129,7 @@ defmodule AgentCom.Endpoint do
 
         {:error, errors} ->
           send_validation_error(conn, errors)
+        end
       end
     end
   end
@@ -955,6 +967,110 @@ defmodule AgentCom.Endpoint do
     end
   end
 
+  # --- Admin: Rate limit overrides & whitelist (auth required) ---
+
+  # IMPORTANT: Whitelist routes MUST be defined BEFORE the parameterized :agent_id route,
+  # otherwise "whitelist" would be captured as an agent_id parameter.
+
+  get "/api/admin/rate-limits" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      defaults = AgentCom.RateLimiter.get_defaults()
+      overrides = AgentCom.RateLimiter.get_overrides()
+      whitelist = AgentCom.RateLimiter.get_whitelist()
+
+      # Convert atom keys to strings for JSON serialization
+      defaults_json = Map.new(defaults, fn {tier, v} -> {to_string(tier), v} end)
+      overrides_json = Map.new(overrides, fn {agent_id, tiers} ->
+        {agent_id, Map.new(tiers, fn {tier, v} -> {to_string(tier), v} end)}
+      end)
+
+      send_json(conn, 200, %{
+        "defaults" => defaults_json,
+        "overrides" => overrides_json,
+        "whitelist" => whitelist
+      })
+    end
+  end
+
+  get "/api/admin/rate-limits/whitelist" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      whitelist = AgentCom.RateLimiter.get_whitelist()
+      send_json(conn, 200, %{"whitelist" => whitelist})
+    end
+  end
+
+  put "/api/admin/rate-limits/whitelist" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      agent_ids = conn.body_params["agent_ids"] || []
+      if is_list(agent_ids) and Enum.all?(agent_ids, &is_binary/1) do
+        AgentCom.RateLimiter.update_whitelist(agent_ids)
+        send_json(conn, 200, %{"status" => "updated", "whitelist" => agent_ids})
+      else
+        send_json(conn, 422, %{"error" => "invalid_whitelist", "detail" => "agent_ids must be a list of strings"})
+      end
+    end
+  end
+
+  post "/api/admin/rate-limits/whitelist" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      agent_id_to_add = conn.body_params["agent_id"]
+      if is_binary(agent_id_to_add) and agent_id_to_add != "" do
+        AgentCom.RateLimiter.add_to_whitelist(agent_id_to_add)
+        send_json(conn, 200, %{"status" => "added", "agent_id" => agent_id_to_add})
+      else
+        send_json(conn, 422, %{"error" => "invalid_agent_id", "detail" => "agent_id must be a non-empty string"})
+      end
+    end
+  end
+
+  delete "/api/admin/rate-limits/whitelist/:agent_id" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      AgentCom.RateLimiter.remove_from_whitelist(agent_id)
+      send_json(conn, 200, %{"status" => "removed", "agent_id" => agent_id})
+    end
+  end
+
+  put "/api/admin/rate-limits/:agent_id" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      params = conn.body_params
+      case parse_override_params(params) do
+        {:ok, parsed} ->
+          AgentCom.RateLimiter.set_override(agent_id, parsed)
+          send_json(conn, 200, %{"status" => "updated", "agent_id" => agent_id, "overrides" => params})
+        {:error, reason} ->
+          send_json(conn, 422, %{"error" => "invalid_overrides", "detail" => reason})
+      end
+    end
+  end
+
+  delete "/api/admin/rate-limits/:agent_id" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      AgentCom.RateLimiter.remove_override(agent_id)
+      send_json(conn, 200, %{"status" => "removed", "agent_id" => agent_id})
+    end
+  end
+
   # --- Dashboard API (no auth -- local network only) ---
 
   get "/api/dashboard/state" do
@@ -1113,6 +1229,36 @@ defmodule AgentCom.Endpoint do
 
   defp admin_agents do
     System.get_env("ADMIN_AGENTS", "") |> String.split(",", trim: true)
+  end
+
+  defp parse_override_params(params) do
+    tiers = [:light, :normal, :heavy]
+
+    parsed =
+      Enum.reduce_while(tiers, %{}, fn tier, acc ->
+        tier_str = to_string(tier)
+
+        case Map.get(params, tier_str) do
+          nil ->
+            {:cont, acc}
+
+          %{"capacity" => cap, "refill_rate_per_min" => rate}
+          when is_number(cap) and is_number(rate) ->
+            # Convert human-readable to internal units: capacity * 1000, rate * 1000 / 60_000
+            internal_cap = trunc(cap * 1000)
+            internal_rate = rate * 1000 / 60_000
+            {:cont, Map.put(acc, tier, %{capacity: internal_cap, refill_rate: internal_rate})}
+
+          _ ->
+            {:halt, {:error, "each tier must have numeric 'capacity' and 'refill_rate_per_min'"}}
+        end
+      end)
+
+    case parsed do
+      {:error, _} = err -> err
+      map when map == %{} -> {:error, "at least one tier (light, normal, heavy) must be specified"}
+      map -> {:ok, map}
+    end
   end
 
   defp send_json(conn, status, data) do
