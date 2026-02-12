@@ -19,18 +19,18 @@ Note: v1.1 Hardening phases 10-16 remain on roadmap (paused, not abandoned).
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6 (v1.1)
+- Total plans completed: 7 (v1.1)
 - Average duration: 5 min
-- Total execution time: 0.5 hours
+- Total execution time: 0.6 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 09-testing | 6 | 32 min | 5 min |
+| 09-testing | 7 | 33 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 09-06 (1 min), 09-04 (7 min), 09-03 (6 min), 09-02 (6 min), 09-05 (5 min)
+- Last 5 plans: 09-07 (1 min), 09-06 (1 min), 09-04 (7 min), 09-03 (6 min), 09-02 (6 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -58,6 +58,7 @@ Recent decisions affecting current work:
 - [Phase 09-04]: Explicit FSM sync for TestFactory agents in failure path tests where FSM state matters
 - [Phase 09-06]: npm test (not raw node --test) for sidecar CI -- delegates to package.json single source of truth
 - [Phase 09-06]: mix test --exclude skip to avoid known-buggy tests in CI
+- [Phase 09-07]: @moduletag :smoke for whole-module exclusion of environment-dependent smoke tests
 
 ### Pending Todos
 
@@ -75,5 +76,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: Defining v1.2 milestone — PROJECT.md updated, requirements next.
+Stopped at: Completed 09-07-PLAN.md (smoke test exclusion). Phase 09 all 7 plans complete.
 Resume file: None
