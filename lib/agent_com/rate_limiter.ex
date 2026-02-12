@@ -49,6 +49,8 @@ defmodule AgentCom.RateLimiter do
   @spec check(String.t(), :ws | :http, :light | :normal | :heavy) ::
           {:allow, non_neg_integer() | :exempt} | {:warn, non_neg_integer()} | {:deny, non_neg_integer()}
   def check(agent_id, channel, tier) do
+    ensure_config_loaded()
+
     if exempt?(agent_id) do
       emit_telemetry(agent_id, channel, tier, :allow, :exempt)
       {:allow, :exempt}
@@ -172,6 +174,200 @@ defmodule AgentCom.RateLimiter do
   end
 
   # ---------------------------------------------------------------------------
+  # Override Management
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Set per-agent rate limit overrides.
+
+  `overrides_map` is a map like `%{light: %{capacity: 200_000, refill_rate: 3.33}, ...}`
+  where values are in internal units (real tokens * 1000).
+
+  Writes to both ETS (runtime) and Config DETS (persistence). Resets the agent's
+  existing buckets so new limits take effect immediately.
+  """
+  @spec set_override(String.t(), map()) :: :ok
+  def set_override(agent_id, overrides_map) do
+    # Write each tier to ETS
+    Enum.each(overrides_map, fn {tier, %{capacity: cap, refill_rate: rate}} ->
+      :ets.insert(@override_table, {{agent_id, tier}, cap, rate})
+    end)
+
+    # Persist: merge into the full overrides map in Config DETS
+    all_overrides = get_overrides_from_dets()
+    updated = Map.put(all_overrides, agent_id, overrides_map)
+    AgentCom.Config.put(:rate_limit_overrides, updated)
+
+    # Reset buckets so new limits take effect immediately
+    delete_agent_buckets(agent_id)
+    :ok
+  end
+
+  @doc """
+  Remove per-agent override, reverting the agent to default limits.
+
+  Removes from both ETS and Config DETS. Resets existing buckets.
+  """
+  @spec remove_override(String.t()) :: :ok
+  def remove_override(agent_id) do
+    # Delete all ETS entries for this agent's overrides
+    :ets.match_delete(@override_table, {{agent_id, :_}, :_, :_})
+
+    # Persist: remove from the full overrides map in Config DETS
+    all_overrides = get_overrides_from_dets()
+    updated = Map.delete(all_overrides, agent_id)
+    AgentCom.Config.put(:rate_limit_overrides, updated)
+
+    # Reset buckets
+    delete_agent_buckets(agent_id)
+    :ok
+  end
+
+  @doc """
+  Return all current per-agent overrides as a map.
+
+  Returns `%{agent_id => %{tier => %{capacity: cap, refill_rate: rate}}}`.
+  Reads from ETS for speed; reconstructs the map from ETS entries.
+  """
+  @spec get_overrides() :: map()
+  def get_overrides do
+    ensure_config_loaded()
+
+    # Match all {agent_id, tier} entries (skip special keys like :whitelist, :_loaded)
+    :ets.foldl(
+      fn
+        {{agent_id, tier}, cap, rate}, acc when is_binary(agent_id) and is_atom(tier) ->
+          tier_data = %{capacity: cap, refill_rate: rate}
+          agent_map = Map.get(acc, agent_id, %{})
+          Map.put(acc, agent_id, Map.put(agent_map, tier, tier_data))
+
+        _other, acc ->
+          acc
+      end,
+      %{},
+      @override_table
+    )
+  end
+
+  @doc """
+  Return the default rate limits for display purposes.
+
+  Returns a map with human-readable token counts (internal / 1000) and
+  rates expressed as tokens per minute.
+  """
+  @spec get_defaults() :: map()
+  def get_defaults do
+    for tier <- [:light, :normal, :heavy], into: %{} do
+      {cap, rate} = Config.defaults(tier)
+      {tier, %{
+        capacity: div(cap, 1000),
+        refill_rate_per_min: Float.round(rate * 60_000 / 1000, 1)
+      }}
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Whitelist Management
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Return current whitelist as a list of agent_id strings.
+  """
+  @spec get_whitelist() :: [String.t()]
+  def get_whitelist do
+    ensure_config_loaded()
+
+    case :ets.lookup(@override_table, :whitelist) do
+      [{:whitelist, list}] -> list
+      [] -> []
+    end
+  end
+
+  @doc """
+  Replace the entire whitelist with the given list of agent_id strings.
+
+  Writes to both ETS and Config DETS.
+  """
+  @spec update_whitelist([String.t()]) :: :ok
+  def update_whitelist(agent_ids) when is_list(agent_ids) do
+    :ets.insert(@override_table, {:whitelist, agent_ids})
+    AgentCom.Config.put(:rate_limit_whitelist, agent_ids)
+    :ok
+  end
+
+  @doc """
+  Add a single agent to the whitelist if not already present.
+
+  Writes to both ETS and Config DETS.
+  """
+  @spec add_to_whitelist(String.t()) :: :ok
+  def add_to_whitelist(agent_id) do
+    current = get_whitelist()
+
+    unless agent_id in current do
+      updated = [agent_id | current]
+      :ets.insert(@override_table, {:whitelist, updated})
+      AgentCom.Config.put(:rate_limit_whitelist, updated)
+    end
+
+    :ok
+  end
+
+  @doc """
+  Remove a single agent from the whitelist.
+
+  Writes to both ETS and Config DETS.
+  """
+  @spec remove_from_whitelist(String.t()) :: :ok
+  def remove_from_whitelist(agent_id) do
+    current = get_whitelist()
+    updated = List.delete(current, agent_id)
+    :ets.insert(@override_table, {:whitelist, updated})
+    AgentCom.Config.put(:rate_limit_whitelist, updated)
+    :ok
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lazy DETS -> ETS Loading
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Load persisted overrides and whitelist from Config DETS into ETS.
+
+  Called lazily on first `check/3`. Uses an ETS flag `:_loaded` to avoid
+  re-reading DETS on every call -- the ETS lookup is O(1) and essentially free.
+  """
+  @spec load_persisted_config() :: :ok
+  def load_persisted_config do
+    # Load whitelist
+    case AgentCom.Config.get(:rate_limit_whitelist) do
+      nil -> :ok
+      list when is_list(list) -> :ets.insert(@override_table, {:whitelist, list})
+      _ -> :ok
+    end
+
+    # Load per-agent overrides
+    case AgentCom.Config.get(:rate_limit_overrides) do
+      nil ->
+        :ok
+
+      overrides when is_map(overrides) ->
+        Enum.each(overrides, fn {agent_id, tiers} ->
+          Enum.each(tiers, fn {tier, %{capacity: cap, refill_rate: rate}} ->
+            tier_atom = if is_binary(tier), do: String.to_existing_atom(tier), else: tier
+            :ets.insert(@override_table, {{agent_id, tier_atom}, cap, rate})
+          end)
+        end)
+
+      _ ->
+        :ok
+    end
+
+    :ets.insert(@override_table, {:_loaded, true})
+    :ok
+  end
+
+  # ---------------------------------------------------------------------------
   # Private
   # ---------------------------------------------------------------------------
 
@@ -230,5 +426,20 @@ defmodule AgentCom.RateLimiter do
       %{tokens_remaining: remaining},
       %{agent_id: agent_id, channel: channel, tier: tier, result: result}
     )
+  end
+
+  defp ensure_config_loaded do
+    case :ets.lookup(@override_table, :_loaded) do
+      [{:_loaded, true}] -> :ok
+      [] -> load_persisted_config()
+    end
+  end
+
+  defp get_overrides_from_dets do
+    case AgentCom.Config.get(:rate_limit_overrides) do
+      nil -> %{}
+      overrides when is_map(overrides) -> overrides
+      _ -> %{}
+    end
   end
 end
