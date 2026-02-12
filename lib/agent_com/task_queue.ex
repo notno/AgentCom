@@ -158,6 +158,15 @@ defmodule AgentCom.TaskQueue do
     GenServer.call(__MODULE__, {:store_routing_decision, task_id, routing_decision})
   end
 
+  @doc """
+  Expire a queued task by moving it to dead-letter with reason "ttl_expired".
+  Used by the Scheduler TTL sweep for non-trivial tasks that exceeded their TTL.
+  Returns `{:ok, task}` or `{:error, :not_found | :not_queued}`.
+  """
+  def expire_task(task_id) do
+    GenServer.call(__MODULE__, {:expire_task, task_id})
+  end
+
   @doc "Return queue statistics: counts by status and by priority."
   def stats do
     GenServer.call(__MODULE__, :stats)
@@ -661,6 +670,46 @@ defmodule AgentCom.TaskQueue do
 
       {:error, reason} ->
         {:reply, {:error, reason}, state}
+    end
+  end
+
+  # -- expire_task -------------------------------------------------------------
+
+  @impl true
+  def handle_call({:expire_task, task_id}, _from, state) do
+    case lookup_task(task_id) do
+      {:ok, %{status: :queued} = task} ->
+        now = System.system_time(:millisecond)
+
+        expired =
+          %{task |
+            status: :dead_letter,
+            last_error: "ttl_expired",
+            updated_at: now,
+            history:
+              cap_history([{:dead_letter, now, "ttl_expired"} | task.history])
+          }
+
+        :dets.delete(@tasks_table, task_id)
+        :dets.sync(@tasks_table)
+        persist_task(expired, @dead_letter_table)
+
+        new_index = remove_from_priority_index(state.priority_index, task_id)
+        broadcast_task_event(:task_dead_letter, expired)
+
+        :telemetry.execute(
+          [:agent_com, :task, :dead_letter],
+          %{retry_count: task.retry_count},
+          %{task_id: task_id, error: "ttl_expired"}
+        )
+
+        {:reply, {:ok, expired}, %{state | priority_index: new_index}}
+
+      {:ok, _task} ->
+        {:reply, {:error, :not_queued}, state}
+
+      {:error, :not_found} ->
+        {:reply, {:error, :not_found}, state}
     end
   end
 

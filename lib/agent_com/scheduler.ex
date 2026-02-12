@@ -87,6 +87,7 @@ defmodule AgentCom.Scheduler do
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "llm_registry")
 
     Process.send_after(self(), :sweep_stuck, @stuck_sweep_interval_ms)
+    Process.send_after(self(), :sweep_ttl, 60_000)
 
     Logger.info("scheduler_started", subscriptions: ["tasks", "presence", "llm_registry"])
 
@@ -214,6 +215,36 @@ defmodule AgentCom.Scheduler do
     {:noreply, state}
   end
 
+  # -- Task TTL sweep (Phase 19-03) --
+
+  def handle_info(:sweep_ttl, state) do
+    ttl_ms = AgentCom.Config.get(:task_ttl_ms) || 600_000
+    now = System.system_time(:millisecond)
+    cutoff = now - ttl_ms
+
+    queued_tasks = AgentCom.TaskQueue.list(status: :queued)
+
+    expired =
+      queued_tasks
+      |> Enum.filter(fn task ->
+        tier = get_in(task, [:complexity, :effective_tier])
+        task.created_at < cutoff and tier != :trivial
+      end)
+
+    Enum.each(expired, fn task ->
+      Logger.warning("scheduler_task_ttl_expired",
+        task_id: task.id,
+        age_ms: now - task.created_at,
+        ttl_ms: ttl_ms
+      )
+
+      AgentCom.TaskQueue.expire_task(task.id)
+    end)
+
+    Process.send_after(self(), :sweep_ttl, 60_000)
+    {:noreply, state}
+  end
+
   # -- Catch-all for unexpected messages --
 
   def handle_info(_msg, state) do
@@ -321,7 +352,8 @@ defmodule AgentCom.Scheduler do
             if Map.has_key?(state.pending_fallbacks, task.id) do
               state
             else
-              timer_ref = Process.send_after(self(), {:fallback_timeout, task.id}, @fallback_timeout_ms)
+              fallback_ms = AgentCom.Config.get(:fallback_wait_ms) || @fallback_timeout_ms
+              timer_ref = Process.send_after(self(), {:fallback_timeout, task.id}, fallback_ms)
 
               fallback_info = %{
                 original_tier: tier,
