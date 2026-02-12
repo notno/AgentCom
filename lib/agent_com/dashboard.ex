@@ -47,6 +47,8 @@ defmodule AgentCom.Dashboard do
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1">
       <title>AgentCom Command Center</title>
+      <link rel="stylesheet" href="https://unpkg.com/uplot@1.6.31/dist/uPlot.min.css">
+      <script src="https://unpkg.com/uplot@1.6.31/dist/uPlot.iife.min.js"></script>
       <style>
         /* === Reset & Base === */
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -304,9 +306,150 @@ defmodule AgentCom.Dashboard do
         .table-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
         .table-wrap::-webkit-scrollbar-track { background: #0a0a0f; }
         .table-wrap::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 3px; }
+
+        /* === Tab Navigation === */
+        .tab-bar {
+          display: flex; gap: 0; background: #141420; border: 1px solid #2a2a3a;
+          border-radius: 8px; margin-bottom: 12px; overflow: hidden;
+        }
+        .tab-btn {
+          padding: 10px 20px; background: none; border: none; color: #888;
+          font-size: 0.85em; font-weight: 600; cursor: pointer;
+          border-bottom: 2px solid transparent; transition: all 0.2s ease;
+          text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .tab-btn:hover { color: #e0e0e0; background: #1a1a2e; }
+        .tab-btn.active { color: #7eb8da; border-bottom-color: #7eb8da; background: #1a1a2e; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* === Alert Banner === */
+        .alert-banner {
+          background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.3);
+          border-radius: 8px; margin-bottom: 12px; overflow: hidden;
+        }
+        .alert-banner.critical {
+          background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3);
+        }
+        .alert-banner-content {
+          display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+        }
+        .alert-icon { font-size: 1.2em; color: #fbbf24; }
+        .alert-banner.critical .alert-icon { color: #ef4444; }
+        #alert-banner-text { flex: 1; font-size: 0.85em; font-weight: 600; color: #fbbf24; }
+        .alert-banner.critical #alert-banner-text { color: #ef4444; }
+        .alert-banner-dismiss {
+          background: none; border: 1px solid rgba(251, 191, 36, 0.4); color: #fbbf24;
+          padding: 4px 10px; border-radius: 4px; font-size: 0.75em; cursor: pointer;
+        }
+        .alert-banner.critical .alert-banner-dismiss {
+          border-color: rgba(239, 68, 68, 0.4); color: #ef4444;
+        }
+        .alert-banner-dismiss:hover { background: rgba(251, 191, 36, 0.15); }
+        .alert-banner.critical .alert-banner-dismiss:hover { background: rgba(239, 68, 68, 0.15); }
+        .alert-details {
+          padding: 0 16px 10px; font-size: 0.82em;
+        }
+        .alert-details-item {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 6px 10px; margin-bottom: 4px; border-radius: 4px;
+          background: rgba(0, 0, 0, 0.2);
+        }
+        .alert-details-item .alert-severity {
+          font-size: 0.72em; text-transform: uppercase; font-weight: 700;
+          padding: 2px 6px; border-radius: 3px;
+        }
+        .alert-details-item .alert-severity.critical { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+        .alert-details-item .alert-severity.warning { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+
+        /* === Metrics Tab === */
+        .metrics-grid { display: flex; flex-direction: column; gap: 16px; }
+        .metrics-cards {
+          display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+        }
+        @media (max-width: 1200px) { .metrics-cards { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 768px) { .metrics-cards { grid-template-columns: 1fr; } }
+        .metric-card {
+          background: #141420; border: 1px solid #2a2a3a; border-radius: 8px;
+          padding: 16px; text-align: center;
+        }
+        .metric-card h4 {
+          font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.5px;
+          color: #7eb8da; margin-bottom: 8px; font-weight: 600;
+        }
+        .metric-value {
+          font-size: 1.8em; font-weight: 700; color: #e0e0e0;
+          transition: transform 0.2s ease;
+        }
+        .metric-detail {
+          font-size: 0.75em; color: #888; margin-top: 4px;
+        }
+        .chart-container {
+          background: #141420; border: 1px solid #2a2a3a; border-radius: 8px;
+          padding: 16px; min-height: 340px;
+        }
+        .chart-container h3 {
+          font-size: 0.75em; text-transform: uppercase; letter-spacing: 1px;
+          color: #7eb8da; margin-bottom: 10px; font-weight: 600;
+        }
+        .alerts-section, .agent-metrics-section {
+          background: #141420; border: 1px solid #2a2a3a; border-radius: 8px;
+          padding: 16px;
+        }
+        .alerts-section h3, .agent-metrics-section h3 {
+          font-size: 0.75em; text-transform: uppercase; letter-spacing: 1px;
+          color: #7eb8da; margin-bottom: 10px; font-weight: 600;
+        }
+        .alerts-list .no-alerts { color: #555; font-size: 0.85em; }
+        .alert-item {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 10px 12px; margin-bottom: 6px; border-radius: 6px;
+          background: #1a1a2e; border-left: 3px solid #888;
+        }
+        .alert-item.critical { border-left-color: #ef4444; }
+        .alert-item.warning { border-left-color: #fbbf24; }
+        .alert-item-info { flex: 1; }
+        .alert-item-rule {
+          font-size: 0.72em; text-transform: uppercase; color: #888; margin-bottom: 2px;
+        }
+        .alert-item-message { font-size: 0.85em; color: #e0e0e0; }
+        .alert-item-time { font-size: 0.72em; color: #666; margin-top: 2px; }
+        .alert-item-actions { display: flex; align-items: center; gap: 8px; }
+        .alert-ack-badge {
+          font-size: 0.7em; padding: 2px 8px; border-radius: 3px;
+          background: rgba(74, 222, 128, 0.15); color: #4ade80;
+        }
+        .btn-ack {
+          background: none; border: 1px solid #7eb8da; color: #7eb8da;
+          padding: 4px 10px; border-radius: 4px; font-size: 0.75em;
+          cursor: pointer; transition: all 0.2s ease;
+        }
+        .btn-ack:hover { background: rgba(126, 184, 218, 0.15); }
+        .btn-ack:disabled { opacity: 0.4; cursor: default; }
+        .agent-metrics-table { width: 100%; border-collapse: collapse; }
       </style>
     </head>
     <body>
+
+      <!-- Alert Banner (visible on all tabs) -->
+      <div id="alert-banner" class="alert-banner" style="display:none;">
+        <div class="alert-banner-content">
+          <span class="alert-icon">&#9888;</span>
+          <span id="alert-banner-text">No active alerts</span>
+          <button class="alert-banner-dismiss" onclick="toggleAlertDetails()">Details</button>
+        </div>
+        <div id="alert-details" class="alert-details" style="display:none;">
+        </div>
+      </div>
+
+      <!-- Tab Navigation -->
+      <nav class="tab-bar">
+        <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard')">Dashboard</button>
+        <button class="tab-btn" data-tab="metrics" onclick="switchTab('metrics')">Metrics</button>
+      </nav>
+
+      <!-- Dashboard Tab -->
+      <div id="tab-dashboard" class="tab-content active">
 
       <!-- Header Bar -->
       <div class="header">
@@ -519,6 +662,85 @@ defmodule AgentCom.Dashboard do
           <div class="empty-state" id="val-empty">No validation failures</div>
         </div>
       </div>
+
+      </div><!-- end tab-dashboard -->
+
+      <!-- Metrics Tab -->
+      <div id="tab-metrics" class="tab-content">
+        <h2 style="color: #7eb8da; margin-bottom: 16px; font-size: 1.2em;">System Metrics</h2>
+
+        <div class="metrics-grid">
+          <!-- Summary cards row -->
+          <div class="metrics-cards">
+            <div class="metric-card">
+              <h4>Queue Depth</h4>
+              <div class="metric-value" id="mc-queue-depth">--</div>
+              <div class="metric-detail" id="mc-queue-trend">1h avg: --</div>
+            </div>
+            <div class="metric-card">
+              <h4>Task Latency (p50)</h4>
+              <div class="metric-value" id="mc-latency-p50">--</div>
+              <div class="metric-detail" id="mc-latency-range">p90: -- / p99: --</div>
+            </div>
+            <div class="metric-card">
+              <h4>Agent Utilization</h4>
+              <div class="metric-value" id="mc-utilization">--</div>
+              <div class="metric-detail" id="mc-agents-status">-- online / -- idle</div>
+            </div>
+            <div class="metric-card">
+              <h4>Error Rate</h4>
+              <div class="metric-value" id="mc-error-rate">--</div>
+              <div class="metric-detail" id="mc-error-count">-- failures/hr</div>
+            </div>
+          </div>
+
+          <!-- Charts -->
+          <div class="chart-container">
+            <h3>Queue Depth</h3>
+            <div id="chart-queue-depth"></div>
+          </div>
+          <div class="chart-container">
+            <h3>Task Latency</h3>
+            <div id="chart-latency"></div>
+          </div>
+          <div class="chart-container">
+            <h3>Agent Utilization</h3>
+            <div id="chart-utilization"></div>
+          </div>
+          <div class="chart-container">
+            <h3>Error Rate</h3>
+            <div id="chart-errors"></div>
+          </div>
+
+          <!-- Active Alerts Section -->
+          <div class="alerts-section">
+            <h3>Active Alerts</h3>
+            <div id="alerts-list" class="alerts-list">
+              <p class="no-alerts">No active alerts</p>
+            </div>
+          </div>
+
+          <!-- Per-Agent Table -->
+          <div class="agent-metrics-section">
+            <h3>Per-Agent Metrics</h3>
+            <div class="table-wrap">
+              <table class="agent-metrics-table" id="agent-metrics-table">
+                <thead>
+                  <tr>
+                    <th>Agent</th>
+                    <th>State</th>
+                    <th>Utilization</th>
+                    <th>Tasks/hr</th>
+                    <th>Avg Duration</th>
+                  </tr>
+                </thead>
+                <tbody id="agent-metrics-tbody">
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div><!-- end tab-metrics -->
 
       <script>
         // =====================================================================
