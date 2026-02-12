@@ -8,6 +8,7 @@ config :agent_com,
   message_history_path: "tmp/test/message_history.dets",
   channels_path: "tmp/test/channels",
   config_data_dir: "tmp/test/config",
-  threads_data_dir: "tmp/test/threads"
+  threads_data_dir: "tmp/test/threads",
+  backup_dir: "tmp/test/backups"
 
 config :logger, level: :warning

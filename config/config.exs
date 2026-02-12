@@ -1,7 +1,8 @@
 import Config
 
 config :agent_com,
-  port: String.to_integer(System.get_env("PORT") || "4000")
+  port: String.to_integer(System.get_env("PORT") || "4000"),
+  backup_dir: "priv/backups"
 
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
