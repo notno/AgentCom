@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.2 Smart Agent Pipeline -- Phase 17 Enriched Task Format
+**Current focus:** v1.2 Smart Agent Pipeline -- Phase 18 LLM Registry and Host Resources
 
 ## Current Position
 
-Phase: 17 of 22 (Enriched Task Format) -- COMPLETE
-Plan: 3 of 3 complete
-Status: Phase Complete
-Last activity: 2026-02-12 -- Completed 17-03 pipeline wiring (Phase 17 done)
+Phase: 18 of 22 (LLM Registry and Host Resources)
+Plan: --
+Status: Ready to plan
+Last activity: 2026-02-12 -- Phase 17 verified and complete (3/3 plans, 5/5 success criteria)
 
-Progress: [█░░░░░░░░░] 10%
+Progress: [█░░░░░░░░░] 17%
 
 ## Performance Metrics
 
@@ -89,5 +89,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 17-03-PLAN.md (pipeline wiring). Phase 17 complete. Ready for Phase 18.
+Stopped at: Phase 17 verified complete. Ready to plan Phase 18.
 Resume file: None

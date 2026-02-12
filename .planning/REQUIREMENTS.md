@@ -23,11 +23,11 @@ Requirements for milestone v1.2 Smart Agent Pipeline. Each maps to roadmap phase
 
 ### Task Enrichment
 
-- [ ] **TASK-01**: Tasks carry structured context (repo, branch, relevant files) as optional fields
-- [ ] **TASK-02**: Tasks carry success criteria (testable conditions for "done") as optional fields
-- [ ] **TASK-03**: Tasks carry verification steps (how to check completion) as optional fields
-- [ ] **TASK-04**: Tasks are classified into complexity tiers (trivial/standard/complex) with explicit submitter tags
-- [ ] **TASK-05**: A complexity heuristic engine infers tier from task content when submitter does not specify
+- [x] **TASK-01**: Tasks carry structured context (repo, branch, relevant files) as optional fields
+- [x] **TASK-02**: Tasks carry success criteria (testable conditions for "done") as optional fields
+- [x] **TASK-03**: Tasks carry verification steps (how to check completion) as optional fields
+- [x] **TASK-04**: Tasks are classified into complexity tiers (trivial/standard/complex) with explicit submitter tags
+- [x] **TASK-05**: A complexity heuristic engine infers tier from task content when submitter does not specify
 
 ### Model Routing
 
@@ -105,11 +105,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HOST-02 | Phase 18 | Pending |
 | HOST-03 | Phase 18 | Pending |
 | HOST-04 | Phase 19 | Pending |
-| TASK-01 | Phase 17 | Pending |
-| TASK-02 | Phase 17 | Pending |
-| TASK-03 | Phase 17 | Pending |
-| TASK-04 | Phase 17 | Pending |
-| TASK-05 | Phase 17 | Pending |
+| TASK-01 | Phase 17 | Complete |
+| TASK-02 | Phase 17 | Complete |
+| TASK-03 | Phase 17 | Complete |
+| TASK-04 | Phase 17 | Complete |
+| TASK-05 | Phase 17 | Complete |
 | ROUTE-01 | Phase 19 | Pending |
 | ROUTE-02 | Phase 19 | Pending |
 | ROUTE-03 | Phase 19 | Pending |
