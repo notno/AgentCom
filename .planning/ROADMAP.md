@@ -69,11 +69,12 @@
   3. A task submitted with an explicit complexity tier (trivial/standard/complex) carries that classification through assignment
   4. A task submitted without a complexity tier receives an inferred classification from the heuristic engine based on its content
   5. Existing v1.0/v1.1 tasks (without enrichment fields) continue working unchanged
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 17-01: TBD
-- [ ] 17-02: TBD
+- [ ] 17-01-PLAN.md -- Complexity heuristic engine (TDD, pure-function module)
+- [ ] 17-02-PLAN.md -- Task enrichment fields and validation schemas
+- [ ] 17-03-PLAN.md -- Pipeline propagation (Scheduler, Socket, Sidecar wiring)
 
 ### Phase 18: LLM Registry and Host Resources
 **Goal**: Hub knows which Ollama models are available on which hosts, whether they are healthy, and what resources each host has available
@@ -160,7 +161,7 @@ Phases execute in numeric order: 17 -> 17.1 -> 17.2 -> 18 -> ... -> 22
 |-------|-----------|----------------|--------|-----------|
 | 1-8 | v1.0 | 19/19 | Complete | 2026-02-11 |
 | 9-16 | v1.1 | 32/32 | Complete | 2026-02-12 |
-| 17. Enriched Task Format | v1.2 | 0/TBD | Not started | - |
+| 17. Enriched Task Format | v1.2 | 0/3 | Planned | - |
 | 18. LLM Registry + Host Resources | v1.2 | 0/TBD | Not started | - |
 | 19. Model-Aware Scheduler | v1.2 | 0/TBD | Not started | - |
 | 20. Sidecar Execution | v1.2 | 0/TBD | Not started | - |
