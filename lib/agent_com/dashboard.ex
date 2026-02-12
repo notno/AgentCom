@@ -481,6 +481,31 @@ defmodule AgentCom.Dashboard do
         </div>
       </div>
 
+      <!-- DETS Storage Health -->
+      <div style="margin-top: 12px;">
+        <div class="panel" id="panel-dets">
+          <div class="panel-title">DETS Storage Health</div>
+          <div class="table-wrap">
+            <table id="dets-table">
+              <thead>
+                <tr>
+                  <th>Table</th>
+                  <th>Records</th>
+                  <th>File Size</th>
+                  <th>Fragmentation</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="dets-tbody"></tbody>
+            </table>
+          </div>
+          <div style="margin-top: 8px; font-size: 0.8em; color: #888;" id="dets-backup-info">
+            Last backup: --
+          </div>
+          <div class="empty-state" id="dets-empty">No DETS health data</div>
+        </div>
+      </div>
+
       <script>
         // =====================================================================
         // State
@@ -644,6 +669,9 @@ defmodule AgentCom.Dashboard do
 
           // -- Dead letter --
           renderDeadLetter(data.dead_letter_tasks || []);
+
+          // -- DETS health --
+          renderDetsHealth(data.dets_health || null);
 
           updateLastUpdate();
         }
@@ -902,6 +930,57 @@ defmodule AgentCom.Dashboard do
           }).join('');
         }
 
+        // =====================================================================
+        // DETS health
+        // =====================================================================
+        function renderDetsHealth(detsHealth) {
+          var panel = document.getElementById('panel-dets');
+          var tbody = document.getElementById('dets-tbody');
+          var empty = document.getElementById('dets-empty');
+          var backupInfo = document.getElementById('dets-backup-info');
+
+          if (!detsHealth || !detsHealth.tables) {
+            tbody.innerHTML = '';
+            empty.style.display = 'block';
+            backupInfo.textContent = 'Last backup: --';
+            return;
+          }
+          empty.style.display = 'none';
+
+          tbody.innerHTML = detsHealth.tables.map(function(t) {
+            var tableName = t.table || '--';
+            var records = (t.status === 'ok' || t.status === 'available') ? t.record_count : '--';
+            var fileSize = (t.status === 'ok' || t.status === 'available') ? formatFileSize(t.file_size_bytes) : '--';
+            var frag = (t.status === 'ok' || t.status === 'available') ? (t.fragmentation_ratio * 100).toFixed(1) + '%' : '--';
+            var fragClass = '';
+            if (t.fragmentation_ratio > 0.5) fragClass = 'color: #ef4444; font-weight: 600;';
+            else if (t.fragmentation_ratio > 0.3) fragClass = 'color: #fbbf24;';
+
+            var statusDot = t.status === 'ok' ? 'ok' : 'offline';
+
+            return '<tr>' +
+              '<td>' + escapeHtml(tableName) + '</td>' +
+              '<td>' + records + '</td>' +
+              '<td>' + fileSize + '</td>' +
+              '<td style="' + fragClass + '">' + frag + '</td>' +
+              '<td><span class="dot ' + statusDot + '"></span>' + escapeHtml(String(t.status)) + '</td>' +
+              '</tr>';
+          }).join('');
+
+          if (detsHealth.last_backup_at) {
+            backupInfo.textContent = 'Last backup: ' + timeAgo(detsHealth.last_backup_at);
+          } else {
+            backupInfo.textContent = 'Last backup: never';
+          }
+        }
+
+        function formatFileSize(bytes) {
+          if (bytes == null) return '--';
+          if (bytes < 1024) return bytes + ' B';
+          if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+          return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
         function retryTask(btn) {
           var taskId = btn.getAttribute('data-task-id');
           if (!taskId || !dashConn || !dashConn.ws || dashConn.ws.readyState !== 1) return;
@@ -943,6 +1022,11 @@ defmodule AgentCom.Dashboard do
               case 'agent_joined': handleAgentJoined(ev); break;
               case 'agent_left': handleAgentLeft(ev); break;
               case 'status_changed': handleStatusChanged(ev); break;
+              case 'backup_complete':
+                if (dashConn && dashConn.ws && dashConn.ws.readyState === 1) {
+                  dashConn.ws.send(JSON.stringify({type: 'request_snapshot'}));
+                }
+                break;
             }
           });
           updateLastUpdate();
@@ -1152,6 +1236,7 @@ defmodule AgentCom.Dashboard do
             renderAgentTable(dashState.agents || []);
             doRenderRecent();
             renderDeadLetter(dashState.dead_letter_tasks || []);
+            renderDetsHealth(dashState.dets_health || null);
             // Update uptime
             if (dashState.uptime_ms) {
               dashState.uptime_ms += 30000;
