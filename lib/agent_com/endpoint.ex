@@ -1408,7 +1408,8 @@ defmodule AgentCom.Endpoint do
       "success_criteria" => Map.get(task, :success_criteria, []),
       "verification_steps" => Map.get(task, :verification_steps, []),
       "complexity" => format_complexity(Map.get(task, :complexity)),
-      "verification_report" => Map.get(task, :verification_report)
+      "verification_report" => Map.get(task, :verification_report),
+      "routing_decision" => format_routing_decision(Map.get(task, :routing_decision))
     }
   end
 
@@ -1430,6 +1431,28 @@ defmodule AgentCom.Endpoint do
       end
     }
   end
+
+  defp format_routing_decision(nil), do: nil
+  defp format_routing_decision(rd) when is_map(rd) do
+    %{
+      "effective_tier" => safe_to_string(Map.get(rd, :effective_tier)),
+      "target_type" => safe_to_string(Map.get(rd, :target_type)),
+      "selected_endpoint" => safe_to_string(Map.get(rd, :selected_endpoint)),
+      "selected_model" => safe_to_string(Map.get(rd, :selected_model)),
+      "fallback_used" => Map.get(rd, :fallback_used, false),
+      "fallback_from_tier" => safe_to_string(Map.get(rd, :fallback_from_tier)),
+      "fallback_reason" => safe_to_string(Map.get(rd, :fallback_reason)),
+      "candidate_count" => Map.get(rd, :candidate_count),
+      "classification_reason" => safe_to_string(Map.get(rd, :classification_reason)),
+      "estimated_cost_tier" => safe_to_string(Map.get(rd, :estimated_cost_tier)),
+      "decided_at" => Map.get(rd, :decided_at)
+    }
+  end
+
+  defp safe_to_string(nil), do: nil
+  defp safe_to_string(val) when is_atom(val), do: to_string(val)
+  defp safe_to_string(val) when is_binary(val), do: val
+  defp safe_to_string(val), do: inspect(val)
 
   defp format_details(details) when is_map(details) do
     Map.new(details, fn {k, v} -> {to_string(k), v} end)

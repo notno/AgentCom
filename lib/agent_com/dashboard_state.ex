@@ -202,6 +202,16 @@ defmodule AgentCom.DashboardState do
         _ -> %{endpoints: [], resources: %{}, fleet_models: %{}}
       end
 
+    # Compute routing stats from tasks with routing decisions
+    all_tasks =
+      try do
+        AgentCom.TaskQueue.list([])
+      rescue
+        _ -> []
+      end
+
+    routing_stats = compute_routing_stats(all_tasks)
+
     snapshot = %{
       uptime_ms: now - state.started_at,
       timestamp: now,
@@ -217,7 +227,8 @@ defmodule AgentCom.DashboardState do
       validation: validation,
       active_alerts: active_alerts,
       rate_limits: rate_limits,
-      llm_registry: llm_registry
+      llm_registry: llm_registry,
+      routing_stats: routing_stats
     }
 
     {:reply, snapshot, state}
@@ -568,6 +579,39 @@ defmodule AgentCom.DashboardState do
       completed_last_hour: hourly.completed,
       avg_completion_ms: avg_completion_ms,
       total_tokens_hour: hourly.total_tokens
+    }
+  end
+
+  defp compute_routing_stats(tasks) do
+    routed_tasks =
+      Enum.filter(tasks, fn t ->
+        Map.get(t, :routing_decision) != nil
+      end)
+
+    total_routed = length(routed_tasks)
+
+    by_tier =
+      Enum.reduce(routed_tasks, %{}, fn t, acc ->
+        tier = get_in(t, [:routing_decision, :effective_tier]) |> to_string()
+        Map.update(acc, tier, 1, &(&1 + 1))
+      end)
+
+    by_target =
+      Enum.reduce(routed_tasks, %{}, fn t, acc ->
+        target = get_in(t, [:routing_decision, :target_type]) |> to_string()
+        Map.update(acc, target, 1, &(&1 + 1))
+      end)
+
+    fallback_count =
+      Enum.count(routed_tasks, fn t ->
+        get_in(t, [:routing_decision, :fallback_used]) == true
+      end)
+
+    %{
+      total_routed: total_routed,
+      by_tier: by_tier,
+      by_target: by_target,
+      fallback_count: fallback_count
     }
   end
 end
