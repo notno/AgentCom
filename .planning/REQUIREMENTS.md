@@ -35,9 +35,9 @@ Requirements for milestone v1.1 Hardening. Each maps to roadmap phases.
 
 - [ ] **OBS-01**: Structured JSON logging with consistent metadata (task_id, agent_id, module) across all GenServers
 - [ ] **OBS-02**: Telemetry events emitted for key lifecycle points (task submit, assign, complete, fail, agent connect/disconnect)
-- [ ] **OBS-03**: Metrics endpoint (/api/metrics) exposes queue depth, task latency, agent utilization, error rates
-- [ ] **OBS-04**: Configurable alerter triggers notifications (PubSub + dashboard) for anomalies (queue growth, failure rate, stuck tasks)
-- [ ] **OBS-05**: Alert thresholds configurable via Config without restart
+- [x] **OBS-03**: Metrics endpoint (/api/metrics) exposes queue depth, task latency, agent utilization, error rates
+- [x] **OBS-04**: Configurable alerter triggers notifications (PubSub + dashboard) for anomalies (queue growth, failure rate, stuck tasks)
+- [x] **OBS-05**: Alert thresholds configurable via Config without restart
 
 ### Rate Limiting
 
@@ -111,9 +111,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DETS-05 | Phase 11 | Pending |
 | OBS-01 | Phase 13 | Pending |
 | OBS-02 | Phase 13 | Pending |
-| OBS-03 | Phase 14 | Pending |
-| OBS-04 | Phase 14 | Pending |
-| OBS-05 | Phase 14 | Pending |
+| OBS-03 | Phase 14 | Complete |
+| OBS-04 | Phase 14 | Complete |
+| OBS-05 | Phase 14 | Complete |
 | RATE-01 | Phase 15 | Pending |
 | RATE-02 | Phase 15 | Pending |
 | RATE-03 | Phase 15 | Pending |
