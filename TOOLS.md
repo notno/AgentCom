@@ -1,0 +1,54 @@
+# TOOLS.md - Local Notes
+
+Skills define _how_ tools work. This file is for _your_ specifics — the stuff that's unique to your setup.
+
+## Downloads & Large Files
+
+**Never download media/bulk files into workspace** — they can overflow context.
+
+Default download location: `C:\Users\nrosq\Downloads\openclaw\`
+
+Use subfolders as needed (e.g., `mmf-catalog\`, `images\`, etc.)
+
+## What Goes Here
+
+Things like:
+
+- Camera names and locations
+- SSH hosts and aliases
+- Preferred voices for TTS
+- Speaker/room names
+- Device nicknames
+- Anything environment-specific
+
+### AgentCom
+- Hub: http://100.126.22.86:4000
+- Agent ID: skaffen-amtiskaw
+- Token: 617b0174f5d320c094b59b68c41b5ead9efc9dfebdf1211f384a2fbe46a47c44
+- Last Seq: 170
+
+## Examples
+
+```markdown
+### Cameras
+
+- living-room → Main area, 180° wide angle
+- front-door → Entrance, motion-triggered
+
+### SSH
+
+- home-server → 192.168.1.100, user: admin
+
+### TTS
+
+- Preferred voice: "Nova" (warm, slightly British)
+- Default speaker: Kitchen HomePod
+```
+
+## Why Separate?
+
+Skills are shared. Your setup is yours. Keeping them apart means you can update skills without losing your notes, and share skills without leaking your infrastructure.
+
+---
+
+Add whatever helps you do your job. This is your cheat sheet.
