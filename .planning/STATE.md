@@ -150,6 +150,7 @@ Recent decisions affecting current work:
 ### Pending Todos
 
 1. Clarify repo_url vs default_repo naming in agent onboarding (area: api)
+2. Investigate reusing existing agents by name during onboarding (area: api)
 
 ### Blockers/Concerns
 
