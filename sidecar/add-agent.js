@@ -137,7 +137,7 @@ function loadProgress(agentName) {
       hub_url: HUB_URL,
       steps_completed: [],
       token: null,
-      repo_url: null
+      default_repo: null
     };
   }
 }
@@ -350,7 +350,7 @@ async function cloneRepo(progress) {
   logStep(3, 7, 'Cloning repository', 'start');
 
   // Get repo URL from registration or config endpoint
-  let repoUrl = progress.default_repo || progress.repo_url;
+  let repoUrl = progress.default_repo;
 
   if (!repoUrl) {
     try {
@@ -374,7 +374,7 @@ async function cloneRepo(progress) {
     );
   }
 
-  progress.repo_url = repoUrl;
+  progress.default_repo = repoUrl;
   saveProgress(progress);
 
   // Create install directory
@@ -714,7 +714,7 @@ async function main() {
       hub_url: HUB_URL,
       steps_completed: [],
       token: null,
-      repo_url: null
+      default_repo: null
     };
   }
 
