@@ -2,7 +2,7 @@ defmodule AgentCom.Alerter do
   @moduledoc """
   Configurable alert rule evaluator with cooldown and acknowledgment state.
 
-  Periodically evaluates 5 alert rules against metrics from
+  Periodically evaluates 6 alert rules against metrics from
   `AgentCom.MetricsCollector.snapshot/0`, manages alert lifecycle
   (inactive -> active -> acknowledged -> cleared), and broadcasts
   state changes on PubSub "alerts" topic.
@@ -14,6 +14,7 @@ defmodule AgentCom.Alerter do
   3. **stuck_tasks** (CRITICAL) -- Tasks assigned longer than threshold without progress.
   4. **no_agents_online** (CRITICAL) -- All previously registered agents disconnected.
   5. **high_error_rate** (WARNING) -- Error count in window exceeds threshold.
+  6. **tier_down** (WARNING) -- All Ollama endpoints unhealthy beyond configurable threshold.
 
   ## Cooldown Behavior
 
@@ -92,7 +93,8 @@ defmodule AgentCom.Alerter do
         high_failure_rate: 600_000,
         stuck_tasks: 0,
         no_agents_online: 0,
-        high_error_rate: 300_000
+        high_error_rate: 300_000,
+        tier_down: 300_000
       }
     }
   end
@@ -123,7 +125,8 @@ defmodule AgentCom.Alerter do
      %{
        active_alerts: %{},
        cooldown_state: %{},
-       consecutive_checks: %{}
+       consecutive_checks: %{},
+       tier_down_since: nil
      }}
   end
 
@@ -198,16 +201,22 @@ defmodule AgentCom.Alerter do
     metrics = safe_snapshot()
     now = System.system_time(:millisecond)
 
+    # Evaluate tier_down rule (updates tier_down_since state)
+    {tier_down_result, new_tier_down_since} = evaluate_tier_down(state.tier_down_since, now)
+
     # Evaluate each rule
     rules = [
       {:queue_growing, evaluate_queue_growing(metrics, thresholds, state.consecutive_checks)},
       {:high_failure_rate, evaluate_high_failure_rate(metrics, thresholds)},
       {:stuck_tasks, evaluate_stuck_tasks(thresholds)},
       {:no_agents_online, evaluate_no_agents_online(metrics)},
-      {:high_error_rate, evaluate_high_error_rate(metrics, thresholds)}
+      {:high_error_rate, evaluate_high_error_rate(metrics, thresholds)},
+      {:tier_down, tier_down_result}
     ]
 
-    # Process each rule result
+    # Process each rule result, then update tier_down_since
+    state = %{state | tier_down_since: new_tier_down_since}
+
     Enum.reduce(rules, state, fn {rule_id, result}, acc ->
       process_rule_result(rule_id, result, acc, thresholds, now)
     end)
@@ -429,6 +438,56 @@ defmodule AgentCom.Alerter do
        %{failed: failed, threshold: threshold}}
     else
       :ok
+    end
+  end
+
+  # Rule 6: Tier down (Ollama endpoints all unhealthy beyond threshold)
+  defp evaluate_tier_down(tier_down_since, now) do
+    threshold_ms =
+      try do
+        AgentCom.Config.get(:tier_down_alert_threshold_ms) || 60_000
+      rescue
+        _ -> 60_000
+      end
+
+    endpoints =
+      try do
+        AgentCom.LlmRegistry.list_endpoints()
+      rescue
+        _ -> []
+      end
+
+    any_healthy = Enum.any?(endpoints, fn ep -> ep.status == :healthy end)
+    has_endpoints = endpoints != []
+
+    cond do
+      # No endpoints registered at all -- not a "tier down" condition
+      not has_endpoints ->
+        {:ok, nil}
+
+      # At least one healthy endpoint -- clear condition
+      any_healthy ->
+        {:ok, nil}
+
+      # All endpoints unhealthy -- track or fire
+      true ->
+        since = tier_down_since || now
+        duration_ms = now - since
+
+        if duration_ms >= threshold_ms do
+          duration_s = div(duration_ms, 1_000)
+          unhealthy_ids = Enum.map(endpoints, & &1.id)
+
+          result =
+            {:triggered, :warning,
+             "Ollama tier down: no healthy endpoints for #{duration_s}s",
+             %{unhealthy_endpoints: unhealthy_ids, duration_ms: duration_ms}}
+
+          {result, since}
+        else
+          # Below threshold -- tracking but not yet triggered
+          {:ok, since}
+        end
     end
   end
 

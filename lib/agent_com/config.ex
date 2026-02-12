@@ -8,7 +8,12 @@ defmodule AgentCom.Config do
 
   @table :agentcom_config
   @defaults %{
-    heartbeat_interval_ms: 900_000
+    heartbeat_interval_ms: 900_000,
+    # Routing timeouts (Phase 19)
+    fallback_wait_ms: 5_000,
+    task_ttl_ms: 600_000,
+    tier_down_alert_threshold_ms: 60_000,
+    default_ollama_model: "qwen2.5-coder:7b"
   }
 
   # Client API
