@@ -10,27 +10,27 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 ## Current Position
 
 Phase: 9 of 16 (Testing Infrastructure)
-Plan: 5 of 6 in current phase
-Status: Executing
-Last activity: 2026-02-12 -- Completed 09-04 (integration tests)
+Plan: 6 of 6 in current phase (PHASE COMPLETE)
+Status: Phase 09 Complete
+Last activity: 2026-02-12 -- Completed 09-06 (CI workflow)
 
-Progress: [███░░░░░░░] 30%
+Progress: [████░░░░░░] 38%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5 (v1.1)
-- Average duration: 6 min
+- Total plans completed: 6 (v1.1)
+- Average duration: 5 min
 - Total execution time: 0.5 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 09-testing | 5 | 31 min | 6 min |
+| 09-testing | 6 | 32 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 09-04 (7 min), 09-03 (6 min), 09-02 (6 min), 09-05 (5 min), 09-01 (7 min)
+- Last 5 plans: 09-06 (1 min), 09-04 (7 min), 09-03 (6 min), 09-02 (6 min), 09-05 (5 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -56,6 +56,8 @@ Recent decisions affecting current work:
 - [Phase 09-03]: Circular reply chain test tagged :skip to document known bug without hanging CI
 - [Phase 09-04]: Polling-based assertions instead of PubSub assert_receive for Scheduler-dependent integration tests
 - [Phase 09-04]: Explicit FSM sync for TestFactory agents in failure path tests where FSM state matters
+- [Phase 09-06]: npm test (not raw node --test) for sidecar CI -- delegates to package.json single source of truth
+- [Phase 09-06]: mix test --exclude skip to avoid known-buggy tests in CI
 
 ### Pending Todos
 
@@ -73,5 +75,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 09-04-PLAN.md (integration tests)
+Stopped at: Completed 09-06-PLAN.md (CI workflow) -- Phase 09 complete
 Resume file: None
