@@ -5,21 +5,21 @@ defmodule AgentCom.RateLimiterTest do
   alias AgentCom.RateLimiter.Config
 
   setup do
-    # Create ETS tables for each test (isolated)
-    :ets.new(:rate_limit_buckets, [:named_table, :public, :set])
-    :ets.new(:rate_limit_overrides, [:named_table, :public, :set])
+    # Tables already created by Application.start. Clear all entries for test isolation.
+    # If tables don't exist (e.g., running tests in isolation), create them.
+    for table <- [:rate_limit_buckets, :rate_limit_overrides] do
+      case :ets.whereis(table) do
+        :undefined -> :ets.new(table, [:named_table, :public, :set])
+        _ref -> :ets.delete_all_objects(table)
+      end
+    end
 
     on_exit(fn ->
-      try do
-        :ets.delete(:rate_limit_buckets)
-      rescue
-        ArgumentError -> :ok
-      end
-
-      try do
-        :ets.delete(:rate_limit_overrides)
-      rescue
-        ArgumentError -> :ok
+      for table <- [:rate_limit_buckets, :rate_limit_overrides] do
+        case :ets.whereis(table) do
+          :undefined -> :ok
+          _ref -> :ets.delete_all_objects(table)
+        end
       end
     end)
 

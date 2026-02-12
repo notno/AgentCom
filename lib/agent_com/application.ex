@@ -22,6 +22,13 @@ defmodule AgentCom.Application do
     # Public so Socket processes can read/write directly. :set for unique agent_id keys.
     :ets.new(:validation_backoff, [:named_table, :public, :set])
 
+    # Create ETS tables for rate limiting (Phase 15).
+    # :rate_limit_buckets -- token bucket state keyed by {agent_id, channel, tier}
+    # :rate_limit_overrides -- per-agent override limits and whitelist
+    # Both :public so Socket and Plug processes can read/write directly.
+    :ets.new(:rate_limit_buckets, [:named_table, :public, :set])
+    :ets.new(:rate_limit_overrides, [:named_table, :public, :set])
+
     children = [
       {Phoenix.PubSub, name: AgentCom.PubSub},
       {Registry, keys: :unique, name: AgentCom.AgentRegistry},
