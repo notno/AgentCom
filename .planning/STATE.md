@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 ## Current Position
 
 Phase: 11-dets-compaction
-Plan: 1 of 3 complete
+Plan: 2 of 3 complete
 Status: Executing phase 11
-Last activity: 2026-02-12 -- Completed 11-01-PLAN.md (compaction handle_calls + orchestration)
+Last activity: 2026-02-12 -- Completed 11-02-PLAN.md (corruption recovery + detection in hot paths)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11 (v1.1)
+- Total plans completed: 12 (v1.1)
 - Average duration: 5 min
-- Total execution time: 0.8 hours
+- Total execution time: 0.9 hours
 
 **By Phase:**
 
@@ -27,10 +27,10 @@ Last activity: 2026-02-12 -- Completed 11-01-PLAN.md (compaction handle_calls + 
 |-------|-------|-------|----------|
 | 09-testing | 7 | 33 min | 5 min |
 | 10-dets-backup | 3 | 8 min | 3 min |
-| 11-dets-compaction | 1 | 5 min | 5 min |
+| 11-dets-compaction | 2 | 10 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 11-01 (5 min), 10-03 (2 min), 10-02 (4 min), 10-01 (2 min), 09-07 (1 min)
+- Last 5 plans: 11-02 (5 min), 11-01 (5 min), 10-03 (2 min), 10-02 (4 min), 10-01 (2 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -71,6 +71,9 @@ Recent decisions affecting current work:
 - [Phase 11-01]: Application.compile_env for compaction_interval_ms and compaction_threshold
 - [Phase 11-01]: table_owner/1 function clause dispatch for GenServer routing
 - [Phase 11-01]: Compaction history capped at 20 entries in GenServer state
+- [Phase 11-02]: Wrap persist_task/lookup_task helpers in TaskQueue for corruption detection (not individual handlers)
+- [Phase 11-02]: Config get returns default on corruption for graceful degradation
+- [Phase 11-02]: get_table_path/1 matches each GenServer's actual env var path resolution
 
 ### Pending Todos
 
@@ -88,5 +91,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 11-01-PLAN.md (compaction handle_calls + DetsBackup orchestration). Phase 11 in progress (1/3 plans).
+Stopped at: Completed 11-02-PLAN.md (corruption recovery + detection in hot paths). Phase 11 in progress (2/3 plans).
 Resume file: None
