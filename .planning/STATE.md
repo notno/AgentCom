@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 20 of 22 (Sidecar Execution)
-Plan: 2 of 4
+Plan: 3 of 4
 Status: In Progress
-Last activity: 2026-02-12 -- Completed 20-02 Hub WebSocket Plumbing
+Last activity: 2026-02-12 -- Completed 20-03 Execution Engine
 
-Progress: [████░░░░░░] 45%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Progress: [████░░░░░░] 45%
 | Phase 19 P03 | 5min | 2 tasks | 4 files |
 | Phase 20 P01 | 2min | 1 task (TDD) | 4 files |
 | Phase 20 P02 | 2min | 2 tasks | 2 files |
+| Phase 20 P03 | 4min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -129,6 +130,11 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - [Phase 20]: format_routing_decision_for_ws follows safe_to_string pattern from endpoint.ex/dashboard_state.ex
 - [Phase 20]: execution_event PubSub broadcast is conditional (only when field present) for backward compatibility
 - [Phase 20]: execution metadata flows through existing result map in task_complete (no structural change)
+- [Phase 20]: Lazy-load executors inside dispatch switch cases to avoid module load ordering issues
+- [Phase 20]: Dispatcher is single point for cost calculation -- executors return raw token counts
+- [Phase 20]: ShellExecutor treats non-zero exit code as failure (triggers retry mechanism)
+- [Phase 20]: ClaudeExecutor uses content_block_delta events for streaming text deltas
+- [Phase 20]: ProgressEmitter onFlush receives event arrays, iterated for individual WS sends
 
 ### Pending Todos
 
@@ -156,5 +162,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 20-02-PLAN.md (Hub WebSocket Plumbing)
+Stopped at: Completed 20-03-PLAN.md (Execution Engine)
 Resume file: None
