@@ -10,27 +10,27 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 ## Current Position
 
 Phase: 9 of 16 (Testing Infrastructure)
-Plan: 3 of 6 in current phase
+Plan: 4 of 6 in current phase
 Status: Executing
-Last activity: 2026-02-12 -- Completed 09-02 (critical GenServer unit tests)
+Last activity: 2026-02-12 -- Completed 09-03 (GenServer unit tests)
 
-Progress: [██░░░░░░░░] 15%
+Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3 (v1.1)
+- Total plans completed: 4 (v1.1)
 - Average duration: 6 min
-- Total execution time: 0.3 hours
+- Total execution time: 0.4 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 09-testing | 3 | 18 min | 6 min |
+| 09-testing | 4 | 24 min | 6 min |
 
 **Recent Trend:**
-- Last 5 plans: 09-02 (6 min), 09-05 (5 min), 09-01 (7 min)
+- Last 5 plans: 09-03 (6 min), 09-02 (6 min), 09-05 (5 min), 09-01 (7 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -52,6 +52,8 @@ Recent decisions affecting current work:
 - [Phase 09-01]: import_config pattern with dev/prod stubs for environment-specific config
 - [Phase 09-02]: Stop Scheduler in TaskQueue/AgentFSM tests to prevent PubSub auto-assignment
 - [Phase 09-02]: Drain mailbox + kill FSM children in Scheduler test setup for process/message isolation
+- [Phase 09-03]: Message.new requires %{} maps (not keyword lists) to avoid Access crash on nil optional fields
+- [Phase 09-03]: Circular reply chain test tagged :skip to document known bug without hanging CI
 
 ### Pending Todos
 
@@ -69,5 +71,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 09-02-PLAN.md (critical GenServer unit tests)
+Stopped at: Completed 09-03-PLAN.md (GenServer unit tests)
 Resume file: None
