@@ -35,7 +35,7 @@
 
 - [x] **Phase 9: Testing Infrastructure** - Test isolation, helpers, factories, and comprehensive test coverage for all GenServers and pipelines
 - [x] **Phase 10: DETS Backup + Monitoring** - Automated backup, manual trigger, and health monitoring for all DETS tables
-- [ ] **Phase 11: DETS Compaction + Recovery** - Scheduled compaction/defragmentation and documented corruption recovery
+- [x] **Phase 11: DETS Compaction + Recovery** - Scheduled compaction/defragmentation and documented corruption recovery
 - [ ] **Phase 12: Input Validation** - Schema validation at all WebSocket and HTTP entry points with structured error responses
 - [ ] **Phase 13: Structured Logging + Telemetry** - JSON logging with consistent metadata and telemetry events for key lifecycle points
 - [ ] **Phase 14: Metrics + Alerting** - Metrics endpoint and configurable alerter for system anomalies
@@ -90,9 +90,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 11-01-PLAN.md -- Compaction core (handle_calls in all DETS-owning GenServers + DetsBackup orchestration/scheduling)
-- [ ] 11-02-PLAN.md -- Recovery core (restore from backup, integrity verification, corruption detection, degraded mode)
-- [ ] 11-03-PLAN.md -- API endpoints + dashboard integration (manual compact/restore, compaction history, push notifications)
+- [x] 11-01-PLAN.md -- Compaction core (handle_calls in all DETS-owning GenServers + DetsBackup orchestration/scheduling)
+- [x] 11-02-PLAN.md -- Recovery core (restore from backup, integrity verification, corruption detection, degraded mode)
+- [x] 11-03-PLAN.md -- API endpoints + dashboard integration (manual compact/restore, compaction history, push notifications)
 
 ### Phase 12: Input Validation
 **Goal**: All external input is validated before reaching GenServers, preventing crashes and malformed state
@@ -173,7 +173,7 @@ Phases execute in numeric order: 9 -> 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16
 |-------|-----------|----------------|--------|-----------|
 | 9. Testing Infrastructure | v1.1 | 7/7 | Complete | 2026-02-11 |
 | 10. DETS Backup + Monitoring | v1.1 | 3/3 | Complete | 2026-02-12 |
-| 11. DETS Compaction + Recovery | v1.1 | 0/3 | Not started | - |
+| 11. DETS Compaction + Recovery | v1.1 | 3/3 | Complete | 2026-02-12 |
 | 12. Input Validation | v1.1 | 0/3 | Planned | - |
 | 13. Structured Logging + Telemetry | v1.1 | 0/TBD | Not started | - |
 | 14. Metrics + Alerting | v1.1 | 0/TBD | Not started | - |
