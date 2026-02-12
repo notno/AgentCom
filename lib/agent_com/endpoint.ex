@@ -26,6 +26,9 @@ defmodule AgentCom.Endpoint do
   - POST   /api/admin/push-task  — Push a task to a connected agent (auth required)
   - POST   /api/admin/backup     — Trigger manual DETS backup (auth required)
   - GET    /api/admin/dets-health — DETS table health metrics (auth required)
+  - POST   /api/admin/compact     — Compact all DETS tables (auth required)
+  - POST   /api/admin/compact/:table — Compact a specific DETS table (auth required)
+  - POST   /api/admin/restore/:table — Restore a DETS table from backup (auth required)
   - POST   /api/tasks             — Submit a task to the queue (auth required)
   - GET    /api/tasks             — List tasks with optional filters (auth required)
   - GET    /api/tasks/dead-letter — List dead-letter tasks (auth required)
@@ -655,6 +658,99 @@ defmodule AgentCom.Endpoint do
         "last_backup_at" => metrics.last_backup_at,
         "tables" => formatted_tables
       })
+    end
+  end
+
+  # --- Admin: DETS Compaction & Restore ---
+
+  @dets_table_atoms %{
+    "task_queue" => :task_queue,
+    "task_dead_letter" => :task_dead_letter,
+    "agent_mailbox" => :agent_mailbox,
+    "message_history" => :message_history,
+    "agent_channels" => :agent_channels,
+    "channel_history" => :channel_history,
+    "agentcom_config" => :agentcom_config,
+    "thread_messages" => :thread_messages,
+    "thread_replies" => :thread_replies
+  }
+
+  post "/api/admin/compact" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case AgentCom.DetsBackup.compact_all() do
+        {:ok, results} ->
+          formatted = Enum.map(results, fn r ->
+            base = %{"table" => to_string(r.table), "status" => to_string(r.status)}
+            base = if r[:duration_ms], do: Map.put(base, "duration_ms", r.duration_ms), else: base
+            base = if r[:reason], do: Map.put(base, "reason", to_string(r.reason)), else: base
+            base = if r[:retried], do: Map.put(base, "retried", r.retried), else: base
+            base
+          end)
+
+          compacted = Enum.count(results, fn r -> r.status == :compacted end)
+          skipped = Enum.count(results, fn r -> r.status == :skipped end)
+
+          send_json(conn, 200, %{
+            "status" => "complete",
+            "tables_total" => length(results),
+            "tables_compacted" => compacted,
+            "tables_skipped" => skipped,
+            "results" => formatted
+          })
+      end
+    end
+  end
+
+  post "/api/admin/compact/:table_name" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case Map.get(@dets_table_atoms, table_name) do
+        nil ->
+          send_json(conn, 404, %{"error" => "unknown_table", "table" => table_name})
+        table_atom ->
+          case AgentCom.DetsBackup.compact_one(table_atom) do
+            {:ok, result} ->
+              send_json(conn, 200, %{
+                "table" => table_name,
+                "status" => to_string(result.status),
+                "duration_ms" => result[:duration_ms] || 0
+              })
+          end
+      end
+    end
+  end
+
+  post "/api/admin/restore/:table_name" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case Map.get(@dets_table_atoms, table_name) do
+        nil ->
+          send_json(conn, 404, %{"error" => "unknown_table", "table" => table_name})
+        table_atom ->
+          case AgentCom.DetsBackup.restore_table(table_atom) do
+            {:ok, info} ->
+              send_json(conn, 200, %{
+                "status" => "restored",
+                "table" => table_name,
+                "backup_used" => info[:backup_used],
+                "record_count" => get_in(info, [:integrity, :record_count]) || 0,
+                "file_size" => get_in(info, [:integrity, :file_size]) || 0
+              })
+            {:error, reason} ->
+              send_json(conn, 500, %{
+                "status" => "failed",
+                "table" => table_name,
+                "error" => inspect(reason)
+              })
+          end
+      end
     end
   end
 

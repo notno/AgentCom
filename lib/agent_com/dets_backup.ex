@@ -78,6 +78,11 @@ defmodule AgentCom.DetsBackup do
     GenServer.call(__MODULE__, :compaction_history)
   end
 
+  @doc "Compact a single DETS table. Returns {:ok, result} or {:error, reason}."
+  def compact_one(table_atom) when table_atom in @tables do
+    GenServer.call(__MODULE__, {:compact_one, table_atom}, 60_000)
+  end
+
   # --- Server Callbacks ---
 
   @impl true
@@ -140,6 +145,39 @@ defmodule AgentCom.DetsBackup do
   @impl true
   def handle_call(:compaction_history, _from, state) do
     {:reply, state.compaction_history, state}
+  end
+
+  @impl true
+  def handle_call({:compact_one, table_atom}, _from, state) do
+    result = compact_table(table_atom)
+    now = System.system_time(:millisecond)
+
+    formatted = case result do
+      {:compacted, duration} ->
+        %{table: table_atom, status: :compacted, duration_ms: duration}
+
+      {:skipped, reason, _} ->
+        %{table: table_atom, status: :skipped, reason: reason}
+
+      {:error, _reason, duration} ->
+        # Retry once
+        case compact_table(table_atom) do
+          {:compacted, retry_duration} ->
+            %{table: table_atom, status: :compacted, duration_ms: duration + retry_duration, retried: true}
+
+          {:error, retry_reason, retry_duration} ->
+            %{table: table_atom, status: :error, reason: retry_reason, duration_ms: duration + retry_duration}
+
+          {:skipped, skip_reason, _} ->
+            %{table: table_atom, status: :skipped, reason: skip_reason}
+        end
+    end
+
+    # Record in compaction history
+    entry = %{timestamp: now, results: [formatted]}
+    history = [entry | state.compaction_history] |> Enum.take(20)
+
+    {:reply, {:ok, formatted}, %{state | compaction_history: history, last_compaction_at: now}}
   end
 
   @impl true
