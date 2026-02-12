@@ -56,6 +56,7 @@ defmodule AgentCom.DashboardState do
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "validation")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "alerts")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "rate_limits")
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "llm_registry")
 
     Process.send_after(self(), :check_queue_growth, @queue_check_interval_ms)
     Process.send_after(self(), :reset_hourly, @hourly_reset_interval_ms)
@@ -74,7 +75,7 @@ defmodule AgentCom.DashboardState do
       rate_limit_violation_counts: %{}
     }
 
-    Logger.info("started", topics: ["tasks", "presence", "backups", "validation", "alerts", "rate_limits"])
+    Logger.info("started", topics: ["tasks", "presence", "backups", "validation", "alerts", "rate_limits", "llm_registry"])
 
     {:ok, state}
   end
@@ -181,6 +182,13 @@ defmodule AgentCom.DashboardState do
         _ -> %{summary: %{}, per_agent: %{}}
       end
 
+    llm_registry =
+      try do
+        AgentCom.LlmRegistry.snapshot()
+      rescue
+        _ -> %{endpoints: [], resources: %{}, fleet_models: %{}}
+      end
+
     snapshot = %{
       uptime_ms: now - state.started_at,
       timestamp: now,
@@ -194,7 +202,8 @@ defmodule AgentCom.DashboardState do
       compaction_history: compaction_history,
       validation: validation,
       active_alerts: active_alerts,
-      rate_limits: rate_limits
+      rate_limits: rate_limits,
+      llm_registry: llm_registry
     }
 
     {:reply, snapshot, state}
@@ -344,6 +353,12 @@ defmodule AgentCom.DashboardState do
   def handle_info(:reset_rate_limit_counts, state) do
     Process.send_after(self(), :reset_rate_limit_counts, 300_000)
     {:noreply, %{state | rate_limit_violation_counts: %{}}}
+  end
+
+  # -- PubSub: llm_registry events (data fetched live in snapshot) ------------
+
+  def handle_info({:llm_registry_update, _detail}, state) do
+    {:noreply, state}
   end
 
   # Catch-all for unhandled PubSub messages

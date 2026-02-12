@@ -29,6 +29,7 @@ defmodule AgentCom.DashboardSocket do
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "backups")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "metrics")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "alerts")
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "llm_registry")
 
     # Get initial snapshot
     snapshot = AgentCom.DashboardState.snapshot()
@@ -75,6 +76,27 @@ defmodule AgentCom.DashboardSocket do
           case AgentCom.Alerter.acknowledge(rule_id) do
             :ok -> %{type: "alert_ack_result", rule_id: rule_id, status: "acknowledged"}
             {:error, :not_found} -> %{type: "alert_ack_result", rule_id: rule_id, status: "not_found"}
+          end
+
+        {:push, {:text, Jason.encode!(result)}, state}
+
+      {:ok, %{"type" => "register_llm_endpoint", "host" => host} = body} ->
+        port = body["port"] || 11434
+        name = body["name"] || "#{host}:#{port}"
+
+        result =
+          case AgentCom.LlmRegistry.register_endpoint(%{host: host, port: port, name: name, source: :manual}) do
+            {:ok, endpoint} -> %{type: "llm_endpoint_registered", endpoint: endpoint}
+            {:error, reason} -> %{type: "llm_endpoint_error", error: to_string(reason)}
+          end
+
+        {:push, {:text, Jason.encode!(result)}, state}
+
+      {:ok, %{"type" => "remove_llm_endpoint", "id" => id}} ->
+        result =
+          case AgentCom.LlmRegistry.remove_endpoint(id) do
+            :ok -> %{type: "llm_endpoint_removed", id: id}
+            {:error, :not_found} -> %{type: "llm_endpoint_error", error: "not_found"}
           end
 
         {:push, {:text, Jason.encode!(result)}, state}
@@ -264,6 +286,17 @@ defmodule AgentCom.DashboardSocket do
 
   def handle_info({:alert_acknowledged, rule_id}, state) do
     formatted = %{type: "alert_acknowledged", rule_id: to_string(rule_id)}
+    {:ok, %{state | pending_events: [formatted | state.pending_events]}}
+  end
+
+  # -- PubSub: llm_registry events ---------------------------------------------
+
+  def handle_info({:llm_registry_update, detail}, state) do
+    formatted = %{
+      type: "llm_registry_update",
+      detail: to_string(detail)
+    }
+
     {:ok, %{state | pending_events: [formatted | state.pending_events]}}
   end
 
