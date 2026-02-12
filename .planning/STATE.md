@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 20 of 22 (Sidecar Execution)
-Plan: 1 of 4
+Plan: 2 of 4
 Status: In Progress
-Last activity: 2026-02-12 -- Completed 20-01 Cost Calculator & Progress Emitter
+Last activity: 2026-02-12 -- Completed 20-02 Hub WebSocket Plumbing
 
 Progress: [████░░░░░░] 45%
 
@@ -56,6 +56,7 @@ Progress: [████░░░░░░] 45%
 | Phase 19 P04 | 6min | 2 tasks | 3 files |
 | Phase 19 P03 | 5min | 2 tasks | 4 files |
 | Phase 20 P01 | 2min | 1 task (TDD) | 4 files |
+| Phase 20 P02 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -125,6 +126,9 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - 20-01: Prefix match after exact match for model variants with tags (e.g. claude-sonnet-4.5:latest)
 - 20-01: First token flushes immediately, subsequent tokens batched until interval fires
 - 20-01: Ollama models with zero tokens return null equivalent_claude_cost_usd (no savings to show)
+- [Phase 20]: format_routing_decision_for_ws follows safe_to_string pattern from endpoint.ex/dashboard_state.ex
+- [Phase 20]: execution_event PubSub broadcast is conditional (only when field present) for backward compatibility
+- [Phase 20]: execution metadata flows through existing result map in task_complete (no structural change)
 
 ### Pending Todos
 
@@ -152,5 +156,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 20-01-PLAN.md (Cost Calculator & Progress Emitter)
+Stopped at: Completed 20-02-PLAN.md (Hub WebSocket Plumbing)
 Resume file: None
