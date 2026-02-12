@@ -151,10 +151,13 @@ Plans:
   2. HTTP API requests from an agent or IP that exceed rate limits receive 429 responses
   3. Different rate limits apply to different action types (messages, task submissions, channel operations) and each is enforced independently
   4. Rate limit violation responses include a structured error with retry_after_ms so agents can back off intelligently
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 15-01: TBD
+- [ ] 15-01-PLAN.md -- Core RateLimiter token bucket + Config tier classification (TDD)
+- [ ] 15-02-PLAN.md -- WebSocket, HTTP, and Scheduler integration
+- [ ] 15-03-PLAN.md -- Admin API for overrides and whitelist with DETS persistence
+- [ ] 15-04-PLAN.md -- Dashboard visibility (agent cards, summary card, Sweeper, push notifications)
 
 ### Phase 16: Operations Documentation
 **Goal**: A new operator can set up, monitor, and troubleshoot the system without reading source code
