@@ -5,19 +5,19 @@
 See: .planning/PROJECT.md (updated 2026-02-11)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.1 Hardening -- Phase 14 Metrics + Alerting complete
+**Current focus:** v1.1 Hardening -- Phase 15 Rate Limiting in progress
 
 ## Current Position
 
-Phase: 14-metrics-alerting
-Plan: 4 of 4 complete
-Status: Phase Complete
-Last activity: 2026-02-12 -- Completed 14-04-PLAN.md (Dashboard metrics UI with uPlot charts and alert banner)
+Phase: 15-rate-limiting
+Plan: 1 of 4 complete
+Status: In Progress
+Last activity: 2026-02-12 -- Completed 15-01-PLAN.md (Token bucket core with ETS-backed lazy refill)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 24 (v1.1)
+- Total plans completed: 25 (v1.1)
 - Average duration: 5 min
 - Total execution time: 2.12 hours
 
@@ -31,9 +31,10 @@ Last activity: 2026-02-12 -- Completed 14-04-PLAN.md (Dashboard metrics UI with 
 | 12-input-validation | 3 | 13 min | 4 min |
 | 13-structured-logging | 4 | 38 min | 10 min |
 | 14-metrics-alerting | 4 | 17 min | 4 min |
+| 15-rate-limiting | 1 | 4 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 14-04 (4 min), 14-03 (4 min), 14-02 (4 min), 14-01 (5 min), 13-04 (6 min)
+- Last 5 plans: 15-01 (4 min), 14-04 (4 min), 14-03 (4 min), 14-02 (4 min), 14-01 (5 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -121,6 +122,11 @@ Recent decisions affecting current work:
 - [Phase 14-04]: 360-point rolling window for chart data (1hr at 10s intervals)
 - [Phase 14-04]: Alert banner uses highest-severity detection across unacknowledged alerts
 - [Phase 14-04]: Extend existing WebSocket onmessage handler (no second connection)
+- [Phase 15-01]: Lazy token bucket (not timer-based) -- zero background cost per agent, refill computed on access
+- [Phase 15-01]: Internal token units (real * 1000) for integer precision without floating-point drift
+- [Phase 15-01]: Monotonic time for bucket timing to prevent NTP clock jump issues
+- [Phase 15-01]: Progressive backoff 1s/2s/5s/10s/30s with 60s quiet period reset
+- [Phase 15-01]: ETS tables :rate_limit_buckets and :rate_limit_overrides created in Application.start (public, set)
 
 ### Pending Todos
 
@@ -144,5 +150,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 14-04-PLAN.md (Dashboard metrics UI). Phase 14 complete (4/4 plans).
+Stopped at: Completed 15-01-PLAN.md (Token bucket core). Phase 15 in progress (1/4 plans).
 Resume file: None
