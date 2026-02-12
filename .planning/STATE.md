@@ -19,7 +19,7 @@ Progress: [███░░░░░░░] 40%
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 62 (19 v1.0 + 32 v1.1 + 11 v1.2)
+- Total plans completed: 63 (19 v1.0 + 32 v1.1 + 12 v1.2)
 - Average duration: 5 min
 - Total execution time: 4.3 hours
 
@@ -37,7 +37,7 @@ Progress: [███░░░░░░░] 40%
 | 16-operations-docs | 4 | 14 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 21-03 (5 min), 21-01 (3 min), 21-02 (3 min), 19-01 (4 min), 18-04 (8 min)
+- Last 5 plans: 19-02 (7 min), 21-03 (5 min), 21-01 (3 min), 21-02 (3 min), 19-01 (4 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -51,6 +51,7 @@ Progress: [███░░░░░░░] 40%
 | Phase 19 P01 | 4min | 1 task (TDD) | 4 files |
 | Phase 21 P01 | 3min | 2 tasks (TDD) | 4 files |
 | Phase 21 P02 | 3min | 2 tasks | 2 files |
+| Phase 19 P02 | 7min | 2 tasks | 4 files |
 | Phase 21 P03 | 5min | 2 tasks | 8 files |
 
 ## Accumulated Context
@@ -92,6 +93,11 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - 19-01: Neutral defaults for missing resource data (cpu=50%, vram=0.9, capacity=1.0)
 - 19-01: 16GB reference capacity for normalization, capped at 1.5x
 - 19-01: Classification reason format: "source:tier (confidence X, word_count=Y, files=Z)"
+- 19-02: Capability matching fallback when TaskRouter returns fallback signal (backward compatible with no LLM endpoints)
+- 19-02: Store routing_decision before assign_task to ensure persistence even if assignment fails
+- 19-02: Emit routing telemetry for both successful routes and fallback decisions (full observability)
+- 19-02: Prefer endpoint-matching agent for :ollama target, fall back to any capable agent
+- 19-02: Single pending fallback per task_id to prevent timer accumulation
 - 21-01: Unique DETS table atom per Store instance for safe test parallelism
 - 21-01: Status priority: error > timeout > fail > pass (error always wins)
 - 21-01: Empty reports (skip/auto_pass/timeout) use run_number 0 as sentinel
