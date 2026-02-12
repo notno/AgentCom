@@ -97,7 +97,40 @@ defmodule AgentCom.MixProject do
           AgentCom.Reaper,
           AgentCom.Endpoint
         ]
-      ]
+      ],
+      before_closing_body_tag: fn
+        :html ->
+          """
+          <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+          <script>
+            document.addEventListener("DOMContentLoaded", function () {
+              mermaid.initialize({ startOnLoad: false, theme: "default" });
+              var i = 0;
+              var codeBlocks = document.querySelectorAll("pre code.mermaid");
+              codeBlocks.forEach(function (codeBlock) {
+                var pre = codeBlock.parentElement;
+                var graphDefinition = codeBlock.textContent;
+                var containerId = "mermaid-graph-" + i;
+                var div = document.createElement("div");
+                div.id = containerId;
+                pre.parentElement.insertBefore(div, pre);
+                try {
+                  mermaid.render(containerId, graphDefinition).then(function (result) {
+                    div.innerHTML = result.svg;
+                    pre.style.display = "none";
+                  });
+                } catch (e) {
+                  console.error("Mermaid rendering failed for block " + i, e);
+                }
+                i++;
+              });
+            });
+          </script>
+          """
+
+        _ ->
+          ""
+      end
     ]
   end
 
