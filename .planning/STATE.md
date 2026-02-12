@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 ## Current Position
 
 Phase: 16-operations-docs
-Plan: 2 of 3 complete
-Status: In Progress
-Last activity: 2026-02-12 -- Completed 16-02-PLAN.md (setup guide)
+Plan: 3 of 3 complete
+Status: Phase Complete
+Last activity: 2026-02-12 -- Completed 16-03-PLAN.md (daily operations + troubleshooting)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 29 (v1.1)
+- Total plans completed: 31 (v1.1)
 - Average duration: 5 min
-- Total execution time: 2.40 hours
+- Total execution time: 2.58 hours
 
 **By Phase:**
 
@@ -31,11 +31,11 @@ Last activity: 2026-02-12 -- Completed 16-02-PLAN.md (setup guide)
 | 12-input-validation | 3 | 13 min | 4 min |
 | 13-structured-logging | 4 | 38 min | 10 min |
 | 14-metrics-alerting | 4 | 17 min | 4 min |
-| 15-rate-limiting | 3 | 19 min | 6 min |
-| 16-operations-docs | 2 | 8 min | 4 min |
+| 15-rate-limiting | 4 | 25 min | 6 min |
+| 16-operations-docs | 3 | 13 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 16-02 (3 min), 16-01 (5 min), 15-03 (5 min), 15-02 (11 min), 15-01 (4 min)
+- Last 5 plans: 16-03 (5 min), 15-04 (6 min), 16-02 (3 min), 16-01 (5 min), 15-03 (5 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -136,10 +136,16 @@ Recent decisions affecting current work:
 - [Phase 15]: [Phase 15-02]: HTTP warn path is no-op (allow) -- no bidirectional warning channel for HTTP
 - [Phase 15]: [Phase 15-02]: IP-based rate limiting fallback for unauthenticated HTTP routes
 - [Phase 15]: [Phase 15-02]: Exempt endpoints: /health, /dashboard, /ws, /api/schemas -- critical infrastructure
+- [Phase 15-04]: PubSub "rate_limits" topic for DashboardState real-time violation tracking
+- [Phase 15-04]: Push notifications every 10th violation per agent (threshold-based, not per-event)
+- [Phase 15-04]: Sweeper uses Presence.list() for connected agent detection
+- [Phase 15-04]: DashboardNotifier.notify/1 added as public API for programmatic push
 - [Phase 16-01]: ExDoc main page set to architecture (not setup) -- provides system context before procedures
 - [Phase 16-01]: Placeholder extras for future plans -- ExDoc requires all referenced files to exist at generation time
 - [Phase 16-02]: Windows CMD syntax for curl examples (^ line continuation) since operator is on Windows
 - [Phase 16-02]: All 12 sidecar config fields documented from add-agent.js source
+- [Phase 16-03]: API quick reference grouped by function (not auth requirement) for faster lookup
+- [Phase 16-03]: Troubleshooting organized by symptom with inline log queries (not separate log section)
 
 ### Pending Todos
 
@@ -163,5 +169,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 16-02-PLAN.md (setup guide). Phase 16 in progress (2/3 plans).
+Stopped at: Completed 15-04-PLAN.md (dashboard visibility + sweeper). Phase 15 rate limiting complete (4/4 plans).
 Resume file: None
