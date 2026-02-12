@@ -74,9 +74,10 @@ defmodule AgentCom.Socket do
 
   @behaviour WebSock
 
-  alias AgentCom.{Message, Presence, Router}
+  alias AgentCom.{Message, Presence, Router, Validation}
+  alias AgentCom.Validation.ViolationTracker
 
-  defstruct [:agent_id, :identified]
+  defstruct [:agent_id, :identified, violation_count: 0, violation_window_start: nil]
 
   @impl true
   def init(_opts) do
@@ -86,8 +87,15 @@ defmodule AgentCom.Socket do
   @impl true
   def handle_in({text, [opcode: :text]}, state) do
     case Jason.decode(text) do
-      {:ok, msg} -> handle_msg(msg, state)
-      {:error, _} -> reply_error("invalid_json", state)
+      {:ok, msg} ->
+        case Validation.validate_ws_message(msg) do
+          {:ok, validated} ->
+            handle_msg(validated, state)
+          {:error, errors} ->
+            handle_validation_failure(msg, errors, state)
+        end
+      {:error, _} ->
+        reply_error("invalid_json", state)
     end
   end
 
@@ -186,15 +194,24 @@ defmodule AgentCom.Socket do
 
   # Identify (must be first, requires valid token)
   defp handle_msg(%{"type" => "identify", "agent_id" => agent_id} = msg, state) do
-    token = Map.get(msg, "token")
+    # Check backoff before allowing identify
+    case ViolationTracker.check_backoff(agent_id) do
+      :ok ->
+        # Proceed with existing auth flow
+        token = Map.get(msg, "token")
 
-    case AgentCom.Auth.verify(token) do
-      {:ok, ^agent_id} ->
-        do_identify(agent_id, msg, state)
-      {:ok, _other} ->
-        reply_error("token_agent_mismatch", state)
-      :error ->
-        reply_error("invalid_token", state)
+        case AgentCom.Auth.verify(token) do
+          {:ok, ^agent_id} ->
+            do_identify(agent_id, msg, state)
+          {:ok, _other} ->
+            reply_error("token_agent_mismatch", state)
+          :error ->
+            reply_error("invalid_token", state)
+        end
+
+      {:cooldown, remaining_seconds} ->
+        # Close connection -- agent must wait for cooldown
+        {:stop, :normal, {1008, "cooldown active: retry in #{remaining_seconds}s"}, state}
     end
   end
 
@@ -434,6 +451,54 @@ defmodule AgentCom.Socket do
       payload: msg,
       timestamp: System.system_time(:millisecond)
     }})
+  end
+
+  defp handle_validation_failure(msg, errors, state) do
+    # Track violation in connection state
+    new_state = ViolationTracker.track_violation(state)
+
+    # Broadcast for dashboard visibility
+    Phoenix.PubSub.broadcast(AgentCom.PubSub, "validation", {:validation_failure, %{
+      agent_id: state.agent_id,
+      message_type: Map.get(msg, "type", "unknown"),
+      error_count: new_state.violation_count,
+      errors: errors,
+      timestamp: System.system_time(:millisecond)
+    }})
+
+    case ViolationTracker.should_disconnect?(new_state) do
+      true ->
+        # Record disconnect for backoff tracking (only if identified)
+        if state.identified and state.agent_id do
+          ViolationTracker.record_disconnect(state.agent_id)
+        end
+
+        # Broadcast disconnect event
+        Phoenix.PubSub.broadcast(AgentCom.PubSub, "validation", {:validation_disconnect, %{
+          agent_id: state.agent_id,
+          timestamp: System.system_time(:millisecond)
+        }})
+
+        # Close with policy violation code
+        {:stop, :normal, {1008, "too many validation errors"}, new_state}
+
+      false ->
+        reply_validation_error(msg, errors, new_state)
+    end
+  end
+
+  defp reply_validation_error(msg, errors, state) do
+    message_type = Map.get(msg, "type", "unknown")
+    formatted = Validation.format_errors(errors)
+
+    reply = Jason.encode!(%{
+      "type" => "error",
+      "error" => "validation_failed",
+      "message_type" => message_type,
+      "errors" => formatted
+    })
+
+    {:push, {:text, reply}, state}
   end
 
   defp reply_error(reason, state) do
