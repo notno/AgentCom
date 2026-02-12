@@ -1344,6 +1344,7 @@ defmodule AgentCom.Dashboard do
 
           // -- Queue summary --
           renderQueueSummary(data.queue || {});
+          renderQueuedTaskList(data.queued_tasks || []);
 
           // -- Throughput --
           renderThroughput(data.throughput || {});

@@ -90,6 +90,7 @@ defmodule AgentCom.DashboardState do
     agents = AgentCom.AgentFSM.list_all()
     queue_stats = AgentCom.TaskQueue.stats()
     dead_letter_tasks = AgentCom.TaskQueue.list_dead_letter()
+    queued_tasks = AgentCom.TaskQueue.list(status: :queued)
 
     # Compute health
     health = compute_health(state, agents, now)
@@ -119,6 +120,18 @@ defmodule AgentCom.DashboardState do
           description: t.description,
           last_error: Map.get(t, :last_error),
           retry_count: t.retry_count,
+          created_at: t.created_at
+        }
+      end)
+
+    # Format queued tasks for the task list
+    formatted_queued_tasks =
+      Enum.map(queued_tasks, fn t ->
+        %{
+          id: t.id,
+          description: t.description,
+          priority: t.priority,
+          submitted_by: Map.get(t, :submitted_by),
           created_at: t.created_at
         }
       end)
@@ -196,6 +209,7 @@ defmodule AgentCom.DashboardState do
       agents: formatted_agents,
       queue: queue,
       dead_letter_tasks: formatted_dead_letter,
+      queued_tasks: formatted_queued_tasks,
       recent_completions: state.recent_completions,
       throughput: throughput,
       dets_health: dets_health,
