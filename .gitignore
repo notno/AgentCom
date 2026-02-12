@@ -1,2 +1,26 @@
 node_modules/
-priv/logs/*.log*
+
+# Elixir build artifacts
+_build/
+deps/
+
+# Runtime data
+priv/*.dets
+priv/tokens.json
+priv/backups/
+priv/logs/
+
+# Generated docs
+doc/
+
+# Temp / test artifacts
+tmp/
+erl_crash.dump
+nul
+
+# Local tool config
+.claude/
+.agentcom/
+
+# Accidental debug artifacts
+sidecar/config.ECHO.json
