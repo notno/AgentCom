@@ -9,6 +9,10 @@ defmodule AgentCom.Application do
 
   @impl true
   def start(_type, _args) do
+    # Attach telemetry handlers FIRST, before any child process starts
+    # emitting events. This ensures no early events are missed.
+    AgentCom.Telemetry.attach_handlers()
+
     # Add rotating file handler for JSON log output (Phase 13)
     # Programmatic because Config.config/2 only accepts keyword lists,
     # and OTP handler tuples are {:handler, name, module, config}.
