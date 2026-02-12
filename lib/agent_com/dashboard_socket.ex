@@ -3,12 +3,15 @@ defmodule AgentCom.DashboardSocket do
   WebSocket handler for the real-time dashboard.
 
   Browser clients connect to `/ws/dashboard` and receive:
-  - An initial full state snapshot on connect
+  - An initial full state snapshot on connect (includes active alerts)
   - Batched PubSub event deltas (max 10 pushes/second via flush timer)
+  - `metrics_snapshot` events every ~10 seconds with aggregated system metrics
+  - `alert_fired`, `alert_cleared`, `alert_acknowledged` events in real time
 
   Client messages:
   - `{"type": "request_snapshot"}` -- triggers a fresh full snapshot push
   - `{"type": "retry_task", "task_id": "..."}` -- retries a dead-letter task
+  - `{"type": "acknowledge_alert", "rule_id": "..."}` -- acknowledges an active alert
 
   Event batching prevents PubSub message floods from overwhelming the browser.
   Events are accumulated in a pending list and flushed every 100ms.
@@ -24,9 +27,19 @@ defmodule AgentCom.DashboardSocket do
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "tasks")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "presence")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "backups")
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "metrics")
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "alerts")
 
     # Get initial snapshot
     snapshot = AgentCom.DashboardState.snapshot()
+
+    # Fetch active alerts for initial push
+    alerts =
+      try do
+        AgentCom.Alerter.active_alerts()
+      rescue
+        _ -> []
+      end
 
     # Start flush timer
     flush_ref = Process.send_after(self(), :flush, @flush_interval_ms)
@@ -36,7 +49,7 @@ defmodule AgentCom.DashboardSocket do
       flush_timer: flush_ref
     }
 
-    {:push, {:text, Jason.encode!(%{type: "snapshot", data: snapshot})}, state}
+    {:push, {:text, Jason.encode!(%{type: "snapshot", data: snapshot, alerts: alerts})}, state}
   end
 
   # -- Client messages ---------------------------------------------------------
@@ -53,6 +66,15 @@ defmodule AgentCom.DashboardSocket do
           case AgentCom.TaskQueue.retry_dead_letter(task_id) do
             {:ok, _task} -> %{type: "retry_result", task_id: task_id, status: "requeued"}
             {:error, :not_found} -> %{type: "retry_result", task_id: task_id, status: "not_found"}
+          end
+
+        {:push, {:text, Jason.encode!(result)}, state}
+
+      {:ok, %{"type" => "acknowledge_alert", "rule_id" => rule_id}} ->
+        result =
+          case AgentCom.Alerter.acknowledge(rule_id) do
+            :ok -> %{type: "alert_ack_result", rule_id: rule_id, status: "acknowledged"}
+            {:error, :not_found} -> %{type: "alert_ack_result", rule_id: rule_id, status: "not_found"}
           end
 
         {:push, {:text, Jason.encode!(result)}, state}
@@ -183,6 +205,65 @@ defmodule AgentCom.DashboardSocket do
       table: to_string(info.table),
       reason: inspect(info[:reason])
     }
+    {:ok, %{state | pending_events: [formatted | state.pending_events]}}
+  end
+
+  # -- PubSub: metrics events ---------------------------------------------------
+
+  def handle_info({:metrics_snapshot, snapshot}, state) do
+    compact = %{
+      type: "metrics_snapshot",
+      data: %{
+        timestamp: snapshot.timestamp,
+        queue_depth: snapshot.queue_depth,
+        task_latency: snapshot.task_latency,
+        agent_utilization: %{
+          system: snapshot.agent_utilization.system,
+          per_agent:
+            Enum.map(snapshot.agent_utilization.per_agent, fn a ->
+              Map.take(a, [
+                :agent_id,
+                :state,
+                :idle_pct_1h,
+                :working_pct_1h,
+                :blocked_pct_1h,
+                :tasks_completed_1h,
+                :avg_task_duration_ms
+              ])
+            end)
+        },
+        error_rates: snapshot.error_rates
+      }
+    }
+
+    {:ok, %{state | pending_events: [compact | state.pending_events]}}
+  end
+
+  # -- PubSub: alert events ----------------------------------------------------
+
+  def handle_info({:alert_fired, alert}, state) do
+    formatted = %{
+      type: "alert_fired",
+      data: %{
+        rule_id: alert.rule_id,
+        severity: to_string(alert.severity),
+        message: alert.message,
+        details: alert.details || %{},
+        fired_at: alert.fired_at,
+        acknowledged: false
+      }
+    }
+
+    {:ok, %{state | pending_events: [formatted | state.pending_events]}}
+  end
+
+  def handle_info({:alert_cleared, rule_id}, state) do
+    formatted = %{type: "alert_cleared", rule_id: to_string(rule_id)}
+    {:ok, %{state | pending_events: [formatted | state.pending_events]}}
+  end
+
+  def handle_info({:alert_acknowledged, rule_id}, state) do
+    formatted = %{type: "alert_acknowledged", rule_id: to_string(rule_id)}
     {:ok, %{state | pending_events: [formatted | state.pending_events]}}
   end
 
