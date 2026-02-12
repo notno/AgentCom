@@ -72,10 +72,11 @@ Plans:
   1. DETS tables are automatically backed up to a configurable directory on a periodic schedule without manual intervention
   2. An admin can trigger an immediate backup of all tables via a single API call
   3. A health endpoint returns current table sizes, fragmentation level, and the timestamp of the last successful backup
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 10-01: TBD
+- [ ] 10-01-PLAN.md -- DetsBackup GenServer (core backup + health logic, config, supervision tree)
+- [ ] 10-02-PLAN.md -- API endpoints + dashboard integration (manual backup trigger, health endpoint, DETS health card)
 
 ### Phase 11: DETS Compaction + Recovery
 **Goal**: DETS tables stay performant through compaction and can recover from corruption
@@ -165,7 +166,7 @@ Phases execute in numeric order: 9 -> 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 9. Testing Infrastructure | v1.1 | 6/6 | Complete | 2026-02-12 |
-| 10. DETS Backup + Monitoring | v1.1 | 0/TBD | Not started | - |
+| 10. DETS Backup + Monitoring | v1.1 | 0/2 | Not started | - |
 | 11. DETS Compaction + Recovery | v1.1 | 0/TBD | Not started | - |
 | 12. Input Validation | v1.1 | 0/TBD | Not started | - |
 | 13. Structured Logging + Telemetry | v1.1 | 0/TBD | Not started | - |
