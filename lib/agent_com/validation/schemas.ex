@@ -22,10 +22,11 @@ defmodule AgentCom.Validation.Schemas do
     "error" => 2_000,
     "reason" => 2_000,
     "name" => 256,
-    "repo" => 512
+    "repo" => 512,
+    "ollama_url" => 512
   }
 
-  # --- WebSocket message schemas (15 types) ---
+  # --- WebSocket message schemas (17 types) ---
   @ws_schemas %{
     "identify" => %{
       required: %{
@@ -36,7 +37,8 @@ defmodule AgentCom.Validation.Schemas do
       optional: %{
         "name" => :string,
         "status" => :string,
-        "capabilities" => {:list, :string}
+        "capabilities" => {:list, :string},
+        "ollama_url" => :string
       },
       description: "First message on WebSocket connection. Authenticates the agent."
     },
@@ -169,6 +171,28 @@ defmodule AgentCom.Validation.Schemas do
       },
       optional: %{},
       description: "Sidecar requests task recovery status after restart."
+    },
+    "ollama_report" => %{
+      required: %{
+        "type" => :string,
+        "ollama_url" => :string
+      },
+      optional: %{},
+      description: "Sidecar reports local Ollama endpoint URL for auto-registration."
+    },
+    "resource_report" => %{
+      required: %{
+        "type" => :string
+      },
+      optional: %{
+        "cpu_percent" => :number,
+        "ram_used_bytes" => :number,
+        "ram_total_bytes" => :number,
+        "vram_used_bytes" => :number,
+        "vram_total_bytes" => :number,
+        "timestamp" => :number
+      },
+      description: "Sidecar reports host resource utilization (CPU, RAM, VRAM)."
     }
   }
 
@@ -281,6 +305,16 @@ defmodule AgentCom.Validation.Schemas do
       },
       optional: %{},
       description: "Register a push notification subscription."
+    },
+    post_llm_registry: %{
+      required: %{
+        "host" => :string
+      },
+      optional: %{
+        "port" => :number,
+        "name" => :string
+      },
+      description: "Register an Ollama endpoint. Port defaults to 11434."
     }
   }
 
@@ -350,6 +384,7 @@ defmodule AgentCom.Validation.Schemas do
 
   defp format_type(:string), do: "string"
   defp format_type(:integer), do: "integer"
+  defp format_type(:number), do: "number"
   defp format_type(:positive_integer), do: "positive_integer"
   defp format_type(:map), do: "object"
   defp format_type(:boolean), do: "boolean"

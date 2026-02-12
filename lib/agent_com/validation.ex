@@ -276,6 +276,14 @@ defmodule AgentCom.Validation do
     end
   end
 
+  defp validate_type(acc, field, value, :number) do
+    if is_number(value) do
+      acc
+    else
+      [%{field: field, error: :wrong_type, detail: "expected number, got #{type_name(value)}", value: value} | acc]
+    end
+  end
+
   defp validate_type(acc, field, value, :positive_integer) do
     if is_integer(value) and value > 0 do
       acc
@@ -358,6 +366,7 @@ defmodule AgentCom.Validation do
 
   defp valid_type?(value, :string), do: is_binary(value)
   defp valid_type?(value, :integer), do: is_integer(value)
+  defp valid_type?(value, :number), do: is_number(value)
   defp valid_type?(value, :positive_integer), do: is_integer(value) and value > 0
   defp valid_type?(value, :map), do: is_map(value)
   defp valid_type?(value, :boolean), do: is_boolean(value)
@@ -375,6 +384,7 @@ defmodule AgentCom.Validation do
 
   defp format_type_name(:string), do: "string"
   defp format_type_name(:integer), do: "integer"
+  defp format_type_name(:number), do: "number"
   defp format_type_name(:positive_integer), do: "positive integer"
   defp format_type_name(:map), do: "object"
   defp format_type_name(:boolean), do: "boolean"

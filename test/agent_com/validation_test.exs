@@ -351,14 +351,15 @@ defmodule AgentCom.ValidationTest do
   # ===========================================================================
 
   describe "schema introspection" do
-    test "known_types returns all 15 message types" do
+    test "known_types returns all 17 message types" do
       types = Schemas.known_types()
-      assert length(types) == 15
+      assert length(types) == 17
 
       expected = ~w(
         identify message status list_agents ping
         channel_subscribe channel_unsubscribe channel_publish channel_history list_channels
         task_accepted task_progress task_complete task_failed task_recovering
+        ollama_report resource_report
       )
 
       for t <- expected do
