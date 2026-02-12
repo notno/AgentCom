@@ -20,6 +20,18 @@ Reliable autonomous work execution: ideas enter a queue and emerge as reviewed, 
 - Rate limiting for flood protection
 - Operations documentation
 
+## Current Milestone: v1.2 Smart Agent Pipeline
+
+**Goal:** Transform agents from blind task executors into context-aware, self-verifying workers with cost-efficient model routing across a distributed LLM mesh.
+
+**Target features:**
+- LLM endpoint registry — hub tracks Ollama instances across Tailscale mesh (multiple hosts, multiple models, health-checked)
+- Enriched task format — tasks carry context, success criteria, and verification steps
+- Model-aware scheduler routing — trivial tasks to cheapest local LLM, complex tasks to Claude
+- Sidecar model routing — calls correct LLM endpoint (local Ollama or cloud API) based on task assignment
+- Sidecar trivial execution — zero-LLM-token mechanical ops (git, file I/O, status)
+- Self-verification — agents run verification steps after execution, only submit when criteria pass
+
 ## Requirements
 
 ### Validated
@@ -49,8 +61,8 @@ Reliable autonomous work execution: ideas enter a queue and emerge as reviewed, 
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Comprehensive test coverage for all GenServers and core pipelines
-- [ ] Sidecar test suite (WebSocket relay, queue management, wake trigger, git workflow)
+#### v1.1 Hardening (in progress — Phase 9 complete, Phases 10-16 remaining)
+
 - [ ] DETS backup, compaction, and corruption recovery mechanisms
 - [ ] Input validation and sanitization at WebSocket and HTTP boundaries
 - [ ] Structured logging with consistent format (task_id, agent_id, phase) across all modules
@@ -58,6 +70,15 @@ Reliable autonomous work execution: ideas enter a queue and emerge as reviewed, 
 - [ ] Configurable alerting (webhook/push) for system anomalies
 - [ ] Rate limiting to prevent message/request flooding from misbehaving agents
 - [ ] Operations documentation (setup, monitoring, troubleshooting)
+
+#### v1.2 Smart Agent Pipeline
+
+- [ ] LLM endpoint registry with health checking across Tailscale mesh
+- [ ] Enriched task format with context, success criteria, and verification steps
+- [ ] Model-aware scheduler routing (complexity-based local vs cloud)
+- [ ] Sidecar model routing to correct LLM endpoint per task assignment
+- [ ] Sidecar trivial execution for zero-LLM-token mechanical ops
+- [ ] Agent self-verification against task criteria before submission
 
 ### Out of Scope
 
@@ -113,4 +134,4 @@ Shipped v1.0 on 2026-02-11 (8 phases, 19 plans, 48 commits, +12,858 LOC across 6
 | Culture ship names for agents | Fun, memorable, avoids naming bikeshed | ✓ Good — 65 names from Iain M. Banks novels |
 
 ---
-*Last updated: 2026-02-11 after v1.0 milestone completion*
+*Last updated: 2026-02-11 after v1.2 milestone definition*

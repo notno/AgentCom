@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-11)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Phase 10 - DETS Backup + Monitoring (v1.1 Hardening)
+**Current focus:** v1.2 Smart Agent Pipeline (defining requirements)
 
 ## Current Position
 
-Phase: 9 of 16 (Testing Infrastructure)
-Plan: 6 of 6 in current phase (PHASE COMPLETE)
-Status: Phase 09 Complete
-Last activity: 2026-02-12 -- Completed 09-06 (CI workflow)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements for v1.2
+Last activity: 2026-02-11 — Milestone v1.2 started
 
-Progress: [████░░░░░░] 38%
+Note: v1.1 Hardening phases 10-16 remain on roadmap (paused, not abandoned).
 
 ## Performance Metrics
 
@@ -74,6 +74,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-12
-Stopped at: Phase 09 verified and marked complete. Ready for /gsd:plan-phase 10.
+Last session: 2026-02-11
+Stopped at: Defining v1.2 milestone — PROJECT.md updated, requirements next.
 Resume file: None
