@@ -507,6 +507,7 @@ defmodule AgentCom.Dashboard do
                   <th>Current Task</th>
                   <th>Capabilities</th>
                   <th>Last Seen</th>
+                  <th>Rate Limit</th>
                 </tr>
               </thead>
               <tbody id="agent-tbody"></tbody>
@@ -660,6 +661,26 @@ defmodule AgentCom.Dashboard do
           <div id="val-disconnects" style="margin-bottom: 8px;"></div>
           <div id="val-recent"></div>
           <div class="empty-state" id="val-empty">No validation failures</div>
+        </div>
+      </div>
+
+      <!-- Rate Limits -->
+      <div style="margin-top: 12px;">
+        <div class="panel" id="panel-rate-limits">
+          <div class="panel-title">Rate Limits</div>
+          <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 10px;">
+            <div class="stat" style="font-size: 0.85em;">
+              Violations (window): <span id="rl-violations" style="font-weight: 700; color: #7eb8da;">0</span>
+            </div>
+            <div class="stat" style="font-size: 0.85em;">
+              Rate Limited: <span id="rl-limited" style="font-weight: 700; color: #fbbf24;">0</span>
+            </div>
+            <div class="stat" style="font-size: 0.85em;">
+              Exempt: <span id="rl-exempt" style="font-weight: 700; color: #4ade80;">0</span>
+            </div>
+          </div>
+          <div id="rl-top-offenders"></div>
+          <div class="empty-state" id="rl-empty">No rate limit data</div>
         </div>
       </div>
 
@@ -1282,6 +1303,9 @@ defmodule AgentCom.Dashboard do
           // -- Validation health --
           renderValidationHealth(data.validation || null);
 
+          // -- Rate limits --
+          renderRateLimits(data.rate_limits || null, data.agents || []);
+
           updateLastUpdate();
         }
 
@@ -1314,6 +1338,8 @@ defmodule AgentCom.Dashboard do
         // =====================================================================
         // Agent table
         // =====================================================================
+        var agentRateLimits = {};
+
         function renderAgentTable(agents) {
           var tbody = document.getElementById('agent-tbody');
           var empty = document.getElementById('agents-empty');
@@ -1335,12 +1361,30 @@ defmodule AgentCom.Dashboard do
             var taskSnippet = a.current_task_id ? truncate(a.current_task_id, 20) : '--';
             var name = escapeHtml(a.name || a.agent_id);
 
+            // Rate limit indicator
+            var rlHtml = '--';
+            var rlData = agentRateLimits[a.agent_id];
+            if (rlData) {
+              if (rlData.exempt) {
+                rlHtml = '<span style="color: #4ade80; font-size: 0.8em;">Exempt</span>';
+              } else {
+                var maxUsage = getMaxUsagePct(rlData);
+                var violations = (rlData.violations || {}).total_in_window || 0;
+                var color = maxUsage > 80 ? '#ef4444' : (maxUsage > 50 ? '#fbbf24' : '#4ade80');
+                rlHtml = '<span style="color: ' + color + '; font-weight: 600;">' + maxUsage.toFixed(0) + '%</span>';
+                if (violations > 0) {
+                  rlHtml += ' <span style="color: #ef4444; font-size: 0.75em;">(' + violations + 'v)</span>';
+                }
+              }
+            }
+
             return '<tr data-agent-id="' + escapeHtml(a.agent_id) + '">' +
               '<td title="' + escapeHtml(a.agent_id) + '">' + name + '</td>' +
               '<td><span class="dot ' + stateStr + '"></span>' + stateStr + '</td>' +
               '<td title="' + escapeHtml(a.current_task_id || '') + '">' + taskSnippet + '</td>' +
               '<td>' + escapeHtml(caps) + '</td>' +
               '<td>' + timeAgo(a.connected_at || a.last_state_change) + '</td>' +
+              '<td>' + rlHtml + '</td>' +
               '</tr>';
           }).join('');
         }
@@ -1664,6 +1708,75 @@ defmodule AgentCom.Dashboard do
           emptyEl.style.display = hasData ? 'none' : 'block';
         }
 
+        // =====================================================================
+        // Rate limits
+        // =====================================================================
+        function getMaxUsagePct(rlData) {
+          var max = 0;
+          ['ws', 'http'].forEach(function(ch) {
+            var chData = rlData[ch];
+            if (!chData) return;
+            ['light', 'normal', 'heavy'].forEach(function(tier) {
+              var t = chData[tier];
+              if (t && t.usage_pct != null && t.usage_pct > max) max = t.usage_pct;
+            });
+          });
+          return max;
+        }
+
+        function renderRateLimits(rateLimits, agents) {
+          var violationsEl = document.getElementById('rl-violations');
+          var limitedEl = document.getElementById('rl-limited');
+          var exemptEl = document.getElementById('rl-exempt');
+          var offendersEl = document.getElementById('rl-top-offenders');
+          var emptyEl = document.getElementById('rl-empty');
+
+          if (!rateLimits || !rateLimits.summary) {
+            if (violationsEl) violationsEl.textContent = '0';
+            if (limitedEl) limitedEl.textContent = '0';
+            if (exemptEl) exemptEl.textContent = '0';
+            if (offendersEl) offendersEl.innerHTML = '';
+            if (emptyEl) emptyEl.style.display = 'block';
+            return;
+          }
+
+          var summary = rateLimits.summary;
+          if (violationsEl) violationsEl.textContent = summary.total_violations_1h || 0;
+          if (limitedEl) limitedEl.textContent = summary.active_rate_limited || 0;
+          if (exemptEl) exemptEl.textContent = summary.exempt_count || 0;
+
+          // Color the violations count
+          if (violationsEl) {
+            var v = summary.total_violations_1h || 0;
+            violationsEl.style.color = v > 50 ? '#ef4444' : (v > 10 ? '#fbbf24' : '#7eb8da');
+          }
+
+          // Top offenders
+          var offenders = summary.top_offenders || [];
+          if (offenders.length > 0) {
+            var rows = offenders.map(function(o) {
+              var rlBadge = o.rate_limited ? '<span style="color: #ef4444; font-size: 0.75em; font-weight: 600;">BLOCKED</span>' : '';
+              return '<tr><td>' + escapeHtml(o.agent_id || '--') + '</td><td>' + (o.violations || 0) + '</td><td>' + rlBadge + '</td></tr>';
+            }).join('');
+            offendersEl.innerHTML = '<div style="font-size: 0.72em; text-transform: uppercase; color: #7eb8da; margin-bottom: 4px;">Top Offenders</div>' +
+              '<table><thead><tr><th>Agent</th><th>Violations</th><th>Status</th></tr></thead><tbody>' + rows + '</tbody></table>';
+          } else {
+            offendersEl.innerHTML = '';
+          }
+
+          // Store per-agent rate limit data for agent table rendering
+          agentRateLimits = rateLimits.per_agent || {};
+
+          var hasData = (summary.total_violations_1h > 0) || (summary.active_rate_limited > 0) ||
+                        (summary.exempt_count > 0) || Object.keys(agentRateLimits).length > 0;
+          if (emptyEl) emptyEl.style.display = hasData ? 'none' : 'block';
+
+          // Re-render agent table to update rate limit indicators
+          if (agents && agents.length > 0) {
+            renderAgentTable(agents);
+          }
+        }
+
         function retryTask(btn) {
           var taskId = btn.getAttribute('data-task-id');
           if (!taskId || !dashConn || !dashConn.ws || dashConn.ws.readyState !== 1) return;
@@ -1804,9 +1917,10 @@ defmodule AgentCom.Dashboard do
                 case 'snapshot':
                   renderFullState(msg.data);
                   // Load alerts from initial snapshot
-                  if (msg.data && msg.data.alerts) {
+                  var initialAlerts = (msg.data && msg.data.active_alerts) || msg.alerts || [];
+                  if (initialAlerts.length > 0) {
                     window.activeAlerts = {};
-                    msg.data.alerts.forEach(function(a) { addAlert(a); });
+                    initialAlerts.forEach(function(a) { addAlert(a); });
                     updateAlertBanner();
                   }
                   break;
