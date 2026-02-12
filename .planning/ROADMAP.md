@@ -134,10 +134,13 @@ Plans:
   1. A GET /api/metrics endpoint returns current queue depth, task latency percentiles, agent utilization, and error rates
   2. When a monitored threshold is exceeded (queue growth, failure rate, stuck tasks), an alert broadcasts to the dashboard within 60 seconds
   3. Alert thresholds can be changed via the Config store without restarting the hub, and changes take effect on the next check cycle
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 14-01: TBD
+- [ ] 14-01-PLAN.md -- MetricsCollector GenServer (ETS-backed telemetry aggregation, GET /api/metrics endpoint)
+- [ ] 14-02-PLAN.md -- Alerter GenServer (configurable rule evaluation, cooldown/ack, alert API endpoints)
+- [ ] 14-03-PLAN.md -- DashboardSocket + DashboardNotifier integration (metrics streaming, alert events, push notifications)
+- [ ] 14-04-PLAN.md -- Dashboard UI (metrics tab with uPlot charts, alert banner, acknowledge buttons)
 
 ### Phase 15: Rate Limiting
 **Goal**: Misbehaving or compromised agents cannot flood the system with messages or requests
