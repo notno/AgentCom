@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 09-testing
 source: 09-01-SUMMARY.md, 09-02-SUMMARY.md, 09-03-SUMMARY.md, 09-04-SUMMARY.md, 09-05-SUMMARY.md, 09-06-SUMMARY.md
 started: 2026-02-11T22:00:00Z
@@ -57,7 +57,17 @@ skipped: 0
   reason: "User reported: Smoke tests (test/smoke/) fail with econnrefused -- 5 failures from pre-existing smoke tests that require a running hub server but aren't tagged for exclusion from default mix test runs"
   severity: major
   test: 1
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "Smoke test modules have no @moduletag and ExUnit.start only excludes [:skip], so smoke tests run during default mix test and fail with econnrefused"
+  artifacts:
+    - path: "test/smoke/basic_test.exs"
+      issue: "Missing @moduletag :smoke"
+    - path: "test/smoke/failure_test.exs"
+      issue: "Missing @moduletag :smoke"
+    - path: "test/smoke/scale_test.exs"
+      issue: "Missing @moduletag :smoke"
+    - path: "test/test_helper.exs"
+      issue: "ExUnit.start exclude list missing :smoke"
+  missing:
+    - "Add @moduletag :smoke to each smoke test module"
+    - "Add :smoke to ExUnit.start exclude list in test_helper.exs"
+  debug_session: ".planning/debug/smoke-tests-no-exclusion-tag.md"
