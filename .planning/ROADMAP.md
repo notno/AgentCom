@@ -104,11 +104,13 @@ Plans:
   3. A complex-complexity task is routed to a Claude-backed agent
   4. When two Ollama hosts have the same model loaded, the scheduler distributes tasks toward the less-loaded host
   5. Every routing decision is logged with the model selected, endpoint chosen, and the classification reason
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 19-01: TBD
-- [ ] 19-02: TBD
+- [ ] 19-01-PLAN.md -- TaskRouter routing decision engine (TDD: tier resolution, endpoint scoring, load balancing)
+- [ ] 19-02-PLAN.md -- Scheduler wiring (TaskRouter integration, fallback timers, llm_registry PubSub, routing telemetry)
+- [ ] 19-03-PLAN.md -- Config + alerting + TTL (routing timeouts, tier-down alert rule, task TTL sweep)
+- [ ] 19-04-PLAN.md -- Dashboard routing visibility (routing column, fallback badge, expandable detail, routing stats)
 
 ### Phase 20: Sidecar Execution
 **Goal**: Sidecars execute tasks using the LLM backend the hub assigned -- local Ollama for standard work, Claude API for complex work, or local shell commands for trivial work -- and report what model and tokens were used
@@ -164,7 +166,7 @@ Phases execute in numeric order: 17 -> 17.1 -> 17.2 -> 18 -> ... -> 22
 | 9-16 | v1.1 | 32/32 | Complete | 2026-02-12 |
 | 17. Enriched Task Format | v1.2 | 3/3 | Complete | 2026-02-12 |
 | 18. LLM Registry + Host Resources | v1.2 | 0/4 | Planned | - |
-| 19. Model-Aware Scheduler | v1.2 | 0/TBD | Not started | - |
+| 19. Model-Aware Scheduler | v1.2 | 0/4 | Planned | - |
 | 20. Sidecar Execution | v1.2 | 0/TBD | Not started | - |
 | 21. Verification Infrastructure | v1.2 | 0/TBD | Not started | - |
 | 22. Self-Verification Loop | v1.2 | 0/TBD | Not started | - |
