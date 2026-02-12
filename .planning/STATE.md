@@ -5,21 +5,19 @@
 See: .planning/PROJECT.md (updated 2026-02-11)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.2 Smart Agent Pipeline (defining requirements)
+**Current focus:** v1.1 Hardening -- Phase 10 DETS Backup
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements for v1.2
-Last activity: 2026-02-11 — Milestone v1.2 started
-
-Note: v1.1 Hardening phases 10-16 remain on roadmap (paused, not abandoned).
+Phase: 10-dets-backup
+Plan: 1 of 2 complete
+Status: Plan 01 complete, ready for Plan 02
+Last activity: 2026-02-12 -- Completed 10-01-PLAN.md (DetsBackup GenServer)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7 (v1.1)
+- Total plans completed: 8 (v1.1)
 - Average duration: 5 min
 - Total execution time: 0.6 hours
 
@@ -28,9 +26,10 @@ Note: v1.1 Hardening phases 10-16 remain on roadmap (paused, not abandoned).
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 09-testing | 7 | 33 min | 5 min |
+| 10-dets-backup | 1 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 09-07 (1 min), 09-06 (1 min), 09-04 (7 min), 09-03 (6 min), 09-02 (6 min)
+- Last 5 plans: 10-01 (2 min), 09-07 (1 min), 09-06 (1 min), 09-04 (7 min), 09-03 (6 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -59,6 +58,9 @@ Recent decisions affecting current work:
 - [Phase 09-06]: npm test (not raw node --test) for sidecar CI -- delegates to package.json single source of truth
 - [Phase 09-06]: mix test --exclude skip to avoid known-buggy tests in CI
 - [Phase 09-07]: @moduletag :smoke for whole-module exclusion of environment-dependent smoke tests
+- [Phase 10-01]: Application.get_env for backup_dir (not DETS Config) to avoid chicken-and-egg problem
+- [Phase 10-01]: Direct :dets.sync + File.cp for backup -- no routing through owning GenServers
+- [Phase 10-01]: DetsBackup placed after DashboardNotifier, before Bandit in supervision tree
 
 ### Pending Todos
 
@@ -75,6 +77,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-11
-Stopped at: Completed 09-07-PLAN.md (smoke test exclusion). Phase 09 all 7 plans complete.
+Last session: 2026-02-12
+Stopped at: Completed 10-01-PLAN.md (DetsBackup GenServer). Plan 02 remaining for HTTP endpoints + dashboard.
 Resume file: None
