@@ -45,7 +45,10 @@ defmodule AgentCom.Endpoint do
   - GET    /api/config/default-repo — Get default repository URL (no auth)
   - PUT    /api/config/default-repo — Set default repository URL (auth required)
   - GET    /api/metrics          — System metrics (queue depth, latency, utilization, errors)
-  - GET    /api/alerts           — Active alerts (placeholder for plan 02)
+  - GET    /api/alerts           — Active alerts (no auth)
+  - POST   /api/alerts/:rule_id/acknowledge — Acknowledge alert (auth required)
+  - GET    /api/config/alert-thresholds — Get alert thresholds (auth required)
+  - PUT    /api/config/alert-thresholds — Update alert thresholds (auth required)
   - GET    /api/schemas           — Schema discovery (no auth)
   - WS     /ws                   — WebSocket for agent connections
   """
@@ -905,6 +908,51 @@ defmodule AgentCom.Endpoint do
   get "/api/metrics" do
     snapshot = AgentCom.MetricsCollector.snapshot()
     send_json(conn, 200, snapshot)
+  end
+
+  # --- Alerts API ---
+
+  get "/api/alerts" do
+    alerts = AgentCom.Alerter.active_alerts()
+    send_json(conn, 200, %{
+      "alerts" => alerts,
+      "timestamp" => System.system_time(:millisecond)
+    })
+  end
+
+  post "/api/alerts/:rule_id/acknowledge" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case AgentCom.Alerter.acknowledge(rule_id) do
+        :ok -> send_json(conn, 200, %{"status" => "acknowledged", "rule_id" => rule_id})
+        {:error, :not_found} -> send_json(conn, 404, %{"error" => "alert_not_found"})
+      end
+    end
+  end
+
+  # --- Alert Thresholds Config (auth required) ---
+
+  get "/api/config/alert-thresholds" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      thresholds = AgentCom.Config.get(:alert_thresholds) || AgentCom.Alerter.default_thresholds()
+      send_json(conn, 200, thresholds)
+    end
+  end
+
+  put "/api/config/alert-thresholds" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      thresholds = conn.body_params
+      :ok = AgentCom.Config.put(:alert_thresholds, thresholds)
+      send_json(conn, 200, %{"status" => "updated", "effective" => "next_check_cycle"})
+    end
   end
 
   # --- Dashboard API (no auth -- local network only) ---
