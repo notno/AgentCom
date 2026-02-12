@@ -136,6 +136,56 @@ defmodule AgentCom.DashboardSocket do
     end
   end
 
+  # -- PubSub: compaction/recovery events --------------------------------------
+
+  def handle_info({:compaction_complete, info}, state) do
+    formatted = %{
+      type: "compaction_complete",
+      timestamp: info.timestamp,
+      results: Enum.map(info.results, fn r ->
+        %{
+          table: to_string(r.table),
+          status: to_string(r.status),
+          duration_ms: r[:duration_ms] || 0
+        }
+      end)
+    }
+    {:ok, %{state | pending_events: [formatted | state.pending_events]}}
+  end
+
+  def handle_info({:compaction_failed, info}, state) do
+    formatted = %{
+      type: "compaction_failed",
+      timestamp: info.timestamp,
+      failures: Enum.map(info.failures, fn f ->
+        %{table: to_string(f.table), reason: to_string(f[:reason] || "unknown")}
+      end)
+    }
+    {:ok, %{state | pending_events: [formatted | state.pending_events]}}
+  end
+
+  def handle_info({:recovery_complete, info}, state) do
+    formatted = %{
+      type: "recovery_complete",
+      timestamp: info.timestamp,
+      table: to_string(info.table),
+      trigger: to_string(info[:trigger] || "unknown"),
+      backup_used: info[:backup_used],
+      record_count: info[:record_count] || 0
+    }
+    {:ok, %{state | pending_events: [formatted | state.pending_events]}}
+  end
+
+  def handle_info({:recovery_failed, info}, state) do
+    formatted = %{
+      type: "recovery_failed",
+      timestamp: info.timestamp,
+      table: to_string(info.table),
+      reason: inspect(info[:reason])
+    }
+    {:ok, %{state | pending_events: [formatted | state.pending_events]}}
+  end
+
   # Catch-all for unhandled messages (e.g., :agent_idle from presence)
   def handle_info(_msg, state) do
     {:ok, state}

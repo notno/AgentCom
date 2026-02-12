@@ -34,8 +34,9 @@ defmodule AgentCom.DashboardNotifier do
 
   @impl true
   def init(_opts) do
-    # Subscribe to PubSub for agent offline events
+    # Subscribe to PubSub for agent offline events and backup/compaction alerts
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "presence")
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "backups")
 
     # Load or generate VAPID keys
     {vapid_public, vapid_private} = load_or_generate_vapid_keys()
@@ -110,6 +111,40 @@ defmodule AgentCom.DashboardNotifier do
 
     Process.send_after(self(), :check_health, @health_check_interval)
     {:noreply, new_state}
+  end
+
+  # -- Compaction/recovery push notifications (failures and auto-restores only) --
+
+  def handle_info({:compaction_failed, info}, state) do
+    tables = info.failures |> Enum.map(fn f -> to_string(f.table) end) |> Enum.join(", ")
+    payload = Jason.encode!(%{
+      title: "AgentCom Alert",
+      body: "DETS compaction failed: #{tables}",
+      icon: "/favicon.ico"
+    })
+    new_subs = send_to_all(state.subscriptions, payload)
+    {:noreply, %{state | subscriptions: new_subs}}
+  end
+
+  def handle_info({:recovery_complete, %{trigger: :auto} = info}, state) do
+    # Push notification for auto-restores only (per locked decision)
+    payload = Jason.encode!(%{
+      title: "AgentCom Alert",
+      body: "DETS auto-restore: #{info.table} restored from backup",
+      icon: "/favicon.ico"
+    })
+    new_subs = send_to_all(state.subscriptions, payload)
+    {:noreply, %{state | subscriptions: new_subs}}
+  end
+
+  def handle_info({:recovery_failed, info}, state) do
+    payload = Jason.encode!(%{
+      title: "AgentCom Critical",
+      body: "DETS recovery FAILED: #{info.table} -- #{inspect(info[:reason])}",
+      icon: "/favicon.ico"
+    })
+    new_subs = send_to_all(state.subscriptions, payload)
+    {:noreply, %{state | subscriptions: new_subs}}
   end
 
   # Catch-all for unexpected PubSub messages

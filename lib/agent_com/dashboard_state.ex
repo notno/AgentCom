@@ -136,6 +136,12 @@ defmodule AgentCom.DashboardState do
       _ -> nil
     end
 
+    compaction_history = try do
+      AgentCom.DetsBackup.compaction_history()
+    rescue
+      _ -> []
+    end
+
     snapshot = %{
       uptime_ms: now - state.started_at,
       timestamp: now,
@@ -145,7 +151,8 @@ defmodule AgentCom.DashboardState do
       dead_letter_tasks: formatted_dead_letter,
       recent_completions: state.recent_completions,
       throughput: throughput,
-      dets_health: dets_health
+      dets_health: dets_health,
+      compaction_history: compaction_history
     }
 
     {:reply, snapshot, state}
@@ -198,6 +205,31 @@ defmodule AgentCom.DashboardState do
       total_tokens: 0,
       completion_times: []
     }}}
+  end
+
+  # -- PubSub: compaction/recovery events --------------------------------------
+
+  def handle_info({:compaction_complete, _info}, state) do
+    # Compaction complete triggers no state change -- compaction_history is fetched live from DetsBackup
+    {:noreply, state}
+  end
+
+  def handle_info({:compaction_failed, info}, state) do
+    Logger.warning("DetsBackup: compaction failures detected: #{inspect(info[:failures] || info.failures)}")
+    {:noreply, state}
+  end
+
+  def handle_info({:recovery_complete, info}, state) do
+    trigger = info[:trigger] || :unknown
+    table = info[:table] || :unknown
+    Logger.info("DetsBackup: recovery complete for #{table} (trigger: #{trigger})")
+    {:noreply, state}
+  end
+
+  def handle_info({:recovery_failed, info}, state) do
+    table = info[:table] || :unknown
+    Logger.error("DetsBackup: recovery failed for #{table}: #{inspect(info[:reason])}")
+    {:noreply, state}
   end
 
   # Catch-all for unhandled PubSub messages
