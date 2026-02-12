@@ -51,6 +51,7 @@ defmodule AgentCom.DashboardState do
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "tasks")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "presence")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "backups")
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "validation")
 
     Process.send_after(self(), :check_queue_growth, @queue_check_interval_ms)
     Process.send_after(self(), :reset_hourly, @hourly_reset_interval_ms)
@@ -60,10 +61,13 @@ defmodule AgentCom.DashboardState do
       recent_completions: [],
       hourly_stats: %{completed: 0, failed: 0, total_tokens: 0, completion_times: []},
       queue_growth_checks: [],
-      last_known_agents: MapSet.new()
+      last_known_agents: MapSet.new(),
+      validation_failures: [],
+      validation_failure_counts: %{},
+      validation_disconnects: []
     }
 
-    Logger.info("DashboardState: started, subscribed to tasks and presence topics")
+    Logger.info("DashboardState: started, subscribed to tasks, presence, and validation topics")
 
     {:ok, state}
   end
@@ -142,6 +146,13 @@ defmodule AgentCom.DashboardState do
       _ -> []
     end
 
+    validation = %{
+      recent_failures: state.validation_failures,
+      failure_counts_by_agent: state.validation_failure_counts,
+      recent_disconnects: state.validation_disconnects,
+      total_failures_this_hour: state.validation_failure_counts |> Map.values() |> Enum.sum()
+    }
+
     snapshot = %{
       uptime_ms: now - state.started_at,
       timestamp: now,
@@ -152,7 +163,8 @@ defmodule AgentCom.DashboardState do
       recent_completions: state.recent_completions,
       throughput: throughput,
       dets_health: dets_health,
-      compaction_history: compaction_history
+      compaction_history: compaction_history,
+      validation: validation
     }
 
     {:reply, snapshot, state}
@@ -204,7 +216,7 @@ defmodule AgentCom.DashboardState do
       failed: 0,
       total_tokens: 0,
       completion_times: []
-    }}}
+    }, validation_failure_counts: %{}}}
   end
 
   # -- PubSub: compaction/recovery events --------------------------------------
@@ -230,6 +242,30 @@ defmodule AgentCom.DashboardState do
     table = info[:table] || :unknown
     Logger.error("DetsBackup: recovery failed for #{table}: #{inspect(info[:reason])}")
     {:noreply, state}
+  end
+
+  # -- PubSub: validation events -----------------------------------------------
+
+  def handle_info({:validation_failure, info}, state) do
+    entry = %{
+      agent_id: info.agent_id,
+      message_type: info.message_type,
+      error_count: info.error_count,
+      timestamp: info.timestamp
+    }
+
+    failures = [entry | state.validation_failures] |> Enum.take(50)
+
+    agent_id = info.agent_id || "unknown"
+    counts = Map.update(state.validation_failure_counts, agent_id, 1, &(&1 + 1))
+
+    {:noreply, %{state | validation_failures: failures, validation_failure_counts: counts}}
+  end
+
+  def handle_info({:validation_disconnect, info}, state) do
+    entry = %{agent_id: info.agent_id, timestamp: info.timestamp}
+    disconnects = [entry | state.validation_disconnects] |> Enum.take(20)
+    {:noreply, %{state | validation_disconnects: disconnects}}
   end
 
   # Catch-all for unhandled PubSub messages
@@ -383,6 +419,16 @@ defmodule AgentCom.DashboardState do
         else
           conditions
         end
+      else
+        conditions
+      end
+
+    # 7. High validation failure rate
+    total_val_failures = state.validation_failure_counts |> Map.values() |> Enum.sum()
+
+    conditions =
+      if total_val_failures > 50 do
+        ["High validation failures: #{total_val_failures} this hour" | conditions]
       else
         conditions
       end

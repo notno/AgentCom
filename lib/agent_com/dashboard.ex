@@ -506,6 +506,20 @@ defmodule AgentCom.Dashboard do
         </div>
       </div>
 
+      <!-- Validation Health -->
+      <div style="margin-top: 12px;">
+        <div class="panel" id="panel-validation">
+          <div class="panel-title">Validation Health</div>
+          <div class="stat" style="font-size: 0.85em; margin-bottom: 8px;">
+            Failures this hour: <span id="val-total" style="font-weight: 700; color: #7eb8da;">0</span>
+          </div>
+          <div id="val-by-agent" style="margin-bottom: 8px;"></div>
+          <div id="val-disconnects" style="margin-bottom: 8px;"></div>
+          <div id="val-recent"></div>
+          <div class="empty-state" id="val-empty">No validation failures</div>
+        </div>
+      </div>
+
       <script>
         // =====================================================================
         // State
@@ -672,6 +686,9 @@ defmodule AgentCom.Dashboard do
 
           // -- DETS health --
           renderDetsHealth(data.dets_health || null);
+
+          // -- Validation health --
+          renderValidationHealth(data.validation || null);
 
           updateLastUpdate();
         }
@@ -981,6 +998,80 @@ defmodule AgentCom.Dashboard do
           return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
         }
 
+        // =====================================================================
+        // Validation health
+        // =====================================================================
+        function renderValidationHealth(validation) {
+          var totalEl = document.getElementById('val-total');
+          var byAgentEl = document.getElementById('val-by-agent');
+          var disconnectsEl = document.getElementById('val-disconnects');
+          var recentEl = document.getElementById('val-recent');
+          var emptyEl = document.getElementById('val-empty');
+
+          if (!validation) {
+            totalEl.textContent = '0';
+            byAgentEl.innerHTML = '';
+            disconnectsEl.innerHTML = '';
+            recentEl.innerHTML = '';
+            emptyEl.style.display = 'block';
+            return;
+          }
+
+          var total = validation.total_failures_this_hour || 0;
+          totalEl.textContent = total;
+          if (total > 50) {
+            totalEl.style.color = '#ef4444';
+          } else if (total > 10) {
+            totalEl.style.color = '#fbbf24';
+          } else {
+            totalEl.style.color = '#7eb8da';
+          }
+
+          var hasData = false;
+
+          // Failures by agent
+          var counts = validation.failure_counts_by_agent || {};
+          var agentKeys = Object.keys(counts);
+          if (agentKeys.length > 0) {
+            hasData = true;
+            var rows = agentKeys.map(function(aid) {
+              return '<tr><td>' + escapeHtml(aid) + '</td><td>' + counts[aid] + '</td></tr>';
+            }).join('');
+            byAgentEl.innerHTML = '<div style="font-size: 0.72em; text-transform: uppercase; color: #7eb8da; margin-bottom: 4px;">Failures by Agent</div>' +
+              '<table><thead><tr><th>Agent</th><th>Count</th></tr></thead><tbody>' + rows + '</tbody></table>';
+          } else {
+            byAgentEl.innerHTML = '';
+          }
+
+          // Recent disconnects
+          var disconnects = validation.recent_disconnects || [];
+          if (disconnects.length > 0) {
+            hasData = true;
+            var dRows = disconnects.map(function(d) {
+              return '<tr><td>' + escapeHtml(d.agent_id || '--') + '</td><td>' + timeAgo(d.timestamp) + '</td></tr>';
+            }).join('');
+            disconnectsEl.innerHTML = '<div style="font-size: 0.72em; text-transform: uppercase; color: #ef4444; margin-bottom: 4px;">Recent Disconnects</div>' +
+              '<table><thead><tr><th>Agent</th><th>When</th></tr></thead><tbody>' + dRows + '</tbody></table>';
+          } else {
+            disconnectsEl.innerHTML = '';
+          }
+
+          // Recent failures (last 10)
+          var failures = (validation.recent_failures || []).slice(0, 10);
+          if (failures.length > 0) {
+            hasData = true;
+            var fRows = failures.map(function(f) {
+              return '<tr><td>' + escapeHtml(f.agent_id || '--') + '</td><td>' + escapeHtml(f.message_type || '--') + '</td><td>' + timeAgo(f.timestamp) + '</td></tr>';
+            }).join('');
+            recentEl.innerHTML = '<div style="font-size: 0.72em; text-transform: uppercase; color: #7eb8da; margin-bottom: 4px;">Recent Failures</div>' +
+              '<table><thead><tr><th>Agent</th><th>Message Type</th><th>When</th></tr></thead><tbody>' + fRows + '</tbody></table>';
+          } else {
+            recentEl.innerHTML = '';
+          }
+
+          emptyEl.style.display = hasData ? 'none' : 'block';
+        }
+
         function retryTask(btn) {
           var taskId = btn.getAttribute('data-task-id');
           if (!taskId || !dashConn || !dashConn.ws || dashConn.ws.readyState !== 1) return;
@@ -1237,6 +1328,7 @@ defmodule AgentCom.Dashboard do
             doRenderRecent();
             renderDeadLetter(dashState.dead_letter_tasks || []);
             renderDetsHealth(dashState.dets_health || null);
+            renderValidationHealth(dashState.validation || null);
             // Update uptime
             if (dashState.uptime_ms) {
               dashState.uptime_ms += 30000;
