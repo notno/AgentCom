@@ -23,6 +23,7 @@ defmodule AgentCom.DashboardSocket do
     # Subscribe to relevant PubSub topics
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "tasks")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "presence")
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "backups")
 
     # Get initial snapshot
     snapshot = AgentCom.DashboardState.snapshot()
@@ -101,6 +102,16 @@ defmodule AgentCom.DashboardSocket do
       type: "status_changed",
       agent_id: info[:agent_id] || info.agent_id,
       status: info[:status]
+    }
+
+    {:ok, %{state | pending_events: [formatted | state.pending_events]}}
+  end
+
+  def handle_info({:backup_complete, info}, state) do
+    formatted = %{
+      type: "backup_complete",
+      timestamp: info.timestamp,
+      tables_backed_up: Enum.map(info.tables_backed_up, &to_string/1)
     }
 
     {:ok, %{state | pending_events: [formatted | state.pending_events]}}
