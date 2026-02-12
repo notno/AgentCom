@@ -70,6 +70,7 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 3. Analyze scalability bottlenecks and machine vs agent scaling tradeoffs (area: architecture)
 4. Pipeline phase discussions and research ahead of execution (area: planning)
 5. Pre-publication repo cleanup synthesized from agent audits (area: general)
+6. Multi-project fallback queue for idle agent utilization (area: architecture)
 
 ### Blockers/Concerns
 
