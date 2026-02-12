@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 ## Current Position
 
 Phase: 12-input-validation
-Plan: 1 of 3 complete
+Plan: 2 of 3 complete
 Status: Executing phase 12
-Last activity: 2026-02-12 -- Completed 12-01-PLAN.md (core validation module, schemas, violation tracker)
+Last activity: 2026-02-12 -- Completed 12-02-PLAN.md (validation integration into Socket and Endpoint)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 14 (v1.1)
+- Total plans completed: 15 (v1.1)
 - Average duration: 5 min
-- Total execution time: 1.1 hours
+- Total execution time: 1.2 hours
 
 **By Phase:**
 
@@ -28,10 +28,10 @@ Last activity: 2026-02-12 -- Completed 12-01-PLAN.md (core validation module, sc
 | 09-testing | 7 | 33 min | 5 min |
 | 10-dets-backup | 3 | 8 min | 3 min |
 | 11-dets-compaction | 3 | 15 min | 5 min |
-| 12-input-validation | 1 | 4 min | 4 min |
+| 12-input-validation | 2 | 8 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 12-01 (4 min), 11-03 (5 min), 11-02 (5 min), 11-01 (5 min), 10-03 (2 min)
+- Last 5 plans: 12-02 (4 min), 12-01 (4 min), 11-03 (5 min), 11-02 (5 min), 11-01 (5 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -82,6 +82,10 @@ Recent decisions affecting current work:
 - [Phase 12-01]: Schema-as-data: same maps for runtime validation and JSON discovery endpoint
 - [Phase 12-01]: ViolationTracker as pure functions + ETS, not a GenServer
 - [Phase 12-01]: generation required for task_complete/task_failed (verified sidecar sends it)
+- [Phase 12-02]: Validation in handle_in before handle_msg -- single gate for all WS messages
+- [Phase 12-02]: HTTP validation returns 422 (not 400) -- 400 reserved for malformed JSON
+- [Phase 12-02]: GET /api/schemas is unauthenticated -- agents need introspection before identifying
+- [Phase 12-02]: Validation events broadcast to PubSub "validation" topic for dashboard visibility
 
 ### Pending Todos
 
@@ -99,5 +103,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 11-03-PLAN.md (API endpoints + dashboard integration). Phase 11 complete (3/3 plans). Phase 12 in progress (1/3 plans).
+Stopped at: Completed 12-02-PLAN.md (validation integration into Socket and Endpoint). Phase 12 in progress (2/3 plans).
 Resume file: None
