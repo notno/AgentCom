@@ -24,6 +24,8 @@ defmodule AgentCom.Endpoint do
   - GET    /api/agents/:id/state       — Single agent FSM state detail (auth required)
   - GET    /api/agents/:id/subscriptions — List agent's channel subscriptions
   - POST   /api/admin/push-task  — Push a task to a connected agent (auth required)
+  - POST   /api/admin/backup     — Trigger manual DETS backup (auth required)
+  - GET    /api/admin/dets-health — DETS table health metrics (auth required)
   - POST   /api/tasks             — Submit a task to the queue (auth required)
   - GET    /api/tasks             — List tasks with optional filters (auth required)
   - GET    /api/tasks/dead-letter — List dead-letter tasks (auth required)
@@ -590,6 +592,69 @@ defmodule AgentCom.Endpoint do
             "error" => "missing required fields: agent_id, description"
           })
       end
+    end
+  end
+
+  # --- Admin: DETS Backup ---
+
+  post "/api/admin/backup" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case AgentCom.DetsBackup.backup_all() do
+        {:ok, results} ->
+          formatted = Enum.map(results, fn
+            {:ok, info} -> %{"table" => to_string(info.table), "status" => "ok", "path" => info.path, "size" => info.size}
+            {:error, info} -> %{"table" => to_string(info.table), "status" => "error", "reason" => to_string(info.reason)}
+          end)
+          success_count = Enum.count(results, fn {:ok, _} -> true; _ -> false end)
+          send_json(conn, 200, %{
+            "status" => "complete",
+            "tables_total" => length(results),
+            "tables_success" => success_count,
+            "results" => formatted
+          })
+      end
+    end
+  end
+
+  get "/api/admin/dets-health" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      metrics = AgentCom.DetsBackup.health_metrics()
+      formatted_tables = Enum.map(metrics.tables, fn t ->
+        %{
+          "table" => to_string(t.table),
+          "record_count" => t.record_count,
+          "file_size_bytes" => t.file_size_bytes,
+          "fragmentation_ratio" => t.fragmentation_ratio,
+          "status" => to_string(t.status)
+        }
+      end)
+
+      now = System.system_time(:millisecond)
+      stale_backup = case metrics.last_backup_at do
+        nil -> true
+        ts -> now - ts > 48 * 60 * 60 * 1000
+      end
+      high_frag = Enum.any?(metrics.tables, fn t -> t.status == :ok and t.fragmentation_ratio > 0.5 end)
+
+      health_status = cond do
+        stale_backup and high_frag -> "unhealthy"
+        stale_backup or high_frag -> "warning"
+        true -> "healthy"
+      end
+
+      send_json(conn, 200, %{
+        "health_status" => health_status,
+        "stale_backup" => stale_backup,
+        "high_fragmentation" => high_frag,
+        "last_backup_at" => metrics.last_backup_at,
+        "tables" => formatted_tables
+      })
     end
   end
 
