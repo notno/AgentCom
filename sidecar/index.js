@@ -10,6 +10,7 @@ const { loadQueue, saveQueue, cleanupResultFiles } = require('./lib/queue');
 const { interpolateWakeCommand, execCommand, RETRY_DELAYS } = require('./lib/wake');
 const { runGitCommand } = require('./lib/git-workflow');
 const { initLogger, log, LEVELS } = require('./lib/log');
+const { collectMetrics } = require('./lib/resources');
 
 // =============================================================================
 // 1. Config Loader
@@ -39,6 +40,9 @@ function loadConfig() {
   config.confirmation_timeout_ms = config.confirmation_timeout_ms || 30000;
   config.results_dir = config.results_dir || './results';
   config.log_file = config.log_file || './sidecar.log';
+
+  // Ollama / resource reporting (optional -- backward-compatible)
+  config.ollama_url = config.ollama_url || null;
 
   // Git workflow defaults (optional -- backward-compatible)
   config.repo_dir = config.repo_dir || '';
@@ -341,6 +345,8 @@ class HubConnection {
     this.lastPongTime = null;
     this.shuttingDown = false;
     this.taskGenerations = new Map(); // task_id -> generation from task_assign
+    this.resourceInterval = null;
+    this.initialResourceTimer = null;
   }
 
   connect() {
@@ -361,6 +367,7 @@ class HubConnection {
       this.reconnectDelay = 1000; // Reset backoff on successful connect
       this.identify();
       this.startHeartbeat();
+      this.startResourceReporting();
     });
 
     this.ws.on('close', (code, reason) => {
@@ -368,6 +375,7 @@ class HubConnection {
       log('warning', 'ws_close', { code, reason: reasonStr });
       this.identified = false;
       this.stopHeartbeat();
+      this.stopResourceReporting();
       this.scheduleReconnect();
     });
 
@@ -387,7 +395,7 @@ class HubConnection {
   }
 
   identify() {
-    this.send({
+    const payload = {
       type: 'identify',
       agent_id: this.config.agent_id,
       token: this.config.token,
@@ -396,8 +404,12 @@ class HubConnection {
       capabilities: this.config.capabilities,
       client_type: 'sidecar',
       protocol_version: 1
-    });
-    log('info', 'identify_sent');
+    };
+    if (this.config.ollama_url) {
+      payload.ollama_url = this.config.ollama_url;
+    }
+    this.send(payload);
+    log('info', 'identify_sent', { ollama_url: this.config.ollama_url || 'none' });
   }
 
   scheduleReconnect() {
@@ -677,6 +689,64 @@ class HubConnection {
   }
 
   // ---------------------------------------------------------------------------
+  // Resource Reporting: collect CPU/RAM/VRAM and send to hub every 30 seconds
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Send a single resource_report message with current host metrics.
+   */
+  async sendResourceReport() {
+    if (!this.identified) return;
+    try {
+      const metrics = await collectMetrics(this.config.ollama_url);
+      this.send({
+        type: 'resource_report',
+        agent_id: this.config.agent_id,
+        ...metrics,
+        timestamp: Date.now()
+      });
+      log('debug', 'resource_report_sent', { cpu_percent: metrics.cpu_percent, ram_used_bytes: metrics.ram_used_bytes });
+    } catch (err) {
+      log('warning', 'resource_report_error', { error: err.message });
+    }
+  }
+
+  /**
+   * Start periodic resource reporting every 30 seconds.
+   * Also schedules an initial report 5 seconds after identify.
+   */
+  startResourceReporting() {
+    this.stopResourceReporting();
+
+    // Initial report after 5 seconds (gives identify time to complete)
+    this.initialResourceTimer = setTimeout(() => {
+      this.initialResourceTimer = null;
+      this.sendResourceReport();
+    }, 5000);
+
+    // Periodic report every 30 seconds
+    this.resourceInterval = setInterval(() => {
+      this.sendResourceReport();
+    }, 30000);
+
+    log('info', 'resource_reporting_started', { interval_ms: 30000 });
+  }
+
+  /**
+   * Stop periodic resource reporting.
+   */
+  stopResourceReporting() {
+    if (this.initialResourceTimer) {
+      clearTimeout(this.initialResourceTimer);
+      this.initialResourceTimer = null;
+    }
+    if (this.resourceInterval) {
+      clearInterval(this.resourceInterval);
+      this.resourceInterval = null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Shutdown
   // ---------------------------------------------------------------------------
 
@@ -690,6 +760,7 @@ class HubConnection {
     }
 
     this.stopHeartbeat();
+    this.stopResourceReporting();
 
     // Close WebSocket cleanly
     if (this.ws) {
