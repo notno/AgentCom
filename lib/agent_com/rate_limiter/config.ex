@@ -34,8 +34,9 @@ defmodule AgentCom.RateLimiter.Config do
 
   @light_http [:get_agents, :get_channels, :get_tasks, :get_metrics, :get_health,
                :get_mailbox, :get_schemas, :get_dashboard_state]
-  @normal_http [:post_message, :post_channel_publish, :post_mailbox_ack,
-                :get_messages, :get_task_detail, :get_channel_info]
+  @normal_http [:post_message, :post_channel_publish, :post_channel_subscribe,
+                :post_channel_unsubscribe, :post_mailbox_ack,
+                :get_messages, :get_task_detail, :get_channel_info, :post_task_retry]
   @heavy_http [:post_task, :post_channel, :post_admin_push_task, :post_onboard_register]
 
   @doc """

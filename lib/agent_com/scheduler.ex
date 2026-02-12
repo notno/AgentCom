@@ -164,6 +164,7 @@ defmodule AgentCom.Scheduler do
     idle_agents =
       AgentCom.AgentFSM.list_all()
       |> Enum.filter(fn a -> a.fsm_state == :idle end)
+      |> Enum.reject(fn a -> AgentCom.RateLimiter.rate_limited?(a.agent_id) end)
 
     case idle_agents do
       [] ->

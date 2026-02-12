@@ -76,7 +76,7 @@ defmodule AgentCom.Socket do
 
   require Logger
 
-  alias AgentCom.{Message, Presence, Router, Validation}
+  alias AgentCom.{Message, Presence, RateLimiter, Router, Validation}
   alias AgentCom.Validation.ViolationTracker
 
   defstruct [:agent_id, :identified, violation_count: 0, violation_window_start: nil]
@@ -96,7 +96,7 @@ defmodule AgentCom.Socket do
       {:ok, msg} ->
         case Validation.validate_ws_message(msg) do
           {:ok, validated} ->
-            handle_msg(validated, state)
+            rate_limit_and_handle(validated, state)
           {:error, errors} ->
             handle_validation_failure(msg, errors, state)
         end
@@ -194,6 +194,65 @@ defmodule AgentCom.Socket do
       AgentCom.Analytics.record_disconnect(state.agent_id)
     end
     :ok
+  end
+
+  # — Rate limit gate —
+
+  # Before identification, skip rate limiting (identify is the only valid message,
+  # and we don't have an agent_id yet to key the bucket)
+  defp rate_limit_and_handle(msg, %{identified: false} = state) do
+    handle_msg(msg, state)
+  end
+
+  defp rate_limit_and_handle(msg, state) do
+    message_type = Map.get(msg, "type")
+    tier = RateLimiter.Config.ws_tier(message_type)
+
+    case RateLimiter.check(state.agent_id, :ws, tier) do
+      {:allow, :exempt} ->
+        handle_msg(msg, state)
+
+      {:allow, _} ->
+        handle_msg(msg, state)
+
+      {:warn, remaining} ->
+        capacity = RateLimiter.capacity(state.agent_id, :ws, tier)
+
+        warn_frame =
+          Jason.encode!(%{
+            "type" => "rate_limit_warning",
+            "tier" => to_string(tier),
+            "remaining" => remaining,
+            "capacity" => capacity
+          })
+
+        # Process message normally, prepend warning frame
+        case handle_msg(msg, state) do
+          {:push, {:text, reply}, new_state} ->
+            {:push, [{:text, warn_frame}, {:text, reply}], new_state}
+
+          {:push, frames, new_state} when is_list(frames) ->
+            {:push, [{:text, warn_frame} | frames], new_state}
+
+          {:ok, new_state} ->
+            {:push, {:text, warn_frame}, new_state}
+
+          other ->
+            other
+        end
+
+      {:deny, retry_after_ms} ->
+        RateLimiter.record_violation(state.agent_id)
+
+        deny_frame =
+          Jason.encode!(%{
+            "type" => "rate_limited",
+            "retry_after_ms" => retry_after_ms,
+            "tier" => to_string(tier)
+          })
+
+        {:push, {:text, deny_frame}, state}
+    end
   end
 
   # — Message handlers —
