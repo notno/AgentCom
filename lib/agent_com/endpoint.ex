@@ -875,7 +875,8 @@ defmodule AgentCom.Endpoint do
                   branch: params["branch"],
                   file_hints: params["file_hints"] || [],
                   success_criteria: params["success_criteria"] || [],
-                  verification_steps: params["verification_steps"] || []
+                  verification_steps: params["verification_steps"] || [],
+                  complexity_tier: params["complexity_tier"]
                 }
 
                 case AgentCom.TaskQueue.submit(task_params) do

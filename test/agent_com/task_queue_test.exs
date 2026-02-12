@@ -483,7 +483,10 @@ defmodule AgentCom.TaskQueueTest do
       assert task.file_hints == file_hints
       assert task.success_criteria == success_criteria
       assert task.verification_steps == verification_steps
-      assert task.complexity == nil
+      # Complexity is now computed by Complexity.build (Plan 03 wiring)
+      assert task.complexity != nil
+      assert is_map(task.complexity)
+      assert task.complexity.source == :inferred
 
       # Verify persisted and retrievable
       {:ok, fetched} = TaskQueue.get(task.id)
@@ -502,7 +505,9 @@ defmodule AgentCom.TaskQueueTest do
       assert task.file_hints == []
       assert task.success_criteria == []
       assert task.verification_steps == []
-      assert task.complexity == nil
+      # Complexity is now computed by Complexity.build (Plan 03 wiring)
+      assert task.complexity != nil
+      assert is_map(task.complexity)
     end
 
     test "old-format tasks (missing enrichment keys) work with Map.get defaults" do
@@ -515,7 +520,57 @@ defmodule AgentCom.TaskQueueTest do
       assert Map.get(fetched, :file_hints, []) == []
       assert Map.get(fetched, :success_criteria, []) == []
       assert Map.get(fetched, :verification_steps, []) == []
-      assert Map.get(fetched, :complexity) == nil
+      # complexity is now computed (not nil) -- should be :unknown for empty params
+      assert Map.get(fetched, :complexity) != nil
+    end
+
+    test "submit with explicit complexity_tier uses it as effective_tier" do
+      {:ok, task} =
+        TaskQueue.submit(%{
+          description: "explicit complexity task",
+          complexity_tier: "standard"
+        })
+
+      assert task.complexity.effective_tier == :standard
+      assert task.complexity.source == :explicit
+      assert task.complexity.explicit_tier == :standard
+    end
+
+    test "submit without complexity_tier infers tier from content" do
+      {:ok, task} =
+        TaskQueue.submit(%{
+          description: "This is a moderately long description that should produce an inferred classification based on word count and other signals for the heuristic engine"
+        })
+
+      assert task.complexity.effective_tier != nil
+      assert task.complexity.source == :inferred
+      assert task.complexity.explicit_tier == nil
+      assert task.complexity.inferred.confidence > 0
+    end
+
+    test "submit with complexity_tier that disagrees with content preserves both" do
+      {:ok, task} =
+        TaskQueue.submit(%{
+          description: "Refactor the entire authentication system, redesign the database schema, and migrate all user sessions to the new architecture",
+          complexity_tier: "trivial",
+          file_hints: [%{"path" => "a.ex"}, %{"path" => "b.ex"}, %{"path" => "c.ex"}, %{"path" => "d.ex"}, %{"path" => "e.ex"}],
+          verification_steps: [%{"type" => "test", "target" => "mix test"}, %{"type" => "test", "target" => "mix test 2"}, %{"type" => "test", "target" => "mix test 3"}, %{"type" => "test", "target" => "mix test 4"}, %{"type" => "test", "target" => "mix test 5"}]
+        })
+
+      # Explicit wins
+      assert task.complexity.effective_tier == :trivial
+      assert task.complexity.source == :explicit
+      assert task.complexity.explicit_tier == :trivial
+      # Inferred should be different (complex, given keywords and signals)
+      assert task.complexity.inferred.tier != :trivial
+    end
+
+    test "submit with no enrichment computes complexity as :unknown (backward compat)" do
+      {:ok, task} = TaskQueue.submit(%{description: ""})
+
+      assert task.complexity.effective_tier == :unknown
+      assert task.complexity.source == :inferred
+      assert task.complexity.inferred.confidence == 0.0
     end
   end
 

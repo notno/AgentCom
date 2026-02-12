@@ -232,10 +232,26 @@ defmodule AgentCom.TaskQueue do
       file_hints: Map.get(params, :file_hints, Map.get(params, "file_hints", [])),
       success_criteria: Map.get(params, :success_criteria, Map.get(params, "success_criteria", [])),
       verification_steps: Map.get(params, :verification_steps, Map.get(params, "verification_steps", [])),
-      complexity: nil
+      complexity: AgentCom.Complexity.build(params)
     }
 
+    complexity = task.complexity
+
     persist_task(task, @tasks_table)
+
+    # Emit telemetry when explicit tier disagrees with inferred tier (Phase 17)
+    if complexity.explicit_tier && complexity.explicit_tier != complexity.inferred.tier do
+      :telemetry.execute(
+        [:agent_com, :complexity, :disagreement],
+        %{},
+        %{
+          task_id: task_id,
+          explicit_tier: complexity.explicit_tier,
+          inferred_tier: complexity.inferred.tier,
+          inferred_confidence: complexity.inferred.confidence
+        }
+      )
+    end
 
     new_index = add_to_priority_index(state.priority_index, task)
     broadcast_task_event(:task_submitted, task)
