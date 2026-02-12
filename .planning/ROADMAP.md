@@ -33,7 +33,7 @@
 - Integer phases (9-16): Planned milestone work
 - Decimal phases (e.g., 10.1): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 9: Testing Infrastructure** - Test isolation, helpers, factories, and comprehensive test coverage for all GenServers and pipelines
+- [x] **Phase 9: Testing Infrastructure** - Test isolation, helpers, factories, and comprehensive test coverage for all GenServers and pipelines
 - [ ] **Phase 10: DETS Backup + Monitoring** - Automated backup, manual trigger, and health monitoring for all DETS tables
 - [ ] **Phase 11: DETS Compaction + Recovery** - Scheduled compaction/defragmentation and documented corruption recovery
 - [ ] **Phase 12: Input Validation** - Schema validation at all WebSocket and HTTP entry points with structured error responses
@@ -164,7 +164,7 @@ Phases execute in numeric order: 9 -> 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 9. Testing Infrastructure | v1.1 | 0/6 | Planning complete | - |
+| 9. Testing Infrastructure | v1.1 | 6/6 | Complete | 2026-02-12 |
 | 10. DETS Backup + Monitoring | v1.1 | 0/TBD | Not started | - |
 | 11. DETS Compaction + Recovery | v1.1 | 0/TBD | Not started | - |
 | 12. Input Validation | v1.1 | 0/TBD | Not started | - |
