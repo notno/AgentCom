@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-11)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.1 Hardening -- Phase 10 DETS Backup
+**Current focus:** v1.1 Hardening -- Phase 11 DETS Compaction
 
 ## Current Position
 
-Phase: 10-dets-backup
-Plan: 3 of 3 complete
-Status: Phase 10 complete
-Last activity: 2026-02-12 -- Completed 10-03-PLAN.md (gap closure: Jason tuple crash fix)
+Phase: 11-dets-compaction
+Plan: 1 of 3 complete
+Status: Executing phase 11
+Last activity: 2026-02-12 -- Completed 11-01-PLAN.md (compaction handle_calls + orchestration)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10 (v1.1)
+- Total plans completed: 11 (v1.1)
 - Average duration: 5 min
-- Total execution time: 0.7 hours
+- Total execution time: 0.8 hours
 
 **By Phase:**
 
@@ -27,9 +27,10 @@ Last activity: 2026-02-12 -- Completed 10-03-PLAN.md (gap closure: Jason tuple c
 |-------|-------|-------|----------|
 | 09-testing | 7 | 33 min | 5 min |
 | 10-dets-backup | 3 | 8 min | 3 min |
+| 11-dets-compaction | 1 | 5 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 10-03 (2 min), 10-02 (4 min), 10-01 (2 min), 09-07 (1 min), 09-06 (1 min)
+- Last 5 plans: 11-01 (5 min), 10-03 (2 min), 10-02 (4 min), 10-01 (2 min), 09-07 (1 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -66,6 +67,10 @@ Recent decisions affecting current work:
 - [Phase 10-02]: backup_complete events trigger full snapshot refresh for simplicity
 - [Phase 10-03]: Only normalize last_backup_results (not table_metrics) -- atoms auto-serialize in Jason
 - [Phase 10-03]: Tuple-to-map normalization at GenServer boundary before JSON encoding paths
+- [Phase 11-01]: Single-table GenServers use :compact atom; multi-table use {:compact, table_atom} tuple
+- [Phase 11-01]: Application.compile_env for compaction_interval_ms and compaction_threshold
+- [Phase 11-01]: table_owner/1 function clause dispatch for GenServer routing
+- [Phase 11-01]: Compaction history capped at 20 entries in GenServer state
 
 ### Pending Todos
 
@@ -77,11 +82,11 @@ None.
 - [Tech debt]: Sidecar queue.json atomicity -- fs.writeFileSync has partial-write-on-crash risk
 - [Tech debt]: VAPID keys ephemeral -- push subscriptions lost on hub restart
 - [Tech debt]: Analytics and Threads modules orphaned (not exposed via API)
-- [Research]: DETS compaction copy-and-swap strategy has sparse documentation (Phase 11)
+- [Resolved 11-01]: DETS compaction uses repair: force (not copy-and-swap) -- only documented method
 - [Resolved 09-01]: Config and Threads now use Application.get_env for DETS paths
 
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 10-03-PLAN.md (gap closure: Jason tuple crash fix). Phase 10 fully complete (3/3 plans).
+Stopped at: Completed 11-01-PLAN.md (compaction handle_calls + DetsBackup orchestration). Phase 11 in progress (1/3 plans).
 Resume file: None
