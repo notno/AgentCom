@@ -235,13 +235,9 @@ defmodule AgentCom.Socket do
       reply_to: msg["reply_to"]
     })
 
-    case Router.route(message) do
-      {:ok, _} ->
-        reply = Jason.encode!(%{"type" => "message_sent", "id" => message.id})
-        {:push, {:text, reply}, state}
-      {:error, reason} ->
-        reply_error(to_string(reason), state)
-    end
+    {:ok, _} = Router.route(message)
+    reply = Jason.encode!(%{"type" => "message_sent", "id" => message.id})
+    {:push, {:text, reply}, state}
   end
 
   defp handle_msg(%{"type" => "status", "status" => status}, state) do

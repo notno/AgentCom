@@ -108,12 +108,8 @@ defmodule AgentCom.Endpoint do
             reply_to: params["reply_to"]
           })
 
-          case AgentCom.Router.route(msg) do
-            {:ok, _} ->
-              send_json(conn, 200, %{"status" => "sent", "id" => msg.id})
-            {:error, reason} ->
-              send_json(conn, 422, %{"status" => "failed", "error" => to_string(reason)})
-          end
+          {:ok, _} = AgentCom.Router.route(msg)
+          send_json(conn, 200, %{"status" => "sent", "id" => msg.id})
 
         {:error, errors} ->
           send_validation_error(conn, errors)
@@ -518,8 +514,6 @@ defmodule AgentCom.Endpoint do
 
   # Admin agents can be configured via ADMIN_AGENTS env var (comma-separated).
   # For example: ADMIN_AGENTS=flere-imsaho,hub-admin
-  @admin_agents (System.get_env("ADMIN_AGENTS", "") |> String.split(",", trim: true))
-
   post "/api/admin/reset" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
     if conn.halted do
@@ -527,7 +521,7 @@ defmodule AgentCom.Endpoint do
     else
       agent_id = conn.assigns[:authenticated_agent]
 
-      if agent_id not in @admin_agents do
+      if agent_id not in admin_agents() do
         send_json(conn, 403, %{"error" => "admin_only", "message" => "Only admin agents can reset the hub"})
       else
         Logger.warning("hub_reset_triggered", triggered_by: agent_id)
@@ -1058,6 +1052,10 @@ defmodule AgentCom.Endpoint do
       "error" => "validation_failed",
       "errors" => formatted
     })
+  end
+
+  defp admin_agents do
+    System.get_env("ADMIN_AGENTS", "") |> String.split(",", trim: true)
   end
 
   defp send_json(conn, status, data) do

@@ -54,13 +54,9 @@ defmodule AgentCom.Router do
   @doc "Send a message and return the routed message."
   def send_message(attrs) do
     msg = Message.new(attrs)
-    case route(msg) do
-      {:ok, _} = result ->
-        # Track analytics + thread index
-        AgentCom.Analytics.record_message(msg.from, msg.to, msg.type)
-        AgentCom.Threads.index(msg)
-        {:ok, msg}
-      {:error, _} = err -> err
-    end
+    {:ok, _} = route(msg)
+    AgentCom.Analytics.record_message(msg.from, msg.to, msg.type)
+    AgentCom.Threads.index(msg)
+    {:ok, msg}
   end
 end
