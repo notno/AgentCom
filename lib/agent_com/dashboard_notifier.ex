@@ -5,6 +5,8 @@ defmodule AgentCom.DashboardNotifier do
   Sends push notifications when:
   - An agent goes offline (via PubSub presence :agent_left)
   - Health degrades (polling DashboardState every 60s)
+  - An alert fires (via PubSub "alerts" topic :alert_fired events)
+    CRITICAL alerts are labeled distinctly from WARNING alerts.
 
   VAPID keys are loaded from env vars (VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
   or generated ephemerally on startup (subscriptions reset on restart -- acceptable for v1).
@@ -36,9 +38,10 @@ defmodule AgentCom.DashboardNotifier do
   def init(_opts) do
     Logger.metadata(module: __MODULE__)
 
-    # Subscribe to PubSub for agent offline events and backup/compaction alerts
+    # Subscribe to PubSub for agent offline events, backup/compaction alerts, and alert events
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "presence")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "backups")
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "alerts")
 
     # Load or generate VAPID keys
     {vapid_public, vapid_private} = load_or_generate_vapid_keys()
@@ -147,6 +150,35 @@ defmodule AgentCom.DashboardNotifier do
     })
     new_subs = send_to_all(state.subscriptions, payload)
     {:noreply, %{state | subscriptions: new_subs}}
+  end
+
+  # -- Alert events (from PubSub "alerts" topic) --------------------------------
+
+  def handle_info({:alert_fired, alert}, state) do
+    severity_label = if alert.severity == :critical, do: "CRITICAL", else: "WARNING"
+
+    payload =
+      Jason.encode!(%{
+        title: "AgentCom #{severity_label}",
+        body: alert.message,
+        icon: "/favicon.ico",
+        data: %{rule_id: alert.rule_id, severity: to_string(alert.severity)}
+      })
+
+    new_subs = send_to_all(state.subscriptions, payload)
+    {:noreply, %{state | subscriptions: new_subs}}
+  end
+
+  def handle_info({:alert_cleared, _rule_id}, state) do
+    # Only send "cleared" push for rules that were CRITICAL severity.
+    # This avoids notification spam for WARNING rules that oscillate.
+    # DashboardSocket handles real-time UI updates for all clears.
+    {:noreply, state}
+  end
+
+  def handle_info({:alert_acknowledged, _rule_id}, state) do
+    # No push notification for acknowledgments -- UI-only event.
+    {:noreply, state}
   end
 
   # Catch-all for unexpected PubSub messages

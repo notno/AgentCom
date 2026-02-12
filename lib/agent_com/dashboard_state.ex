@@ -54,6 +54,7 @@ defmodule AgentCom.DashboardState do
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "presence")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "backups")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "validation")
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "alerts")
 
     Process.send_after(self(), :check_queue_growth, @queue_check_interval_ms)
     Process.send_after(self(), :reset_hourly, @hourly_reset_interval_ms)
@@ -69,7 +70,7 @@ defmodule AgentCom.DashboardState do
       validation_disconnects: []
     }
 
-    Logger.info("started", topics: ["tasks", "presence", "backups", "validation"])
+    Logger.info("started", topics: ["tasks", "presence", "backups", "validation", "alerts"])
 
     {:ok, state}
   end
@@ -155,6 +156,13 @@ defmodule AgentCom.DashboardState do
       total_failures_this_hour: state.validation_failure_counts |> Map.values() |> Enum.sum()
     }
 
+    active_alerts =
+      try do
+        AgentCom.Alerter.active_alerts()
+      rescue
+        _ -> []
+      end
+
     snapshot = %{
       uptime_ms: now - state.started_at,
       timestamp: now,
@@ -166,7 +174,8 @@ defmodule AgentCom.DashboardState do
       throughput: throughput,
       dets_health: dets_health,
       compaction_history: compaction_history,
-      validation: validation
+      validation: validation,
+      active_alerts: active_alerts
     }
 
     {:reply, snapshot, state}
@@ -268,6 +277,22 @@ defmodule AgentCom.DashboardState do
     entry = %{agent_id: info.agent_id, timestamp: info.timestamp}
     disconnects = [entry | state.validation_disconnects] |> Enum.take(20)
     {:noreply, %{state | validation_disconnects: disconnects}}
+  end
+
+  # -- PubSub: alert events (snapshot stays current when alerts change) ---------
+
+  def handle_info({:alert_fired, _alert}, state) do
+    # Alert fired triggers snapshot refresh so next snapshot/0 call includes it.
+    # The actual alert data is fetched live from Alerter.active_alerts/0 in snapshot.
+    {:noreply, state}
+  end
+
+  def handle_info({:alert_cleared, _rule_id}, state) do
+    {:noreply, state}
+  end
+
+  def handle_info({:alert_acknowledged, _rule_id}, state) do
+    {:noreply, state}
   end
 
   # Catch-all for unhandled PubSub messages
