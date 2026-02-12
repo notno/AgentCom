@@ -10,14 +10,14 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 ## Current Position
 
 Phase: 14-metrics-alerting
-Plan: 2 of 4 complete
+Plan: 3 of 4 complete
 Status: In Progress
-Last activity: 2026-02-12 -- Completed 14-02-PLAN.md (Alerter GenServer with API endpoints)
+Last activity: 2026-02-12 -- Completed 14-03-PLAN.md (Dashboard metrics/alert integration)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 22 (v1.1)
+- Total plans completed: 23 (v1.1)
 - Average duration: 5 min
 - Total execution time: 2.05 hours
 
@@ -30,10 +30,10 @@ Last activity: 2026-02-12 -- Completed 14-02-PLAN.md (Alerter GenServer with API
 | 11-dets-compaction | 3 | 15 min | 5 min |
 | 12-input-validation | 3 | 13 min | 4 min |
 | 13-structured-logging | 4 | 38 min | 10 min |
-| 14-metrics-alerting | 2 | 9 min | 5 min |
+| 14-metrics-alerting | 3 | 13 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 14-02 (4 min), 14-01 (5 min), 13-04 (6 min), 13-03 (15 min), 13-02 (9 min)
+- Last 5 plans: 14-03 (4 min), 14-02 (4 min), 14-01 (5 min), 13-04 (6 min), 13-03 (15 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -113,6 +113,10 @@ Recent decisions affecting current work:
 - [Phase 14-02]: Thresholds merged with defaults so partial custom configs don't break rules
 - [Phase 14-02]: GET /api/alerts unauthenticated (same pattern as /api/dashboard/state)
 - [Phase 14-02]: Queue growing hysteresis: 3 consecutive stable checks required to clear
+- [Phase 14-03]: Compact metrics_snapshot for WebSocket: Map.take on per_agent fields to keep payload under 5KB
+- [Phase 14-03]: alert_cleared/acknowledged push notifications suppressed (UI handles via WebSocket, avoids spam)
+- [Phase 14-03]: DashboardState fetches active_alerts live from Alerter (no local state duplication)
+- [Phase 14-03]: Alert event handlers in DashboardState are no-ops (data fetched on-demand in snapshot)
 
 ### Pending Todos
 
@@ -136,5 +140,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 14-02-PLAN.md (Alerter GenServer with cooldown/ack state and alert API). Phase 14 in progress (2/4 plans).
+Stopped at: Completed 14-03-PLAN.md (Dashboard metrics/alert integration). Phase 14 in progress (3/4 plans).
 Resume file: None
