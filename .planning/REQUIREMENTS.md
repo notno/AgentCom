@@ -25,10 +25,10 @@ Requirements for milestone v1.1 Hardening. Each maps to roadmap phases.
 
 ### DETS Resilience
 
-- [ ] **DETS-01**: Periodic automated backup of all DETS tables to a configurable backup directory
-- [ ] **DETS-02**: Manual backup trigger available via API endpoint
+- [x] **DETS-01**: Periodic automated backup of all DETS tables to a configurable backup directory
+- [x] **DETS-02**: Manual backup trigger available via API endpoint
 - [ ] **DETS-03**: DETS compaction/defragmentation runs on a configurable schedule
-- [ ] **DETS-04**: Health monitoring endpoint exposes table sizes, fragmentation level, and last backup time
+- [x] **DETS-04**: Health monitoring endpoint exposes table sizes, fragmentation level, and last backup time
 - [ ] **DETS-05**: Corruption recovery procedure documented and tested
 
 ### Observability
@@ -104,10 +104,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VALID-02 | Phase 12 | Pending |
 | VALID-03 | Phase 12 | Pending |
 | VALID-04 | Phase 12 | Pending |
-| DETS-01 | Phase 10 | Pending |
-| DETS-02 | Phase 10 | Pending |
+| DETS-01 | Phase 10 | Complete |
+| DETS-02 | Phase 10 | Complete |
 | DETS-03 | Phase 11 | Pending |
-| DETS-04 | Phase 10 | Pending |
+| DETS-04 | Phase 10 | Complete |
 | DETS-05 | Phase 11 | Pending |
 | OBS-01 | Phase 13 | Pending |
 | OBS-02 | Phase 13 | Pending |
