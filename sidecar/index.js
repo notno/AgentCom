@@ -11,6 +11,7 @@ const { interpolateWakeCommand, execCommand, RETRY_DELAYS } = require('./lib/wak
 const { runGitCommand } = require('./lib/git-workflow');
 const { initLogger, log, LEVELS } = require('./lib/log');
 const { collectMetrics } = require('./lib/resources');
+const { runVerification } = require('./verification');
 
 // =============================================================================
 // 1. Config Loader
@@ -203,8 +204,9 @@ function handleConfirmation(taskId) {
 
 /**
  * Handle task result: .json file detected in results directory.
+ * Flow: parse result -> run verification -> git push (if passed) -> sendTaskComplete (always, with report)
  */
-function handleResult(taskId, filePath, hub) {
+async function handleResult(taskId, filePath, hub) {
   if (!_queue.active || _queue.active.task_id !== taskId) {
     log('debug', 'result_ignored', { task_id: taskId, reason: 'not_active_task' });
     return;
@@ -226,8 +228,20 @@ function handleResult(taskId, filePath, hub) {
 
   // Determine success/failure from result content
   if (result.status === 'success') {
-    // Git workflow: push branch and create PR before reporting to hub
-    if (_config.repo_dir) {
+    // Run verification checks before git push
+    const verificationReport = await runVerification(_queue.active, _config);
+    result.verification_report = verificationReport;
+
+    log('info', 'verification_complete', {
+      task_id: taskId,
+      status: verificationReport.status,
+      passed: verificationReport.summary ? verificationReport.summary.passed : 0,
+      failed: verificationReport.summary ? verificationReport.summary.failed : 0
+    });
+
+    // Only do git workflow if verification passed or was skipped/auto-passed
+    const skipGit = verificationReport.status === 'fail' || verificationReport.status === 'error';
+    if (_config.repo_dir && !skipGit) {
       const gitResult = runGitCommand('submit', {
         agent_id: _config.agent_id,
         task_id: taskId,
@@ -241,8 +255,15 @@ function handleResult(taskId, filePath, hub) {
         log('warning', 'git_submit_failed', { task_id: taskId, error: gitResult.error });
         // Still report task complete, just without PR URL
       }
+    } else if (skipGit) {
+      log('info', 'git_skipped_verification_failed', {
+        task_id: taskId,
+        verification_status: verificationReport.status
+      });
     }
 
+    // Always send task_complete with verification_report
+    // (hub decides task status based on report)
     log('info', 'task_complete', { task_id: taskId, output: result.output, pr_url: result.pr_url });
     hub.sendTaskComplete(taskId, result);
   } else {
@@ -495,7 +516,18 @@ class HubConnection {
 
   sendTaskComplete(taskId, result) {
     const generation = this.taskGenerations.get(taskId) || 0;
-    const sent = this.send({ type: 'task_complete', task_id: taskId, result, generation });
+    // Extract verification_report as top-level WS field (not nested inside result)
+    const verificationReport = result.verification_report;
+    const cleanResult = { ...result };
+    delete cleanResult.verification_report;
+
+    const sent = this.send({
+      type: 'task_complete',
+      task_id: taskId,
+      result: cleanResult,
+      generation,
+      verification_report: verificationReport || null
+    });
     this.taskGenerations.delete(taskId);
     return sent;
   }
@@ -543,7 +575,10 @@ class HubConnection {
       file_hints: msg.file_hints || [],
       success_criteria: msg.success_criteria || [],
       verification_steps: msg.verification_steps || [],
-      complexity: msg.complexity || null
+      complexity: msg.complexity || null,
+      // Verification control fields (Phase 21)
+      skip_verification: msg.skip_verification || false,
+      verification_timeout_ms: msg.verification_timeout_ms || null
     };
 
     // Persist BEFORE acknowledging (crash between accept and persist loses the task)
