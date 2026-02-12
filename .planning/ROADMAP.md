@@ -100,10 +100,12 @@ Plans:
   2. Every HTTP API endpoint validates request bodies and parameters before processing
   3. Sending a malformed payload returns a structured error response with field-level details -- no GenServer crashes
   4. All validation logic lives in a single reusable Validation module called by both WebSocket and HTTP handlers
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 12-01: TBD
+- [ ] 12-01-PLAN.md -- Core validation module, schemas, and violation tracker infrastructure
+- [ ] 12-02-PLAN.md -- WebSocket and HTTP handler integration with schema discovery endpoint
+- [ ] 12-03-PLAN.md -- Dashboard validation visibility and comprehensive test suite
 
 ### Phase 13: Structured Logging + Telemetry
 **Goal**: Every significant system event is logged in a machine-parseable format with consistent metadata
@@ -169,7 +171,7 @@ Phases execute in numeric order: 9 -> 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16
 | 9. Testing Infrastructure | v1.1 | 7/7 | Complete | 2026-02-11 |
 | 10. DETS Backup + Monitoring | v1.1 | 2/2 | Complete | 2026-02-11 |
 | 11. DETS Compaction + Recovery | v1.1 | 0/TBD | Not started | - |
-| 12. Input Validation | v1.1 | 0/TBD | Not started | - |
+| 12. Input Validation | v1.1 | 0/3 | Planned | - |
 | 13. Structured Logging + Telemetry | v1.1 | 0/TBD | Not started | - |
 | 14. Metrics + Alerting | v1.1 | 0/TBD | Not started | - |
 | 15. Rate Limiting | v1.1 | 0/TBD | Not started | - |
