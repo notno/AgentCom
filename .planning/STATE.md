@@ -9,17 +9,17 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 
 ## Current Position
 
-Phase: 20 of 22 (Sidecar Execution)
-Plan: 3 of 4
-Status: In Progress
-Last activity: 2026-02-12 -- Completed 20-03 Execution Engine
+Phase: 21 of 22 (Verification Infrastructure)
+Plan: 4 of 4
+Status: Phase Complete
+Last activity: 2026-02-12 -- Completed 21-04 Store Wiring Gap Closure
 
 Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 66 (19 v1.0 + 32 v1.1 + 15 v1.2)
+- Total plans completed: 67 (19 v1.0 + 32 v1.1 + 16 v1.2)
 - Average duration: 5 min
 - Total execution time: 4.3 hours
 
@@ -37,7 +37,7 @@ Progress: [█████░░░░░] 50%
 | 16-operations-docs | 4 | 14 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 20-01 (2 min), 19-04 (6 min), 19-03 (5 min), 19-02 (7 min), 21-03 (5 min)
+- Last 5 plans: 21-04 (2 min), 20-01 (2 min), 19-04 (6 min), 19-03 (5 min), 19-02 (7 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -58,6 +58,7 @@ Progress: [█████░░░░░] 50%
 | Phase 20 P01 | 2min | 1 task (TDD) | 4 files |
 | Phase 20 P02 | 2min | 2 tasks | 2 files |
 | Phase 20 P03 | 4min | 2 tasks | 5 files |
+| Phase 21 P04 | 2min | 2 tasks (gap closure) | 2 files |
 
 ## Accumulated Context
 
@@ -135,6 +136,9 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - [Phase 20]: ShellExecutor treats non-zero exit code as failure (triggers retry mechanism)
 - [Phase 20]: ClaudeExecutor uses content_block_delta events for streaming text deltas
 - [Phase 20]: ProgressEmitter onFlush receives event arrays, iterated for individual WS sends
+- 21-04: Configurable :name opt with __MODULE__ default for Store (production uses module name, tests use unique atoms)
+- 21-04: Guard-based dispatch for save/2: is_binary(task_id) routes to registered name, is_pid routes directly
+- 21-04: No changes to task_queue.ex needed -- existing call site already correct, gap was Store-side only
 
 ### Pending Todos
 
@@ -162,5 +166,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 20-03-PLAN.md (Execution Engine)
+Stopped at: Completed 21-04-PLAN.md (Store Wiring Gap Closure)
 Resume file: None
