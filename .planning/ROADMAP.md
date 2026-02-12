@@ -36,7 +36,7 @@
 - [x] **Phase 9: Testing Infrastructure** - Test isolation, helpers, factories, and comprehensive test coverage for all GenServers and pipelines
 - [x] **Phase 10: DETS Backup + Monitoring** - Automated backup, manual trigger, and health monitoring for all DETS tables
 - [x] **Phase 11: DETS Compaction + Recovery** - Scheduled compaction/defragmentation and documented corruption recovery
-- [ ] **Phase 12: Input Validation** - Schema validation at all WebSocket and HTTP entry points with structured error responses
+- [x] **Phase 12: Input Validation** - Schema validation at all WebSocket and HTTP entry points with structured error responses
 - [ ] **Phase 13: Structured Logging + Telemetry** - JSON logging with consistent metadata and telemetry events for key lifecycle points
 - [ ] **Phase 14: Metrics + Alerting** - Metrics endpoint and configurable alerter for system anomalies
 - [ ] **Phase 15: Rate Limiting** - Token bucket rate limiting on WebSocket and HTTP with per-action granularity
@@ -106,9 +106,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 12-01-PLAN.md -- Core validation module, schemas, and violation tracker infrastructure
-- [ ] 12-02-PLAN.md -- WebSocket and HTTP handler integration with schema discovery endpoint
-- [ ] 12-03-PLAN.md -- Dashboard validation visibility and comprehensive test suite
+- [x] 12-01-PLAN.md -- Core validation module, schemas, and violation tracker infrastructure
+- [x] 12-02-PLAN.md -- WebSocket and HTTP handler integration with schema discovery endpoint
+- [x] 12-03-PLAN.md -- Dashboard validation visibility and comprehensive test suite
 
 ### Phase 13: Structured Logging + Telemetry
 **Goal**: Every significant system event is logged in a machine-parseable format with consistent metadata
@@ -174,7 +174,7 @@ Phases execute in numeric order: 9 -> 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16
 | 9. Testing Infrastructure | v1.1 | 7/7 | Complete | 2026-02-11 |
 | 10. DETS Backup + Monitoring | v1.1 | 3/3 | Complete | 2026-02-12 |
 | 11. DETS Compaction + Recovery | v1.1 | 3/3 | Complete | 2026-02-12 |
-| 12. Input Validation | v1.1 | 0/3 | Planned | - |
+| 12. Input Validation | v1.1 | 3/3 | Complete | 2026-02-12 |
 | 13. Structured Logging + Telemetry | v1.1 | 0/TBD | Not started | - |
 | 14. Metrics + Alerting | v1.1 | 0/TBD | Not started | - |
 | 15. Rate Limiting | v1.1 | 0/TBD | Not started | - |
