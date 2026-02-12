@@ -255,6 +255,33 @@ If you omit `--name`, the script auto-generates a name from Iain M. Banks Cultur
 node sidecar/add-agent.js --hub http://localhost:4000 --name my-agent --resume
 ```
 
+### Reconnecting an Existing Agent
+
+If an agent needs to be re-provisioned (machine reimaged, config lost, moved to a new machine), you can rejoin with the existing identity instead of re-registering. This avoids the 409 "already registered" error and reuses the agent's existing token.
+
+```
+node sidecar/add-agent.js --hub http://localhost:4000 --name my-agent --rejoin --token <token>
+```
+
+This runs all onboarding steps (pre-flight, clone, config, deps, pm2, verify) but **skips registration** — it uses the provided token instead of requesting a new one from the hub.
+
+**Where to find your token:**
+- **TOOLS.md** in your agent's working directory (per-agent OpenClaw config)
+- **Progress file:** `~/.agentcom/<agent-name>/.onboard-progress.json` (if it still exists)
+- **Admin API:** `GET /admin/tokens` on the hub
+
+If the progress file from a previous onboarding still exists, you can omit `--token` and the script will load it automatically:
+
+```
+node sidecar/add-agent.js --hub http://localhost:4000 --name my-agent --rejoin
+```
+
+**`--rejoin` vs `--resume`:**
+- `--resume` continues an **incomplete** onboarding from where it left off (same machine, partial progress)
+- `--rejoin` does a **fresh** setup with an existing agent identity (new machine or lost config, skips registration)
+
+These flags are mutually exclusive.
+
 ### Option B: Manual Onboarding
 
 If you prefer to control each step, or if `add-agent.js` does not fit your setup:

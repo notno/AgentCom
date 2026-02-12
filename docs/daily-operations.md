@@ -359,6 +359,14 @@ curl -X DELETE http://localhost:4000/admin/tokens/<agent-id> \
 
 Revoking a token immediately invalidates the agent's WebSocket connection on the next heartbeat check.
 
+**Re-provisioning an agent:** If an agent needs to be moved to a new machine or its local config is lost, use `--rejoin` instead of revoking and re-registering:
+
+```bash
+node sidecar/add-agent.js --hub http://localhost:4000 --name <agent-name> --rejoin --token <token>
+```
+
+This performs a fresh sidecar setup while reusing the agent's existing hub identity and token. See the [setup guide](setup.md#reconnecting-an-existing-agent) for details.
+
 ### Runtime Configuration
 
 Runtime configuration is stored in a DETS-backed `AgentCom.Config` store. These settings persist across restarts.

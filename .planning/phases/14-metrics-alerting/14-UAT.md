@@ -1,5 +1,5 @@
 ---
-status: testing
+status: complete
 phase: 14-metrics-alerting
 source: 14-01-SUMMARY.md, 14-02-SUMMARY.md, 14-03-SUMMARY.md, 14-04-SUMMARY.md
 started: 2026-02-12T11:15:00Z
@@ -9,14 +9,9 @@ updated: 2026-02-12T11:15:00Z
 ## Current Test
 <!-- OVERWRITE each test - shows where we are -->
 
-number: 9
-name: Alert acknowledgment works
-expected: |
-  If an alert is active, the Metrics tab "Active Alerts" section shows it
-  with an "Acknowledge" button. Click Acknowledge — the button should disable
-  and the alert card should show an "Acknowledged" badge. The alert banner
-  should update (remove acknowledged alerts from count, hide if all acknowledged).
-awaiting: user response
+number: done
+name: All tests complete
+awaiting: none
 
 ## Tests
 
@@ -54,14 +49,14 @@ result: pass
 
 ### 9. Alert acknowledgment works
 expected: If an alert is active, the Metrics tab "Active Alerts" section shows it with an "Acknowledge" button. Click Acknowledge — the button should disable and the alert card should show an "Acknowledged" badge. The alert banner should update (remove acknowledged alerts from count, hide if all acknowledged).
-result: [pending]
+result: pass
 
 ## Summary
 
 total: 9
-passed: 8
+passed: 9
 issues: 0
-pending: 1
+pending: 0
 skipped: 0
 
 ## Gaps

@@ -9,6 +9,7 @@
 //   node add-agent.js --hub http://hub-hostname:4000
 //   node add-agent.js --hub http://hub-hostname:4000 --name gcu-custom-name
 //   node add-agent.js --hub http://hub-hostname:4000 --resume
+//   node add-agent.js --hub http://hub-hostname:4000 --name gcu-custom-name --rejoin --token <token>
 //
 // Prerequisites: Node.js >= 18, pm2, git, openclaw
 //
@@ -33,11 +34,14 @@ const { execSync } = require('child_process');
 
 const USAGE = `
 Usage: node add-agent.js --hub <url> [--name <name>] [--resume]
+       node add-agent.js --hub <url> --name <name> --rejoin --token <token>
 
 Options:
   --hub     Hub API URL (required)       e.g. http://localhost:4000
   --name    Override auto-generated name  e.g. gcu-sleeper-service
   --resume  Skip already-completed steps
+  --rejoin  Re-provision an existing agent (skip registration, reuse token)
+  --token   Agent token (required with --rejoin unless progress file exists)
 `;
 
 let args;
@@ -47,6 +51,8 @@ try {
       hub:    { type: 'string',  short: 'h' },
       name:   { type: 'string',  short: 'n' },
       resume: { type: 'boolean', short: 'r', default: false },
+      rejoin: { type: 'boolean', default: false },
+      token:  { type: 'string',  short: 't' },
       help:   { type: 'boolean', default: false }
     },
     strict: true
@@ -71,6 +77,22 @@ if (!args.hub) {
 
 // Normalize hub URL: strip trailing slash
 const HUB_URL = args.hub.replace(/\/+$/, '');
+
+// Validate --rejoin flags
+if (args.rejoin) {
+  if (!args.name) {
+    console.error('Error: --rejoin requires --name to identify which agent to rejoin.');
+    console.error(USAGE);
+    process.exit(1);
+  }
+  if (args.resume) {
+    console.error('Error: --rejoin and --resume are mutually exclusive.');
+    console.error('  --resume continues an incomplete onboarding.');
+    console.error('  --rejoin does a fresh setup with an existing agent identity.');
+    console.error(USAGE);
+    process.exit(1);
+  }
+}
 
 // =============================================================================
 // HTTP Helper (zero npm deps — uses built-in http/https)
@@ -237,8 +259,8 @@ async function preflight(progress) {
     failures.push(`Hub unreachable at ${HUB_URL}: ${err.message}`);
   }
 
-  // Install dir check (unless --resume)
-  if (!args.resume && args.name) {
+  // Install dir check (unless --resume or --rejoin)
+  if (!args.resume && !args.rejoin && args.name) {
     const installDir = path.join(os.homedir(), '.agentcom', args.name);
     if (fs.existsSync(installDir)) {
       failures.push(`Install directory already exists: ${installDir}\nUse --resume to continue or remove the directory first.`);
@@ -263,6 +285,40 @@ async function preflight(progress) {
 async function registerAgent(progress) {
   if (args.resume && stepDone(progress, 'register') && progress.token) {
     logStep(2, 7, `Registering agent "${progress.agent_name}"`, 'skip');
+    return progress;
+  }
+
+  // --rejoin: skip registration, reuse existing token
+  if (args.rejoin) {
+    logStep(2, 7, `Rejoining agent "${args.name}"`, 'start');
+
+    // Get token from --token arg or existing progress file
+    const token = args.token || progress.token;
+    if (!token) {
+      logStep(2, 7, `Rejoining agent "${args.name}"`, 'fail');
+      fatal('--rejoin requires a token. Provide --token <token> or ensure progress file exists.');
+    }
+
+    progress.token = token;
+    progress.agent_name = args.name;
+    currentAgentName = args.name;
+
+    // Derive hub WebSocket URL
+    const u = new URL(HUB_URL);
+    const wsProto = u.protocol === 'https:' ? 'wss:' : 'ws:';
+    progress.hub_ws_url = `${wsProto}//${u.hostname}:${u.port}/ws`;
+    progress.hub_api_url = HUB_URL;
+
+    // Fetch default_repo from hub
+    try {
+      const res = await httpRequest('GET', `${HUB_URL}/api/config/default-repo`);
+      if (res.statusCode === 200 && res.body && res.body.default_repo) {
+        progress.default_repo = res.body.default_repo;
+      }
+    } catch { /* will be fetched in cloneRepo if needed */ }
+
+    markStep(progress, 'register');
+    logStep(2, 7, `Rejoining agent "${args.name}"`, 'done');
     return progress;
   }
 
@@ -314,7 +370,12 @@ async function registerAgent(progress) {
 
   if (res.statusCode === 409) {
     logStep(2, 7, `Registering agent "${agentName}"`, 'fail');
-    fatal(`Agent "${agentName}" already registered. Choose a different name with --name or remove the existing agent first.`);
+    fatal(
+      `Agent "${agentName}" already registered. Options:\n` +
+      `  - Rejoin with existing token: node add-agent.js --hub ${HUB_URL} --name ${agentName} --rejoin --token <token>\n` +
+      `  - Choose a different name with --name\n` +
+      `  - Remove the existing agent first via admin API`
+    );
   }
 
   if (res.statusCode !== 201 && res.statusCode !== 200) {
@@ -701,13 +762,24 @@ async function main() {
   let agentName = args.name || 'unknown';
   currentAgentName = agentName !== 'unknown' ? agentName : null;
 
-  // Load progress (for --resume)
+  // Load progress (for --resume or --rejoin with existing progress)
   let progress;
   if (args.resume && agentName !== 'unknown') {
     progress = loadProgress(agentName);
     if (progress.steps_completed.length > 0) {
       console.log(`Resuming onboarding for "${progress.agent_name}" (${progress.steps_completed.length} steps completed)\n`);
     }
+  } else if (args.rejoin && agentName !== 'unknown') {
+    // Load existing progress to recover token if --token not provided
+    const existing = loadProgress(agentName);
+    progress = {
+      agent_name: agentName,
+      hub_url: HUB_URL,
+      steps_completed: [],
+      token: existing.token || null,
+      default_repo: null
+    };
+    console.log(`Rejoining existing agent "${agentName}" (fresh setup with existing identity)\n`);
   } else {
     progress = {
       agent_name: agentName,

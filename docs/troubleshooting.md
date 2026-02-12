@@ -108,7 +108,15 @@ See `AgentCom.Scheduler` for scheduling logic and capability matching.
    jq 'select(.telemetry_event == "agent_com.agent.disconnect") | {agent: .metadata.agent_id, reason: .metadata.reason}' priv/logs/agent_com.log
    ```
 
-**Fix:** Restart sidecar (`pm2 restart agentcom-<name>`). If token error, re-register the agent (`node sidecar/add-agent.js --hub http://localhost:4000 --name <name>`) or fix the token in `~/.agentcom/<name>/config.json`. If Reaper eviction, check whether the sidecar process is blocked or network connectivity is intermittent.
+**Fix:** Restart sidecar (`pm2 restart agentcom-<name>`). If token error, re-register the agent (`node sidecar/add-agent.js --hub http://localhost:4000 --name <name>`) or fix the token in `~/.agentcom/<name>/config.json`. If the agent's config was lost entirely (machine reimaged, moved to new machine), use `--rejoin` to re-provision without re-registering:
+
+```bash
+node sidecar/add-agent.js --hub http://localhost:4000 --name <name> --rejoin --token <token>
+```
+
+This skips registration (avoids the 409 conflict) and sets up the sidecar fresh with the existing token. See the [setup guide](setup.md#reconnecting-an-existing-agent) for details on finding your token.
+
+If Reaper eviction, check whether the sidecar process is blocked or network connectivity is intermittent.
 
 See `AgentCom.Auth`, `AgentCom.Reaper`, `AgentCom.Presence` for authentication, eviction, and presence tracking.
 
