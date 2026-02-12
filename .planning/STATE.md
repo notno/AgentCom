@@ -9,17 +9,17 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 
 ## Current Position
 
-Phase: 17 of 22 (Enriched Task Format)
-Plan: 2 of 3 complete
-Status: Executing
-Last activity: 2026-02-12 -- Completed 17-02 enrichment fields and validation
+Phase: 17 of 22 (Enriched Task Format) -- COMPLETE
+Plan: 3 of 3 complete
+Status: Phase Complete
+Last activity: 2026-02-12 -- Completed 17-03 pipeline wiring (Phase 17 done)
 
-Progress: [█░░░░░░░░░] 7%
+Progress: [█░░░░░░░░░] 10%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 53 (19 v1.0 + 32 v1.1 + 2 v1.2)
+- Total plans completed: 54 (19 v1.0 + 32 v1.1 + 3 v1.2)
 - Average duration: 5 min
 - Total execution time: 3.8 hours
 
@@ -37,12 +37,13 @@ Progress: [█░░░░░░░░░] 7%
 | 16-operations-docs | 4 | 14 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 17-02 (4 min), 17-01 (4 min), 16-04 (1 min), 16-03 (5 min), 15-04 (6 min)
+- Last 5 plans: 17-03 (4 min), 17-02 (4 min), 17-01 (4 min), 16-04 (1 min), 16-03 (5 min)
 - Trend: Stable
 
 *Updated after each plan completion*
 | Phase 17 P01 | 4min | 1 task (TDD) | 2 files |
 | Phase 17 P02 | 4min | 2 tasks | 6 files |
+| Phase 17 P03 | 4min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -58,6 +59,9 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - 17-02: Enrichment validation as separate pass after schema validation (not mixed into validate_against_schema)
 - 17-02: Soft limit for verification steps set at 10 (warning, not error)
 - 17-02: Complexity field stored as nil placeholder -- Plan 03 wires module
+- 17-03: Complexity.build called for every submission (heuristic always runs for observability)
+- 17-03: Enrichment fields propagated with additive-only pattern and safe defaults at every pipeline stage
+- 17-03: TaskQueue emits disagreement telemetry with task_id context for pipeline-level observability
 
 ### Pending Todos
 
@@ -83,5 +87,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 17-01-PLAN.md (complexity heuristic engine) and 17-02-PLAN.md (enrichment fields + validation). Plan 03 remaining.
+Stopped at: Completed 17-03-PLAN.md (pipeline wiring). Phase 17 complete. Ready for Phase 18.
 Resume file: None
