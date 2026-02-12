@@ -164,6 +164,8 @@ defmodule AgentCom.TaskQueue do
 
   @impl true
   def init(_opts) do
+    Logger.metadata(module: __MODULE__)
+
     tasks_path = dets_path("task_queue.dets") |> String.to_charlist()
     dl_path = dets_path("task_dead_letter.dets") |> String.to_charlist()
 
@@ -199,6 +201,8 @@ defmodule AgentCom.TaskQueue do
     priority_str = Map.get(params, :priority, Map.get(params, "priority", "normal"))
     priority = Map.get(@priority_map, to_string(priority_str), 2)
 
+    submitted_by = Map.get(params, :submitted_by, Map.get(params, "submitted_by", "unknown"))
+
     task = %{
       id: task_id,
       description: Map.get(params, :description, Map.get(params, "description", "")),
@@ -218,8 +222,7 @@ defmodule AgentCom.TaskQueue do
       result: nil,
       tokens_used: nil,
       last_error: nil,
-      submitted_by:
-        Map.get(params, :submitted_by, Map.get(params, "submitted_by", "unknown")),
+      submitted_by: submitted_by,
       created_at: now,
       updated_at: now,
       history: [{:queued, now, "submitted"}]
@@ -229,6 +232,12 @@ defmodule AgentCom.TaskQueue do
 
     new_index = add_to_priority_index(state.priority_index, task)
     broadcast_task_event(:task_submitted, task)
+
+    :telemetry.execute(
+      [:agent_com, :task, :submit],
+      %{queue_depth: length(new_index)},
+      %{task_id: task_id, priority: priority, submitted_by: submitted_by}
+    )
 
     {:reply, {:ok, task}, %{state | priority_index: new_index}}
   end
@@ -340,6 +349,12 @@ defmodule AgentCom.TaskQueue do
         new_index = remove_from_priority_index(state.priority_index, task_id)
         broadcast_task_event(:task_assigned, updated)
 
+        :telemetry.execute(
+          [:agent_com, :task, :assign],
+          %{wait_ms: now - task.created_at},
+          %{task_id: task_id, agent_id: agent_id, generation: new_generation}
+        )
+
         {:reply, {:ok, updated}, %{state | priority_index: new_index}}
 
       {:ok, %{status: status}} ->
@@ -372,6 +387,12 @@ defmodule AgentCom.TaskQueue do
 
         persist_task(updated, @tasks_table)
         broadcast_task_event(:task_completed, updated)
+
+        :telemetry.execute(
+          [:agent_com, :task, :complete],
+          %{duration_ms: now - task.assigned_at},
+          %{task_id: task_id, agent_id: task.assigned_to, tokens_used: tokens_used}
+        )
 
         {:reply, {:ok, updated}, state}
 
@@ -412,6 +433,12 @@ defmodule AgentCom.TaskQueue do
           persist_task(dead, @dead_letter_table)
           broadcast_task_event(:task_dead_letter, dead)
 
+          :telemetry.execute(
+            [:agent_com, :task, :dead_letter],
+            %{retry_count: new_retry_count},
+            %{task_id: task_id, error: error}
+          )
+
           {:reply, {:ok, :dead_letter, dead}, state}
         else
           # Retry
@@ -431,6 +458,12 @@ defmodule AgentCom.TaskQueue do
           persist_task(retried, @tasks_table)
           new_index = add_to_priority_index(state.priority_index, retried)
           broadcast_task_event(:task_retried, retried)
+
+          :telemetry.execute(
+            [:agent_com, :task, :fail],
+            %{retry_count: new_retry_count},
+            %{task_id: task_id, agent_id: task.assigned_to, error: error}
+          )
 
           {:reply, {:ok, :retried, retried}, %{state | priority_index: new_index}}
         end
@@ -490,6 +523,12 @@ defmodule AgentCom.TaskQueue do
         new_index = add_to_priority_index(state.priority_index, updated)
         broadcast_task_event(:task_retried, updated)
 
+        :telemetry.execute(
+          [:agent_com, :task, :retry],
+          %{},
+          %{task_id: task_id, previous_error: task.last_error}
+        )
+
         {:reply, {:ok, updated}, %{state | priority_index: new_index}}
 
       {:error, :not_found} ->
@@ -537,6 +576,12 @@ defmodule AgentCom.TaskQueue do
         persist_task(reclaimed, @tasks_table)
         new_index = add_to_priority_index(state.priority_index, reclaimed)
         broadcast_task_event(:task_reclaimed, reclaimed)
+
+        :telemetry.execute(
+          [:agent_com, :task, :reclaim],
+          %{},
+          %{task_id: task_id, agent_id: task.assigned_to, reason: :agent_disconnect}
+        )
 
         {:reply, {:ok, reclaimed}, %{state | priority_index: new_index}}
 
@@ -631,8 +676,9 @@ defmodule AgentCom.TaskQueue do
 
     new_state =
       Enum.reduce(overdue, state, fn task, acc ->
-        Logger.warning(
-          "TaskQueue: reclaiming overdue task #{task.id} from #{task.assigned_to}"
+        Logger.warning("task_overdue_reclaim",
+          task_id: task.id,
+          assigned_to: task.assigned_to
         )
 
         reclaimed =
@@ -649,6 +695,12 @@ defmodule AgentCom.TaskQueue do
         persist_task(reclaimed, @tasks_table)
         new_index = add_to_priority_index(acc.priority_index, reclaimed)
         broadcast_task_event(:task_reclaimed, reclaimed)
+
+        :telemetry.execute(
+          [:agent_com, :task, :reclaim],
+          %{},
+          %{task_id: task.id, agent_id: task.assigned_to, reason: :overdue}
+        )
 
         %{acc | priority_index: new_index}
       end)
@@ -672,7 +724,10 @@ defmodule AgentCom.TaskQueue do
         :ok
 
       {:error, reason} ->
-        Logger.error("DETS corruption detected in #{table}: #{inspect(reason)}")
+        Logger.error("dets_corruption_detected",
+          table: table,
+          reason: inspect(reason)
+        )
         GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, table, reason})
         {:error, :table_corrupted}
     end
@@ -722,7 +777,10 @@ defmodule AgentCom.TaskQueue do
       [{^task_id, task}] -> {:ok, task}
       [] -> {:error, :not_found}
       {:error, reason} ->
-        Logger.error("DETS corruption detected in #{@tasks_table}: #{inspect(reason)}")
+        Logger.error("dets_corruption_detected",
+          table: @tasks_table,
+          reason: inspect(reason)
+        )
         GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @tasks_table, reason})
         {:error, :table_corrupted}
     end
@@ -733,7 +791,10 @@ defmodule AgentCom.TaskQueue do
       [{^task_id, task}] -> {:ok, task}
       [] -> {:error, :not_found}
       {:error, reason} ->
-        Logger.error("DETS corruption detected in #{@dead_letter_table}: #{inspect(reason)}")
+        Logger.error("dets_corruption_detected",
+          table: @dead_letter_table,
+          reason: inspect(reason)
+        )
         GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @dead_letter_table, reason})
         {:error, :table_corrupted}
     end

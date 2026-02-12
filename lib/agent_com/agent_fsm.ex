@@ -180,6 +180,8 @@ defmodule AgentCom.AgentFSM do
     name = Keyword.get(args, :name, agent_id)
     capabilities = Keyword.get(args, :capabilities, [])
 
+    Logger.metadata(module: __MODULE__, agent_id: agent_id)
+
     ref = Process.monitor(ws_pid)
     now = System.system_time(:millisecond)
     normalized_caps = normalize_capabilities(capabilities)
@@ -191,7 +193,7 @@ defmodule AgentCom.AgentFSM do
       case assigned_tasks do
         [task | _] ->
           timer = Process.send_after(self(), {:acceptance_timeout, task.id}, @acceptance_timeout_ms)
-          Logger.info("AgentFSM: agent #{agent_id} has existing assignment #{task.id}, starting in :assigned")
+          Logger.info("fsm_existing_assignment", task_id: task.id, initial_state: :assigned)
           {:assigned, task.id, timer}
 
         [] ->
@@ -215,7 +217,13 @@ defmodule AgentCom.AgentFSM do
     # Push initial FSM state to Presence
     AgentCom.Presence.update_fsm_state(agent_id, initial_state)
 
-    Logger.info("AgentFSM: started for agent #{agent_id} in state :#{initial_state}")
+    :telemetry.execute(
+      [:agent_com, :agent, :connect],
+      %{system_time: now},
+      %{agent_id: agent_id, capabilities: normalized_caps}
+    )
+
+    Logger.info("fsm_started", initial_state: initial_state)
 
     {:ok, state}
   end
@@ -257,13 +265,15 @@ defmodule AgentCom.AgentFSM do
           acceptance_timer_ref: timer
         }
 
-        Logger.info("AgentFSM: agent #{state.agent_id} assigned task #{task_id}")
+        Logger.info("fsm_task_assigned", task_id: task_id)
         {:noreply, updated}
 
       {:error, {:invalid_transition, from, to}} ->
-        Logger.warning(
-          "AgentFSM: invalid transition #{from} -> #{to} for agent #{state.agent_id} " <>
-            "(task_assigned #{task_id})"
+        Logger.warning("fsm_invalid_transition",
+          from_state: from,
+          to_state: to,
+          trigger: :task_assigned,
+          task_id: task_id
         )
 
         {:noreply, state}
@@ -279,21 +289,24 @@ defmodule AgentCom.AgentFSM do
       case transition(state, :working) do
         {:ok, new_state} ->
           updated = %{new_state | acceptance_timer_ref: nil}
-          Logger.info("AgentFSM: agent #{state.agent_id} accepted task #{task_id}")
+          Logger.info("fsm_task_accepted", task_id: task_id)
           {:noreply, updated}
 
         {:error, {:invalid_transition, from, to}} ->
-          Logger.warning(
-            "AgentFSM: invalid transition #{from} -> #{to} for agent #{state.agent_id} " <>
-              "(task_accepted #{task_id})"
+          Logger.warning("fsm_invalid_transition",
+            from_state: from,
+            to_state: to,
+            trigger: :task_accepted,
+            task_id: task_id
           )
 
           {:noreply, state}
       end
     else
-      Logger.warning(
-        "AgentFSM: agent #{state.agent_id} received task_accepted for #{task_id} " <>
-          "but current state is :#{state.fsm_state} with task #{inspect(state.current_task_id)}"
+      Logger.warning("fsm_unexpected_task_accepted",
+        received_task_id: task_id,
+        current_state: state.fsm_state,
+        current_task_id: state.current_task_id
       )
 
       {:noreply, state}
@@ -313,20 +326,23 @@ defmodule AgentCom.AgentFSM do
             acceptance_timer_ref: nil
           }
 
-          Logger.info("AgentFSM: agent #{state.agent_id} completed task #{state.current_task_id}")
+          Logger.info("fsm_task_completed", task_id: state.current_task_id)
           broadcast_agent_idle(state.agent_id)
           {:noreply, updated}
 
         {:error, {:invalid_transition, from, to}} ->
-          Logger.warning(
-            "AgentFSM: invalid transition #{from} -> #{to} for agent #{state.agent_id} (task_completed)"
+          Logger.warning("fsm_invalid_transition",
+            from_state: from,
+            to_state: to,
+            trigger: :task_completed
           )
 
           {:noreply, state}
       end
     else
-      Logger.warning(
-        "AgentFSM: agent #{state.agent_id} received task_completed but is in :#{state.fsm_state}"
+      Logger.warning("fsm_unexpected_event",
+        event: :task_completed,
+        current_state: state.fsm_state
       )
 
       {:noreply, state}
@@ -346,20 +362,23 @@ defmodule AgentCom.AgentFSM do
             acceptance_timer_ref: nil
           }
 
-          Logger.info("AgentFSM: agent #{state.agent_id} failed task #{state.current_task_id}")
+          Logger.info("fsm_task_failed", task_id: state.current_task_id)
           broadcast_agent_idle(state.agent_id)
           {:noreply, updated}
 
         {:error, {:invalid_transition, from, to}} ->
-          Logger.warning(
-            "AgentFSM: invalid transition #{from} -> #{to} for agent #{state.agent_id} (task_failed)"
+          Logger.warning("fsm_invalid_transition",
+            from_state: from,
+            to_state: to,
+            trigger: :task_failed
           )
 
           {:noreply, state}
       end
     else
-      Logger.warning(
-        "AgentFSM: agent #{state.agent_id} received task_failed but is in :#{state.fsm_state}"
+      Logger.warning("fsm_unexpected_event",
+        event: :task_failed,
+        current_state: state.fsm_state
       )
 
       {:noreply, state}
@@ -372,19 +391,22 @@ defmodule AgentCom.AgentFSM do
     if state.fsm_state == :working do
       case transition(state, :blocked) do
         {:ok, new_state} ->
-          Logger.info("AgentFSM: agent #{state.agent_id} blocked on task #{state.current_task_id}")
+          Logger.info("fsm_task_blocked", task_id: state.current_task_id)
           {:noreply, new_state}
 
         {:error, {:invalid_transition, from, to}} ->
-          Logger.warning(
-            "AgentFSM: invalid transition #{from} -> #{to} for agent #{state.agent_id} (task_blocked)"
+          Logger.warning("fsm_invalid_transition",
+            from_state: from,
+            to_state: to,
+            trigger: :task_blocked
           )
 
           {:noreply, state}
       end
     else
-      Logger.warning(
-        "AgentFSM: agent #{state.agent_id} received task_blocked but is in :#{state.fsm_state}"
+      Logger.warning("fsm_unexpected_event",
+        event: :task_blocked,
+        current_state: state.fsm_state
       )
 
       {:noreply, state}
@@ -397,19 +419,22 @@ defmodule AgentCom.AgentFSM do
     if state.fsm_state == :blocked do
       case transition(state, :working) do
         {:ok, new_state} ->
-          Logger.info("AgentFSM: agent #{state.agent_id} unblocked on task #{state.current_task_id}")
+          Logger.info("fsm_task_unblocked", task_id: state.current_task_id)
           {:noreply, new_state}
 
         {:error, {:invalid_transition, from, to}} ->
-          Logger.warning(
-            "AgentFSM: invalid transition #{from} -> #{to} for agent #{state.agent_id} (task_unblocked)"
+          Logger.warning("fsm_invalid_transition",
+            from_state: from,
+            to_state: to,
+            trigger: :task_unblocked
           )
 
           {:noreply, state}
       end
     else
-      Logger.warning(
-        "AgentFSM: agent #{state.agent_id} received task_unblocked but is in :#{state.fsm_state}"
+      Logger.warning("fsm_unexpected_event",
+        event: :task_unblocked,
+        current_state: state.fsm_state
       )
 
       {:noreply, state}
@@ -419,12 +444,18 @@ defmodule AgentCom.AgentFSM do
   # -- WebSocket disconnect (Process monitor :DOWN) ----------------------------
 
   @impl true
-  def handle_info({:DOWN, ref, :process, _pid, _reason}, %{ws_monitor_ref: ref} = state) do
-    Logger.warning("AgentFSM: WebSocket down for agent #{state.agent_id}, transitioning to :offline")
+  def handle_info({:DOWN, ref, :process, _pid, reason}, %{ws_monitor_ref: ref} = state) do
+    Logger.warning("fsm_websocket_down", reason: inspect(reason))
 
     cancel_timer(state.acceptance_timer_ref)
     AgentCom.Presence.update_fsm_state(state.agent_id, :offline)
     reclaim_task_from_agent(state.agent_id, state.current_task_id)
+
+    :telemetry.execute(
+      [:agent_com, :agent, :disconnect],
+      %{connected_duration_ms: System.system_time(:millisecond) - state.connected_at},
+      %{agent_id: state.agent_id, reason: reason}
+    )
 
     {:stop, :normal, %{state | fsm_state: :offline}}
   end
@@ -432,9 +463,7 @@ defmodule AgentCom.AgentFSM do
   # -- Acceptance timeout ------------------------------------------------------
 
   def handle_info({:acceptance_timeout, task_id}, %{current_task_id: task_id} = state) do
-    Logger.warning(
-      "AgentFSM: acceptance timeout for agent #{state.agent_id} on task #{task_id}"
-    )
+    Logger.warning("fsm_acceptance_timeout", task_id: task_id)
 
     reclaim_task_from_agent(state.agent_id, task_id)
 
@@ -482,7 +511,16 @@ defmodule AgentCom.AgentFSM do
 
     if to in allowed do
       now = System.system_time(:millisecond)
+      duration_ms = now - state.last_state_change
+
       AgentCom.Presence.update_fsm_state(state.agent_id, to)
+
+      :telemetry.execute(
+        [:agent_com, :fsm, :transition],
+        %{duration_ms: duration_ms},
+        %{agent_id: state.agent_id, from_state: from, to_state: to, task_id: state.current_task_id}
+      )
+
       {:ok, %{state | fsm_state: to, last_state_change: now}}
     else
       {:error, {:invalid_transition, from, to}}
@@ -514,13 +552,13 @@ defmodule AgentCom.AgentFSM do
 
   defp reclaim_task_from_agent(_agent_id, nil), do: :ok
 
-  defp reclaim_task_from_agent(agent_id, task_id) do
+  defp reclaim_task_from_agent(_agent_id, task_id) do
     case AgentCom.TaskQueue.reclaim_task(task_id) do
       {:ok, _task} ->
-        Logger.info("AgentFSM: reclaimed task #{task_id} from #{agent_id}")
+        Logger.info("fsm_task_reclaimed", task_id: task_id)
 
       {:error, reason} ->
-        Logger.warning("AgentFSM: reclaim failed for #{task_id}: #{reason}")
+        Logger.warning("fsm_reclaim_failed", task_id: task_id, reason: inspect(reason))
     end
   end
 end
