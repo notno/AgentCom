@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-11)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.1 Hardening -- Phase 11 DETS Compaction
+**Current focus:** v1.1 Hardening -- Phase 12 Input Validation
 
 ## Current Position
 
-Phase: 11-dets-compaction
-Plan: 2 of 3 complete
-Status: Executing phase 11
-Last activity: 2026-02-12 -- Completed 11-02-PLAN.md (corruption recovery + detection in hot paths)
+Phase: 12-input-validation
+Plan: 1 of 3 complete
+Status: Executing phase 12
+Last activity: 2026-02-12 -- Completed 12-01-PLAN.md (core validation module, schemas, violation tracker)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12 (v1.1)
+- Total plans completed: 13 (v1.1)
 - Average duration: 5 min
-- Total execution time: 0.9 hours
+- Total execution time: 1.0 hours
 
 **By Phase:**
 
@@ -28,9 +28,10 @@ Last activity: 2026-02-12 -- Completed 11-02-PLAN.md (corruption recovery + dete
 | 09-testing | 7 | 33 min | 5 min |
 | 10-dets-backup | 3 | 8 min | 3 min |
 | 11-dets-compaction | 2 | 10 min | 5 min |
+| 12-input-validation | 1 | 4 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 11-02 (5 min), 11-01 (5 min), 10-03 (2 min), 10-02 (4 min), 10-01 (2 min)
+- Last 5 plans: 12-01 (4 min), 11-02 (5 min), 11-01 (5 min), 10-03 (2 min), 10-02 (4 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -74,6 +75,10 @@ Recent decisions affecting current work:
 - [Phase 11-02]: Wrap persist_task/lookup_task helpers in TaskQueue for corruption detection (not individual handlers)
 - [Phase 11-02]: Config get returns default on corruption for graceful degradation
 - [Phase 11-02]: get_table_path/1 matches each GenServer's actual env var path resolution
+- [Phase 12-01]: Pure Elixir validation (no external deps) -- pattern matching + guards
+- [Phase 12-01]: Schema-as-data: same maps for runtime validation and JSON discovery endpoint
+- [Phase 12-01]: ViolationTracker as pure functions + ETS, not a GenServer
+- [Phase 12-01]: generation required for task_complete/task_failed (verified sidecar sends it)
 
 ### Pending Todos
 
@@ -91,5 +96,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 11-02-PLAN.md (corruption recovery + detection in hot paths). Phase 11 in progress (2/3 plans).
+Stopped at: Completed 12-01-PLAN.md (core validation module, schemas, violation tracker). Phase 12 in progress (1/3 plans).
 Resume file: None
