@@ -19,9 +19,9 @@ Progress: [██░░░░░░░░] 35%
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 60 (19 v1.0 + 32 v1.1 + 9 v1.2)
+- Total plans completed: 61 (19 v1.0 + 32 v1.1 + 10 v1.2)
 - Average duration: 5 min
-- Total execution time: 4.2 hours
+- Total execution time: 4.3 hours
 
 **By Phase (v1.1 recent):**
 
@@ -37,7 +37,7 @@ Progress: [██░░░░░░░░] 35%
 | 16-operations-docs | 4 | 14 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 21-02 (3 min), 19-01 (4 min), 18-04 (8 min), 18-03 (11 min), 18-02 (2 min)
+- Last 5 plans: 21-01 (3 min), 21-02 (3 min), 19-01 (4 min), 18-04 (8 min), 18-03 (11 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -49,6 +49,7 @@ Progress: [██░░░░░░░░] 35%
 | Phase 18 P03 | 11min | 2 tasks | 8 files |
 | Phase 18 P04 | 8min | 3 tasks (1 checkpoint) | 4 files |
 | Phase 19 P01 | 4min | 1 task (TDD) | 4 files |
+| Phase 21 P01 | 3min | 2 tasks (TDD) | 4 files |
 | Phase 21 P02 | 3min | 2 tasks | 2 files |
 
 ## Accumulated Context
@@ -90,6 +91,9 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - 19-01: Neutral defaults for missing resource data (cpu=50%, vram=0.9, capacity=1.0)
 - 19-01: 16GB reference capacity for normalization, capped at 1.5x
 - 19-01: Classification reason format: "source:tier (confidence X, word_count=Y, files=Z)"
+- 21-01: Unique DETS table atom per Store instance for safe test parallelism
+- 21-01: Status priority: error > timeout > fail > pass (error always wins)
+- 21-01: Empty reports (skip/auto_pass/timeout) use run_number 0 as sentinel
 - 21-02: execSync for check execution (synchronous, sequential, simple)
 - 21-02: Promise.race for global timeout with clearTimeout on completion
 - 21-02: verification_report as top-level WS field in task_complete (not nested in result)
@@ -122,5 +126,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 21-02-PLAN.md (Sidecar Verification Runner)
+Stopped at: Completed 21-01-PLAN.md (Report Store) and 21-02-PLAN.md (Sidecar Verification Runner)
 Resume file: None
