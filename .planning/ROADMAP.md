@@ -118,10 +118,13 @@ Plans:
   1. All GenServer log output is structured JSON with consistent metadata fields (task_id, agent_id, module) attached automatically
   2. Telemetry events fire for key lifecycle points: task submit, assign, complete, fail, and agent connect/disconnect
   3. Log output is parseable by standard JSON tools (jq, log aggregators) without custom parsing
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 13-01: TBD
+- [ ] 13-01-PLAN.md -- LoggerJSON + config infrastructure, AgentCom.Telemetry module, dual output (stdout + file rotation)
+- [ ] 13-02-PLAN.md -- Core module migration: AgentFSM, TaskQueue, Scheduler, DetsBackup, Presence, Reaper (structured logging + telemetry events)
+- [ ] 13-03-PLAN.md -- Supporting module migration + sidecar: remaining Elixir modules, PUT /api/admin/log-level, Node.js structured logging
+- [ ] 13-04-PLAN.md -- Test suite: per-module JSON assertion tests, telemetry event tests, sidecar log tests
 
 ### Phase 14: Metrics + Alerting
 **Goal**: Operators can see system health at a glance and get notified of anomalies before they become outages
@@ -175,7 +178,7 @@ Phases execute in numeric order: 9 -> 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16
 | 10. DETS Backup + Monitoring | v1.1 | 3/3 | Complete | 2026-02-12 |
 | 11. DETS Compaction + Recovery | v1.1 | 3/3 | Complete | 2026-02-12 |
 | 12. Input Validation | v1.1 | 3/3 | Complete | 2026-02-12 |
-| 13. Structured Logging + Telemetry | v1.1 | 0/TBD | Not started | - |
+| 13. Structured Logging + Telemetry | v1.1 | 0/4 | Not started | - |
 | 14. Metrics + Alerting | v1.1 | 0/TBD | Not started | - |
 | 15. Rate Limiting | v1.1 | 0/TBD | Not started | - |
 | 16. Operations Documentation | v1.1 | 0/TBD | Not started | - |
