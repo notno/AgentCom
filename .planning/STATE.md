@@ -5,23 +5,25 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.2 Smart Agent Pipeline -- defining requirements
+**Current focus:** v1.2 Smart Agent Pipeline -- Phase 17 Enriched Task Format
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 17 of 22 (Enriched Task Format)
 Plan: --
-Status: Defining requirements
-Last activity: 2026-02-12 -- Milestone v1.2 Smart Agent Pipeline started
+Status: Ready to plan
+Last activity: 2026-02-12 -- Roadmap created for v1.2 Smart Agent Pipeline (6 phases, 25 requirements)
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 32 (v1.1)
+- Total plans completed: 51 (19 v1.0 + 32 v1.1)
 - Average duration: 5 min
-- Total execution time: 2.60 hours
+- Total execution time: 3.8 hours
 
-**By Phase:**
+**By Phase (v1.1 recent):**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
@@ -36,7 +38,7 @@ Last activity: 2026-02-12 -- Milestone v1.2 Smart Agent Pipeline started
 
 **Recent Trend:**
 - Last 5 plans: 16-04 (1 min), 16-03 (5 min), 15-04 (6 min), 16-02 (3 min), 16-01 (5 min)
-- Trend: --
+- Trend: Stable
 
 *Updated after each plan completion*
 
@@ -58,8 +60,9 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - [Tech debt]: Sidecar queue.json atomicity -- fs.writeFileSync has partial-write-on-crash risk
 - [Tech debt]: VAPID keys ephemeral -- push subscriptions lost on hub restart
 - [Tech debt]: Analytics and Threads modules orphaned (not exposed via API)
-- [Resolved 11-01]: DETS compaction uses repair: force (not copy-and-swap) -- only documented method
-- [Resolved 09-01]: Config and Threads now use Application.get_env for DETS paths
+- [Research flag]: Phase 18 -- Ollama health check intervals and Tailscale mesh latency need empirical validation
+- [Research flag]: Phase 20 -- Ollama streaming behavior, Claude API integration, timeout tuning need validation
+- [Research flag]: Phase 22 -- Self-verification feedback loop patterns and retry budgets need deeper investigation
 
 ### Quick Tasks Completed
 
@@ -70,5 +73,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Milestone v1.2 started. Defining requirements.
+Stopped at: v1.2 roadmap created. 6 phases (17-22), 25 requirements mapped. Ready to plan Phase 17.
 Resume file: None

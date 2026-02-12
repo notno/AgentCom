@@ -97,37 +97,37 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REG-01 | - | Pending |
-| REG-02 | - | Pending |
-| REG-03 | - | Pending |
-| REG-04 | - | Pending |
-| HOST-01 | - | Pending |
-| HOST-02 | - | Pending |
-| HOST-03 | - | Pending |
-| HOST-04 | - | Pending |
-| TASK-01 | - | Pending |
-| TASK-02 | - | Pending |
-| TASK-03 | - | Pending |
-| TASK-04 | - | Pending |
-| TASK-05 | - | Pending |
-| ROUTE-01 | - | Pending |
-| ROUTE-02 | - | Pending |
-| ROUTE-03 | - | Pending |
-| ROUTE-04 | - | Pending |
-| EXEC-01 | - | Pending |
-| EXEC-02 | - | Pending |
-| EXEC-03 | - | Pending |
-| EXEC-04 | - | Pending |
-| VERIFY-01 | - | Pending |
-| VERIFY-02 | - | Pending |
-| VERIFY-03 | - | Pending |
-| VERIFY-04 | - | Pending |
+| REG-01 | Phase 18 | Pending |
+| REG-02 | Phase 18 | Pending |
+| REG-03 | Phase 18 | Pending |
+| REG-04 | Phase 18 | Pending |
+| HOST-01 | Phase 18 | Pending |
+| HOST-02 | Phase 18 | Pending |
+| HOST-03 | Phase 18 | Pending |
+| HOST-04 | Phase 19 | Pending |
+| TASK-01 | Phase 17 | Pending |
+| TASK-02 | Phase 17 | Pending |
+| TASK-03 | Phase 17 | Pending |
+| TASK-04 | Phase 17 | Pending |
+| TASK-05 | Phase 17 | Pending |
+| ROUTE-01 | Phase 19 | Pending |
+| ROUTE-02 | Phase 19 | Pending |
+| ROUTE-03 | Phase 19 | Pending |
+| ROUTE-04 | Phase 19 | Pending |
+| EXEC-01 | Phase 20 | Pending |
+| EXEC-02 | Phase 20 | Pending |
+| EXEC-03 | Phase 20 | Pending |
+| EXEC-04 | Phase 20 | Pending |
+| VERIFY-01 | Phase 21 | Pending |
+| VERIFY-02 | Phase 21 | Pending |
+| VERIFY-03 | Phase 22 | Pending |
+| VERIFY-04 | Phase 21 | Pending |
 
 **Coverage:**
 - v1.2 requirements: 25 total
-- Mapped to phases: 0
-- Unmapped: 25
+- Mapped to phases: 25
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-12*
-*Last updated: 2026-02-12 after initial definition*
+*Last updated: 2026-02-12 after roadmap creation*

@@ -4,6 +4,7 @@
 
 - [x] **v1.0 Core Architecture** - Phases 1-8 (shipped 2026-02-11)
 - [x] **v1.1 Hardening** - Phases 9-16 (shipped 2026-02-12)
+- [ ] **v1.2 Smart Agent Pipeline** - Phases 17-22 (in progress)
 
 ## Phases
 
@@ -43,9 +44,125 @@
 
 </details>
 
+### v1.2 Smart Agent Pipeline (In Progress)
+
+**Milestone Goal:** Transform agents from blind task executors into context-aware, self-verifying workers with cost-efficient model routing across a distributed LLM mesh.
+
+**Phase Numbering:** Integer phases (17, 18, 19...): Planned milestone work. Decimal phases (17.1, 17.2): Urgent insertions (marked with INSERTED).
+
+- [ ] **Phase 17: Enriched Task Format** - Tasks carry structured context, success criteria, verification steps, and complexity classification
+- [ ] **Phase 18: LLM Registry and Host Resources** - Hub tracks Ollama endpoints, model availability, and host resource utilization across the Tailscale mesh
+- [ ] **Phase 19: Model-Aware Scheduler** - Scheduler routes tasks to the right execution tier based on complexity, model availability, and host load
+- [ ] **Phase 20: Sidecar Execution** - Sidecars call the correct LLM backend (local Ollama, Claude API, or zero-token local execution) per task assignment
+- [ ] **Phase 21: Verification Infrastructure** - Deterministic mechanical verification checks produce structured pass/fail reports before task submission
+- [ ] **Phase 22: Self-Verification Loop** - Agents run verification after execution and retry fixes when checks fail (build-verify-fix pattern)
+
+## Phase Details
+
+### Phase 17: Enriched Task Format
+**Goal**: Tasks carry all the information agents need to understand scope, verify completion, and route efficiently
+**Depends on**: Nothing (foundation for v1.2)
+**Requirements**: TASK-01, TASK-02, TASK-03, TASK-04, TASK-05
+**Success Criteria** (what must be TRUE):
+  1. A task submitted with context fields (repo, branch, relevant files) arrives at the sidecar with those fields intact
+  2. A task submitted with success criteria and verification steps stores and retrieves them through the full pipeline (submit, assign, complete)
+  3. A task submitted with an explicit complexity tier (trivial/standard/complex) carries that classification through assignment
+  4. A task submitted without a complexity tier receives an inferred classification from the heuristic engine based on its content
+  5. Existing v1.0/v1.1 tasks (without enrichment fields) continue working unchanged
+**Plans**: TBD
+
+Plans:
+- [ ] 17-01: TBD
+- [ ] 17-02: TBD
+
+### Phase 18: LLM Registry and Host Resources
+**Goal**: Hub knows which Ollama models are available on which hosts, whether they are healthy, and what resources each host has available
+**Depends on**: Nothing (can build parallel with Phase 17)
+**Requirements**: REG-01, REG-02, REG-03, REG-04, HOST-01, HOST-02, HOST-03
+**Success Criteria** (what must be TRUE):
+  1. Admin can register an Ollama endpoint via HTTP API and see it listed with its host, port, and discovered models
+  2. An Ollama endpoint that goes offline is marked unhealthy within one health check cycle, and re-marked healthy when it returns
+  3. Registry distinguishes between models currently loaded in VRAM (warm) and models only downloaded (cold) per host
+  4. Dashboard shows per-machine resource utilization (CPU, RAM, GPU/VRAM) reported by each sidecar
+  5. Registered endpoints and resource metrics survive hub restart (DETS persistence)
+**Plans**: TBD
+
+Plans:
+- [ ] 18-01: TBD
+- [ ] 18-02: TBD
+- [ ] 18-03: TBD
+
+### Phase 19: Model-Aware Scheduler
+**Goal**: Scheduler sends trivial tasks to sidecar direct execution, standard tasks to local Ollama agents, and complex tasks to Claude agents -- picking the best available endpoint
+**Depends on**: Phase 17 (enriched tasks with complexity tiers), Phase 18 (registry with endpoint/resource data)
+**Requirements**: ROUTE-01, ROUTE-02, ROUTE-03, ROUTE-04, HOST-04
+**Success Criteria** (what must be TRUE):
+  1. A trivial-complexity task is routed to sidecar direct execution (not to an LLM)
+  2. A standard-complexity task is routed to an agent backed by a healthy Ollama endpoint with the needed model loaded
+  3. A complex-complexity task is routed to a Claude-backed agent
+  4. When two Ollama hosts have the same model loaded, the scheduler distributes tasks toward the less-loaded host
+  5. Every routing decision is logged with the model selected, endpoint chosen, and the classification reason
+**Plans**: TBD
+
+Plans:
+- [ ] 19-01: TBD
+- [ ] 19-02: TBD
+
+### Phase 20: Sidecar Execution
+**Goal**: Sidecars execute tasks using the LLM backend the hub assigned -- local Ollama for standard work, Claude API for complex work, or local shell commands for trivial work -- and report what model and tokens were used
+**Depends on**: Phase 17 (enriched task arrives at sidecar), Phase 19 (hub sends routing fields with assignment)
+**Requirements**: EXEC-01, EXEC-02, EXEC-03, EXEC-04
+**Success Criteria** (what must be TRUE):
+  1. A task assigned with strategy "local_llm" calls the specified Ollama endpoint and returns the model's response
+  2. A task assigned with strategy "cloud_llm" calls the Claude API and returns the model's response
+  3. A task assigned with strategy "trivial" executes the specified shell command locally with zero LLM tokens consumed
+  4. Every completed task result includes the model used (or "none" for trivial), tokens consumed, and estimated cost
+**Plans**: TBD
+
+Plans:
+- [ ] 20-01: TBD
+- [ ] 20-02: TBD
+- [ ] 20-03: TBD
+
+### Phase 21: Verification Infrastructure
+**Goal**: After task execution, deterministic mechanical checks produce a structured verification report that confirms work was done correctly before submission
+**Depends on**: Phase 17 (tasks carry verification_steps), Phase 20 (execution produces results to verify)
+**Requirements**: VERIFY-01, VERIFY-02, VERIFY-04
+**Success Criteria** (what must be TRUE):
+  1. A completed task includes a structured verification report showing pass/fail for each verification step
+  2. Pre-built verification step types (file_exists, test_passes, git_clean, command_succeeds) work out of the box when specified in a task
+  3. Mechanical verification (compile, tests, file existence) runs before any LLM-based judgment in the verification pipeline
+**Plans**: TBD
+
+Plans:
+- [ ] 21-01: TBD
+- [ ] 21-02: TBD
+
+### Phase 22: Self-Verification Loop
+**Goal**: Agents that fail verification automatically retry with corrective action, only submitting when checks pass or retry budget is exhausted
+**Depends on**: Phase 20 (execution backend to retry with), Phase 21 (verification checks to evaluate against)
+**Requirements**: VERIFY-03
+**Success Criteria** (what must be TRUE):
+  1. When verification fails after task completion, the agent feeds failure details back to the LLM and retries the fix (build-verify-fix loop)
+  2. The retry loop terminates after a configurable maximum number of attempts, submitting with a partial-pass report if budget exhausted
+  3. Each verification retry iteration is visible in the task result (attempt count, which checks passed/failed per iteration)
+**Plans**: TBD
+
+Plans:
+- [ ] 22-01: TBD
+
 ## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 17 -> 17.1 -> 17.2 -> 18 -> ... -> 22
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 1-8 | v1.0 | 19/19 | Complete | 2026-02-11 |
 | 9-16 | v1.1 | 32/32 | Complete | 2026-02-12 |
+| 17. Enriched Task Format | v1.2 | 0/TBD | Not started | - |
+| 18. LLM Registry + Host Resources | v1.2 | 0/TBD | Not started | - |
+| 19. Model-Aware Scheduler | v1.2 | 0/TBD | Not started | - |
+| 20. Sidecar Execution | v1.2 | 0/TBD | Not started | - |
+| 21. Verification Infrastructure | v1.2 | 0/TBD | Not started | - |
+| 22. Self-Verification Loop | v1.2 | 0/TBD | Not started | - |
