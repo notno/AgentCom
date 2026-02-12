@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Planning next milestone (v1.2 Smart Agent Pipeline)
+**Current focus:** v1.2 Smart Agent Pipeline -- defining requirements
 
 ## Current Position
 
-Phase: None (between milestones)
-Plan: N/A
-Status: v1.1 archived, v1.2 not yet started
-Last activity: 2026-02-12 -- v1.1 Hardening milestone archived. 8 phases, 32 plans shipped.
+Phase: Not started (defining requirements)
+Plan: --
+Status: Defining requirements
+Last activity: 2026-02-12 -- Milestone v1.2 Smart Agent Pipeline started
 
 ## Performance Metrics
 
@@ -70,5 +70,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: v1.1 milestone archived. Ready for /gsd:new-milestone (v1.2 Smart Agent Pipeline).
+Stopped at: Milestone v1.2 started. Defining requirements.
 Resume file: None
