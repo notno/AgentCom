@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-11)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.1 Hardening -- Phase 13 Structured Logging (in progress)
+**Current focus:** v1.1 Hardening -- Phase 13 Structured Logging (complete)
 
 ## Current Position
 
 Phase: 13-structured-logging
-Plan: 3 of 4 complete
-Status: Executing
-Last activity: 2026-02-12 -- Completed 13-03-PLAN.md (remaining modules + sidecar structured logging)
+Plan: 4 of 4 complete
+Status: Phase Complete
+Last activity: 2026-02-12 -- Completed 13-04-PLAN.md (structured logging verification tests)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 19 (v1.1)
+- Total plans completed: 20 (v1.1)
 - Average duration: 5 min
-- Total execution time: 1.80 hours
+- Total execution time: 1.90 hours
 
 **By Phase:**
 
@@ -29,10 +29,10 @@ Last activity: 2026-02-12 -- Completed 13-03-PLAN.md (remaining modules + sideca
 | 10-dets-backup | 3 | 8 min | 3 min |
 | 11-dets-compaction | 3 | 15 min | 5 min |
 | 12-input-validation | 3 | 13 min | 4 min |
-| 13-structured-logging | 3 | 32 min | 11 min |
+| 13-structured-logging | 4 | 38 min | 10 min |
 
 **Recent Trend:**
-- Last 5 plans: 13-03 (15 min), 13-02 (9 min), 13-01 (8 min), 12-03 (5 min), 12-02 (4 min)
+- Last 5 plans: 13-04 (6 min), 13-03 (15 min), 13-02 (9 min), 13-01 (8 min), 12-03 (5 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -99,6 +99,8 @@ Recent decisions affecting current work:
 - [Phase 13-03]: request_id via :crypto.strong_rand_bytes(8) hex-encoded -- 16-char lowercase hex per WS message
 - [Phase 13-03]: PUT /api/admin/log-level is ephemeral (resets on restart) per user decision
 - [Phase 13-03]: Sidecar log function/line via Error().stack frame parsing; unhandledRejection continues, uncaughtException exits
+- [Phase 13-04]: Direct LoggerJSON.Formatters.Basic invocation for log format tests (CaptureLog bypasses formatter, captures plain text)
+- [Phase 13-04]: Metadata fields tested under parsed["metadata"] nested key matching LoggerJSON actual output structure
 
 ### Pending Todos
 
@@ -116,5 +118,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 13-03-PLAN.md (remaining modules + sidecar structured logging). Phase 13 in progress (3/4 plans).
+Stopped at: Completed 13-04-PLAN.md (structured logging verification tests). Phase 13 complete (4/4 plans).
 Resume file: None
