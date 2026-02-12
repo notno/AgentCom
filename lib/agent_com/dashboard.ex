@@ -507,6 +507,85 @@ defmodule AgentCom.Dashboard do
         .routing-stats-bar span { margin-right: 12px; }
         .routing-stats-bar .rs-label { color: #888; }
         .routing-stats-bar .rs-value { color: #7eb8da; font-weight: 600; }
+
+        /* === Execution Output Panel === */
+        .exec-panel {
+          background: #141420; border: 1px solid #2a2a3a; border-radius: 8px;
+          padding: 14px 16px; margin-top: 12px;
+        }
+        .exec-panel-header {
+          display: flex; align-items: center; justify-content: space-between;
+          cursor: pointer; user-select: none;
+        }
+        .exec-panel-header:hover .panel-title { color: #a0d0f0; }
+        .exec-panel-toggle {
+          background: none; border: none; color: #7eb8da; font-size: 0.85em;
+          cursor: pointer; padding: 2px 6px;
+        }
+        .exec-output {
+          font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+          font-size: 0.78em; line-height: 1.5; background: #0a0a0f;
+          border: 1px solid #1a1a2e; border-radius: 6px;
+          padding: 10px 12px; margin-top: 8px;
+          max-height: 300px; overflow-y: auto; overflow-x: hidden;
+          white-space: pre-wrap; word-break: break-all; color: #ccc;
+        }
+        .exec-output:empty::before {
+          content: 'No execution output yet. Output will stream here when tasks execute.';
+          color: #555; font-style: italic;
+        }
+        .exec-output .exec-token { color: #e0e0e0; }
+        .exec-output .exec-stdout { color: #ccc; }
+        .exec-output .exec-stderr { color: #fbbf24; }
+        .exec-output .exec-status { color: #888; font-style: italic; display: block; }
+        .exec-output .exec-error { color: #ef4444; font-weight: 600; display: block; }
+        .exec-task-label {
+          font-size: 0.75em; color: #7eb8da; margin-top: 8px; margin-bottom: 4px;
+          display: flex; align-items: center; gap: 8px;
+        }
+        .exec-task-label .exec-model { color: #a855f7; font-weight: 600; }
+        .exec-task-label .exec-tokens-count { color: #888; }
+
+        /* === Cost Display === */
+        .cost-cell { font-size: 0.82em; }
+        .cost-model { color: #a855f7; font-size: 0.85em; }
+        .cost-amount { color: #4ade80; font-weight: 600; }
+        .cost-local { color: #888; }
+        .cost-savings { color: #22c55e; font-size: 0.8em; }
+
+        /* === Task Prompt === */
+        .task-prompt {
+          background: #141420; border: 1px solid #2a2a3a; border-radius: 8px;
+          padding: 10px 16px; margin-bottom: 12px;
+          display: flex; align-items: center; gap: 10px;
+        }
+        .task-prompt input[type="text"] {
+          flex: 1; background: #0a0a0f; border: 1px solid #2a2a3a; border-radius: 6px;
+          color: #e0e0e0; padding: 10px 14px; font-size: 0.9em; outline: none;
+          font-family: inherit;
+        }
+        .task-prompt input[type="text"]:focus { border-color: #7eb8da; }
+        .task-prompt input[type="text"]::placeholder { color: #555; }
+        .task-prompt-btn {
+          background: #7eb8da; color: #0a0a0f; border: none; border-radius: 6px;
+          padding: 10px 20px; font-size: 0.85em; font-weight: 600; cursor: pointer;
+          white-space: nowrap; transition: background 0.2s;
+        }
+        .task-prompt-btn:hover { background: #a0d0f0; }
+        .task-prompt-btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+        .task-prompt-token-btn {
+          background: none; border: 1px solid #2a2a3a; border-radius: 6px;
+          color: #888; padding: 10px 12px; font-size: 0.8em; cursor: pointer;
+          white-space: nowrap;
+        }
+        .task-prompt-token-btn:hover { border-color: #7eb8da; color: #7eb8da; }
+        .task-prompt-token-btn.set { color: #4ade80; border-color: rgba(74, 222, 128, 0.4); }
+        .task-prompt-feedback {
+          font-size: 0.8em; padding: 6px 16px 0;
+          transition: opacity 0.3s;
+        }
+        .task-prompt-feedback.success { color: #4ade80; }
+        .task-prompt-feedback.error { color: #ef4444; }
       </style>
     </head>
     <body>
@@ -572,6 +651,15 @@ defmodule AgentCom.Dashboard do
         </div>
         <ul class="health-conditions" id="health-conditions"></ul>
       </div>
+
+      <!-- Task Prompt -->
+      <div class="task-prompt">
+        <input type="text" id="task-input" placeholder="What needs to be done?"
+               onkeydown="if(event.key==='Enter')submitTask()">
+        <button class="task-prompt-btn" id="task-submit-btn" onclick="submitTask()">Submit</button>
+        <button class="task-prompt-token-btn" id="task-token-btn" onclick="promptForToken()">Token</button>
+      </div>
+      <div class="task-prompt-feedback" id="task-feedback"></div>
 
       <!-- Connection Bar -->
       <div class="conn-bar">
@@ -682,8 +770,9 @@ defmodule AgentCom.Dashboard do
                   <th onclick="sortTable('recent-table', 3)">Routing <span class="sort-arrow" id="sort-3"></span></th>
                   <th onclick="sortTable('recent-table', 4)">Duration <span class="sort-arrow" id="sort-4"></span></th>
                   <th onclick="sortTable('recent-table', 5)">Tokens <span class="sort-arrow" id="sort-5"></span></th>
-                  <th onclick="sortTable('recent-table', 6)">Verify <span class="sort-arrow" id="sort-6"></span></th>
-                  <th onclick="sortTable('recent-table', 7)">Completed <span class="sort-arrow active" id="sort-7">&#9660;</span></th>
+                  <th onclick="sortTable('recent-table', 6)">Cost <span class="sort-arrow" id="sort-6"></span></th>
+                  <th onclick="sortTable('recent-table', 7)">Verify <span class="sort-arrow" id="sort-7"></span></th>
+                  <th onclick="sortTable('recent-table', 8)">Completed <span class="sort-arrow active" id="sort-8">&#9660;</span></th>
                 </tr>
               </thead>
               <tbody id="recent-tbody"></tbody>
@@ -711,6 +800,22 @@ defmodule AgentCom.Dashboard do
             </table>
           </div>
           <div class="empty-state" id="dl-empty">No dead-letter tasks</div>
+        </div>
+      </div>
+
+      <!-- Execution Output -->
+      <div class="exec-panel" id="panel-execution">
+        <div class="exec-panel-header" onclick="toggleExecPanel()">
+          <div class="panel-title">Execution Output <span class="panel-count" id="exec-task-count">--</span></div>
+          <button class="exec-panel-toggle" id="exec-toggle-btn">&#9660;</button>
+        </div>
+        <div id="exec-panel-body">
+          <div class="exec-task-label" id="exec-task-label" style="display:none;">
+            <span>Task: <span id="exec-current-task">--</span></span>
+            <span class="exec-model" id="exec-current-model"></span>
+            <span class="exec-tokens-count" id="exec-tokens-count"></span>
+          </div>
+          <div class="exec-output" id="exec-output"></div>
         </div>
       </div>
 
@@ -1660,8 +1765,9 @@ defmodule AgentCom.Dashboard do
               case 3: aVal = getRoutingTier(a); bVal = getRoutingTier(b); break;
               case 4: aVal = a.duration_ms || 0; bVal = b.duration_ms || 0; break;
               case 5: aVal = a.tokens_used || 0; bVal = b.tokens_used || 0; break;
-              case 6: aVal = (a.verification_report || {}).status || ''; bVal = (b.verification_report || {}).status || ''; break;
-              case 7: aVal = a.completed_at || 0; bVal = b.completed_at || 0; break;
+              case 6: aVal = getExecCost(a); bVal = getExecCost(b); break;
+              case 7: aVal = (a.verification_report || {}).status || ''; bVal = (b.verification_report || {}).status || ''; break;
+              case 8: aVal = a.completed_at || 0; bVal = b.completed_at || 0; break;
               default: aVal = 0; bVal = 0;
             }
             if (typeof aVal === 'string') {
@@ -1688,6 +1794,7 @@ defmodule AgentCom.Dashboard do
               '<td>' + renderRoutingCell(c.routing_decision, c.task_id) + '</td>' +
               '<td data-sort="' + (c.duration_ms || 0) + '">' + formatDuration(c.duration_ms) + '</td>' +
               '<td>' + (c.tokens_used || 0) + '</td>' +
+              '<td>' + renderCostCell(c.execution_meta) + '</td>' +
               '<td>' + renderVerifyBadge(c.verification_report) + '</td>' +
               '<td data-sort="' + (c.completed_at || 0) + '">' + timeAgo(c.completed_at) + '</td>' +
               '</tr>';
@@ -1703,7 +1810,7 @@ defmodule AgentCom.Dashboard do
           }
 
           // Update sort arrows
-          for (var i = 0; i <= 7; i++) {
+          for (var i = 0; i <= 8; i++) {
             var arrow = document.getElementById('sort-' + i);
             if (arrow) {
               if (i === colIndex) {
@@ -2057,6 +2164,138 @@ defmodule AgentCom.Dashboard do
         }
 
         // =====================================================================
+        // Execution Output Panel
+        // =====================================================================
+        var execCurrentTaskId = null;
+        var execPanelCollapsed = false;
+
+        function toggleExecPanel() {
+          var body = document.getElementById('exec-panel-body');
+          var btn = document.getElementById('exec-toggle-btn');
+          execPanelCollapsed = !execPanelCollapsed;
+          body.style.display = execPanelCollapsed ? 'none' : 'block';
+          btn.innerHTML = execPanelCollapsed ? '&#9654;' : '&#9660;';
+        }
+
+        function renderExecutionEvent(msg) {
+          var output = document.getElementById('exec-output');
+          var label = document.getElementById('exec-task-label');
+          var taskLabel = document.getElementById('exec-current-task');
+          var modelLabel = document.getElementById('exec-current-model');
+          var tokensLabel = document.getElementById('exec-tokens-count');
+          var countEl = document.getElementById('exec-task-count');
+
+          // If new task, clear output
+          if (msg.task_id && msg.task_id !== execCurrentTaskId) {
+            output.innerHTML = '';
+            execCurrentTaskId = msg.task_id;
+            taskLabel.textContent = msg.task_id;
+            modelLabel.textContent = '';
+            tokensLabel.textContent = '';
+            label.style.display = 'flex';
+            countEl.textContent = msg.task_id;
+          }
+
+          // Update model label if present
+          if (msg.model) {
+            modelLabel.textContent = msg.model;
+          }
+
+          // Update token count if present
+          if (msg.tokens_so_far != null) {
+            tokensLabel.textContent = msg.tokens_so_far + ' tokens';
+          }
+
+          var eventType = msg.event_type || 'stdout';
+          var text = msg.text || '';
+
+          switch (eventType) {
+            case 'token':
+              var span = document.createElement('span');
+              span.className = 'exec-token';
+              span.textContent = text;
+              output.appendChild(span);
+              break;
+            case 'stdout':
+              var span = document.createElement('span');
+              span.className = 'exec-stdout';
+              span.textContent = text;
+              output.appendChild(span);
+              break;
+            case 'stderr':
+              var span = document.createElement('span');
+              span.className = 'exec-stderr';
+              span.textContent = text;
+              output.appendChild(span);
+              break;
+            case 'status':
+              var div = document.createElement('span');
+              div.className = 'exec-status';
+              div.textContent = text;
+              output.appendChild(div);
+              break;
+            case 'error':
+              var div = document.createElement('span');
+              div.className = 'exec-error';
+              div.textContent = text;
+              output.appendChild(div);
+              break;
+            default:
+              var span = document.createElement('span');
+              span.className = 'exec-stdout';
+              span.textContent = text;
+              output.appendChild(span);
+          }
+
+          // Auto-scroll to bottom
+          output.scrollTop = output.scrollHeight;
+        }
+
+        // =====================================================================
+        // Cost Display helpers
+        // =====================================================================
+        function getExecCost(completion) {
+          var meta = completion.execution_meta;
+          if (!meta) return 0;
+          return meta.estimated_cost_usd || 0;
+        }
+
+        function renderCostCell(meta) {
+          if (!meta) return '<span style="color:#555">-</span>';
+
+          var html = '<div class="cost-cell">';
+          var model = meta.model_used || '';
+
+          if (model) {
+            html += '<div class="cost-model" title="' + escapeHtml(model) + '">' + escapeHtml(truncate(model, 20)) + '</div>';
+          }
+
+          var tokIn = meta.tokens_in || 0;
+          var tokOut = meta.tokens_out || 0;
+          if (tokIn || tokOut) {
+            html += '<div style="font-size:0.8em;color:#888">' + tokIn + ' / ' + tokOut + '</div>';
+          }
+
+          var cost = meta.estimated_cost_usd;
+          if (cost != null && cost > 0) {
+            html += '<div class="cost-amount">$' + cost.toFixed(4) + '</div>';
+          } else if (cost === 0 || cost === 0.0) {
+            html += '<div class="cost-local">$0.00 (local)</div>';
+          }
+
+          var saved = meta.equivalent_claude_cost_usd;
+          if (saved != null && saved > 0) {
+            var savings = saved - (cost || 0);
+            if (savings > 0) {
+              html += '<div class="cost-savings">Saved: $' + savings.toFixed(2) + ' vs Claude</div>';
+            }
+          }
+
+          html += '</div>';
+          return html;
+        }
+
+        // =====================================================================
         // LLM Registry
         // =====================================================================
         function renderLlmRegistry(data) {
@@ -2314,6 +2553,9 @@ defmodule AgentCom.Dashboard do
                 case 'llm_endpoint_error':
                   console.warn('LLM endpoint error:', msg.error);
                   break;
+                case 'execution_event':
+                  renderExecutionEvent(msg);
+                  break;
               }
             } catch (e) {
               console.error('Dashboard: failed to parse message', e);
@@ -2440,6 +2682,96 @@ defmodule AgentCom.Dashboard do
             }
           }
         }, 30000);
+        // =====================================================================
+        // Task Submission
+        // =====================================================================
+        (function initTaskPrompt() {
+          var token = localStorage.getItem('agentcom_token');
+          var btn = document.getElementById('task-token-btn');
+          if (token) {
+            btn.classList.add('set');
+            btn.textContent = 'Token \u2713';
+          }
+        })();
+
+        function promptForToken() {
+          var current = localStorage.getItem('agentcom_token') || '';
+          var token = prompt('Enter your AgentCom auth token:', current);
+          if (token === null) return;
+          var btn = document.getElementById('task-token-btn');
+          if (token === '') {
+            localStorage.removeItem('agentcom_token');
+            btn.classList.remove('set');
+            btn.textContent = 'Token';
+          } else {
+            localStorage.setItem('agentcom_token', token);
+            btn.classList.add('set');
+            btn.textContent = 'Token \u2713';
+          }
+        }
+
+        function submitTask() {
+          var input = document.getElementById('task-input');
+          var feedback = document.getElementById('task-feedback');
+          var btn = document.getElementById('task-submit-btn');
+          var description = input.value.trim();
+          if (!description) return;
+
+          var token = localStorage.getItem('agentcom_token');
+          if (!token) {
+            promptForToken();
+            token = localStorage.getItem('agentcom_token');
+            if (!token) return;
+          }
+
+          // Parse priority prefix (e.g. "urgent: fix the bug")
+          var priority = 'normal';
+          var prefixMatch = description.match(/^(urgent|critical|low|high):\\s*/i);
+          if (prefixMatch) {
+            priority = prefixMatch[1].toLowerCase();
+            description = description.slice(prefixMatch[0].length);
+          }
+
+          btn.disabled = true;
+          btn.textContent = 'Sending...';
+          feedback.textContent = '';
+          feedback.className = 'task-prompt-feedback';
+
+          fetch('/api/tasks', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({ description: description, priority: priority })
+          }).then(function(res) {
+            return res.json().then(function(data) { return { status: res.status, data: data }; });
+          }).then(function(result) {
+            btn.disabled = false;
+            btn.textContent = 'Submit';
+            if (result.status === 201) {
+              input.value = '';
+              feedback.className = 'task-prompt-feedback success';
+              feedback.textContent = 'Queued: ' + result.data.task_id + (priority !== 'normal' ? ' (' + priority + ')' : '');
+              setTimeout(function() { feedback.textContent = ''; }, 5000);
+            } else if (result.status === 401) {
+              feedback.className = 'task-prompt-feedback error';
+              feedback.textContent = 'Invalid token. Click Token to update.';
+              localStorage.removeItem('agentcom_token');
+              var tbtn = document.getElementById('task-token-btn');
+              tbtn.classList.remove('set');
+              tbtn.textContent = 'Token';
+            } else {
+              feedback.className = 'task-prompt-feedback error';
+              feedback.textContent = 'Error: ' + (result.data.error || 'HTTP ' + result.status);
+            }
+          }).catch(function(err) {
+            btn.disabled = false;
+            btn.textContent = 'Submit';
+            feedback.className = 'task-prompt-feedback error';
+            feedback.textContent = 'Network error: ' + err.message;
+          });
+        }
       </script>
     </body>
     </html>
