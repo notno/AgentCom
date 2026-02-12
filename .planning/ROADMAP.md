@@ -170,10 +170,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 16-01-PLAN.md -- ExDoc configuration + architecture overview with Mermaid diagrams
-- [ ] 16-02-PLAN.md -- Setup guide (prerequisites, hub start, agent onboarding, smoke test)
-- [ ] 16-03-PLAN.md -- Daily operations + troubleshooting (dashboard, metrics, logs, symptom-based failure diagnosis)
-- [ ] 16-04-PLAN.md -- Gap closure: inject Mermaid.js CDN via before_closing_body_tag for diagram rendering
+- [x] 16-01-PLAN.md -- ExDoc configuration + architecture overview with Mermaid diagrams
+- [x] 16-02-PLAN.md -- Setup guide (prerequisites, hub start, agent onboarding, smoke test)
+- [x] 16-03-PLAN.md -- Daily operations + troubleshooting (dashboard, metrics, logs, symptom-based failure diagnosis)
+- [x] 16-04-PLAN.md -- Gap closure: inject Mermaid.js CDN via before_closing_body_tag for diagram rendering
 
 ## Progress
 
@@ -190,4 +190,4 @@ Phases execute in numeric order: 9 -> 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16
 | 13. Structured Logging + Telemetry | v1.1 | 4/4 | Complete | 2026-02-12 |
 | 14. Metrics + Alerting | v1.1 | 4/4 | Complete | 2026-02-12 |
 | 15. Rate Limiting | v1.1 | 4/4 | Complete | 2026-02-12 |
-| 16. Operations Documentation | v1.1 | 3/4 | Gap Closure | 2026-02-12 |
+| 16. Operations Documentation | v1.1 | 4/4 | Complete | 2026-02-12 |
