@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-11)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.1 Hardening -- Phase 12 Input Validation (complete)
+**Current focus:** v1.1 Hardening -- Phase 13 Structured Logging (in progress)
 
 ## Current Position
 
-Phase: 12-input-validation
-Plan: 3 of 3 complete
-Status: Phase 12 complete
-Last activity: 2026-02-12 -- Completed 12-03-PLAN.md (dashboard validation metrics and test suite)
+Phase: 13-structured-logging
+Plan: 1 of 4 complete
+Status: Executing
+Last activity: 2026-02-12 -- Completed 13-01-PLAN.md (logging infrastructure and telemetry module)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 16 (v1.1)
+- Total plans completed: 17 (v1.1)
 - Average duration: 5 min
-- Total execution time: 1.3 hours
+- Total execution time: 1.4 hours
 
 **By Phase:**
 
@@ -29,9 +29,10 @@ Last activity: 2026-02-12 -- Completed 12-03-PLAN.md (dashboard validation metri
 | 10-dets-backup | 3 | 8 min | 3 min |
 | 11-dets-compaction | 3 | 15 min | 5 min |
 | 12-input-validation | 3 | 13 min | 4 min |
+| 13-structured-logging | 1 | 8 min | 8 min |
 
 **Recent Trend:**
-- Last 5 plans: 12-03 (5 min), 12-02 (4 min), 12-01 (4 min), 11-03 (5 min), 11-02 (5 min)
+- Last 5 plans: 13-01 (8 min), 12-03 (5 min), 12-02 (4 min), 12-01 (4 min), 11-03 (5 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -89,6 +90,9 @@ Recent decisions affecting current work:
 - [Phase 12-03]: Validation failure ring buffer capped at 50, disconnects at 20
 - [Phase 12-03]: Health warning threshold: >50 validation failures per hour
 - [Phase 12-03]: Empty string agent_id passes schema validation (endpoint handles emptiness)
+- [Phase 13-01]: Tuple config format {Module, opts} in config.exs -- Module.new/1 unavailable at config eval time
+- [Phase 13-01]: File handler added programmatically via :logger.add_handler in Application.start (Config.config/2 requires keyword lists)
+- [Phase 13-01]: RedactKeys takes plain list of key strings, not keyword list
 
 ### Pending Todos
 
@@ -106,5 +110,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 12-03-PLAN.md (dashboard validation metrics and test suite). Phase 12 complete (3/3 plans).
+Stopped at: Completed 13-01-PLAN.md (logging infrastructure and telemetry module). Phase 13 in progress (1/4 plans).
 Resume file: None
