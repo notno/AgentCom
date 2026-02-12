@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-11)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.1 Hardening -- Phase 15 Rate Limiting in progress
+**Current focus:** v1.1 Hardening -- Phase 16 Operations Docs in progress
 
 ## Current Position
 
-Phase: 15-rate-limiting
-Plan: 2 of 4 complete
+Phase: 16-operations-docs
+Plan: 1 of 3 complete
 Status: In Progress
-Last activity: 2026-02-12 -- Completed 15-02-PLAN.md (Rate limit integration into WS, HTTP, Scheduler)
+Last activity: 2026-02-12 -- Completed 16-01-PLAN.md (ExDoc + architecture overview)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 26 (v1.1)
-- Average duration: 6 min
-- Total execution time: 2.30 hours
+- Total plans completed: 28 (v1.1)
+- Average duration: 5 min
+- Total execution time: 2.40 hours
 
 **By Phase:**
 
@@ -31,10 +31,11 @@ Last activity: 2026-02-12 -- Completed 15-02-PLAN.md (Rate limit integration int
 | 12-input-validation | 3 | 13 min | 4 min |
 | 13-structured-logging | 4 | 38 min | 10 min |
 | 14-metrics-alerting | 4 | 17 min | 4 min |
-| 15-rate-limiting | 2 | 15 min | 8 min |
+| 15-rate-limiting | 3 | 19 min | 6 min |
+| 16-operations-docs | 1 | 5 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 15-02 (11 min), 15-01 (4 min), 14-04 (4 min), 14-03 (4 min), 14-02 (4 min)
+- Last 5 plans: 16-01 (5 min), 15-03 (5 min), 15-02 (11 min), 15-01 (4 min), 14-04 (4 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -135,6 +136,8 @@ Recent decisions affecting current work:
 - [Phase 15]: [Phase 15-02]: HTTP warn path is no-op (allow) -- no bidirectional warning channel for HTTP
 - [Phase 15]: [Phase 15-02]: IP-based rate limiting fallback for unauthenticated HTTP routes
 - [Phase 15]: [Phase 15-02]: Exempt endpoints: /health, /dashboard, /ws, /api/schemas -- critical infrastructure
+- [Phase 16-01]: ExDoc main page set to architecture (not setup) -- provides system context before procedures
+- [Phase 16-01]: Placeholder extras for future plans -- ExDoc requires all referenced files to exist at generation time
 
 ### Pending Todos
 
@@ -158,5 +161,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 15-02-PLAN.md (Rate limit integration into WS, HTTP, Scheduler). Phase 15 in progress (2/4 plans).
+Stopped at: Completed 16-01-PLAN.md (ExDoc + architecture overview). Phase 16 in progress (1/3 plans).
 Resume file: None
