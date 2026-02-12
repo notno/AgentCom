@@ -10,6 +10,7 @@ defmodule Smoke.BasicTest do
   """
 
   use ExUnit.Case, async: false
+  @moduletag :smoke
 
   @task_count 10
 

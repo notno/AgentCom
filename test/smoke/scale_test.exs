@@ -9,6 +9,7 @@ defmodule Smoke.ScaleTest do
   """
 
   use ExUnit.Case, async: false
+  @moduletag :smoke
 
   setup do
     Smoke.Setup.reset_all()

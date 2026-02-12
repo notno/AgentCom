@@ -10,6 +10,7 @@ defmodule Smoke.FailureTest do
   """
 
   use ExUnit.Case, async: false
+  @moduletag :smoke
 
   setup do
     # Clean slate

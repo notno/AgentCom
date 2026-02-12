@@ -15,4 +15,4 @@ for helper <- Enum.sort(support_helpers) do
   Code.require_file(helper)
 end
 
-ExUnit.start(exclude: [:skip], capture_log: true)
+ExUnit.start(exclude: [:skip, :smoke], capture_log: true)
