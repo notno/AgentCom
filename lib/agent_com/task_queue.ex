@@ -225,7 +225,14 @@ defmodule AgentCom.TaskQueue do
       submitted_by: submitted_by,
       created_at: now,
       updated_at: now,
-      history: [{:queued, now, "submitted"}]
+      history: [{:queued, now, "submitted"}],
+      # Enrichment fields (Phase 17)
+      repo: Map.get(params, :repo, Map.get(params, "repo", nil)),
+      branch: Map.get(params, :branch, Map.get(params, "branch", nil)),
+      file_hints: Map.get(params, :file_hints, Map.get(params, "file_hints", [])),
+      success_criteria: Map.get(params, :success_criteria, Map.get(params, "success_criteria", [])),
+      verification_steps: Map.get(params, :verification_steps, Map.get(params, "verification_steps", [])),
+      complexity: nil
     }
 
     persist_task(task, @tasks_table)

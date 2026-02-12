@@ -860,25 +860,44 @@ defmodule AgentCom.Endpoint do
 
         case Validation.validate_http(:post_task, params) do
           {:ok, _} ->
-            description = params["description"]
-            task_params = %{
-              description: description,
-              priority: params["priority"] || "normal",
-              metadata: params["metadata"] || %{},
-              max_retries: params["max_retries"] || 3,
-              complete_by: params["complete_by"],
-              needed_capabilities: params["needed_capabilities"] || [],
-              submitted_by: agent_id
-            }
+            case Validation.validate_enrichment_fields(params) do
+              {:ok, _} ->
+                description = params["description"]
+                task_params = %{
+                  description: description,
+                  priority: params["priority"] || "normal",
+                  metadata: params["metadata"] || %{},
+                  max_retries: params["max_retries"] || 3,
+                  complete_by: params["complete_by"],
+                  needed_capabilities: params["needed_capabilities"] || [],
+                  submitted_by: agent_id,
+                  repo: params["repo"],
+                  branch: params["branch"],
+                  file_hints: params["file_hints"] || [],
+                  success_criteria: params["success_criteria"] || [],
+                  verification_steps: params["verification_steps"] || []
+                }
 
-            case AgentCom.TaskQueue.submit(task_params) do
-              {:ok, task} ->
-                send_json(conn, 201, %{
-                  "status" => "queued",
-                  "task_id" => task.id,
-                  "priority" => task.priority,
-                  "created_at" => task.created_at
-                })
+                case AgentCom.TaskQueue.submit(task_params) do
+                  {:ok, task} ->
+                    warnings = case Validation.verify_step_soft_limit(params) do
+                      :ok -> []
+                      {:warn, msg} -> [msg]
+                    end
+
+                    response = %{
+                      "status" => "queued",
+                      "task_id" => task.id,
+                      "priority" => task.priority,
+                      "created_at" => task.created_at
+                    }
+
+                    response = if warnings != [], do: Map.put(response, "warnings", warnings), else: response
+                    send_json(conn, 201, response)
+                end
+
+              {:error, errors} ->
+                send_validation_error(conn, errors)
             end
 
           {:error, errors} ->
@@ -1286,7 +1305,32 @@ defmodule AgentCom.Endpoint do
         {event, timestamp, details} ->
           %{"event" => to_string(event), "timestamp" => timestamp, "details" => format_details(details)}
         other -> other
-      end)
+      end),
+      "repo" => Map.get(task, :repo),
+      "branch" => Map.get(task, :branch),
+      "file_hints" => Map.get(task, :file_hints, []),
+      "success_criteria" => Map.get(task, :success_criteria, []),
+      "verification_steps" => Map.get(task, :verification_steps, []),
+      "complexity" => format_complexity(Map.get(task, :complexity))
+    }
+  end
+
+  defp format_complexity(nil), do: nil
+  defp format_complexity(c) when is_map(c) do
+    %{
+      "effective_tier" => to_string(Map.get(c, :effective_tier)),
+      "explicit_tier" => case Map.get(c, :explicit_tier) do
+        nil -> nil
+        t -> to_string(t)
+      end,
+      "source" => to_string(Map.get(c, :source)),
+      "inferred" => case Map.get(c, :inferred) do
+        nil -> nil
+        inf -> %{
+          "tier" => to_string(Map.get(inf, :tier)),
+          "confidence" => Map.get(inf, :confidence)
+        }
+      end
     }
   end
 

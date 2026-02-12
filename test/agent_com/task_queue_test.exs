@@ -451,6 +451,75 @@ defmodule AgentCom.TaskQueueTest do
   end
 
   # ---------------------------------------------------------------------------
+  # Enriched task submission
+  # ---------------------------------------------------------------------------
+
+  describe "enriched task submission" do
+    test "submit with all enrichment fields stores them and are retrievable via get/1" do
+      file_hints = [
+        %{"path" => "src/main.ex", "reason" => "entry point"},
+        %{"path" => "test/main_test.exs"}
+      ]
+
+      success_criteria = ["All tests pass", "No warnings"]
+
+      verification_steps = [
+        %{"type" => "test_passes", "target" => "mix test", "description" => "Run tests"},
+        %{"type" => "file_exists", "target" => "src/main.ex"}
+      ]
+
+      {:ok, task} =
+        TaskQueue.submit(%{
+          description: "enriched task",
+          repo: "https://github.com/org/repo",
+          branch: "feature/branch",
+          file_hints: file_hints,
+          success_criteria: success_criteria,
+          verification_steps: verification_steps
+        })
+
+      assert task.repo == "https://github.com/org/repo"
+      assert task.branch == "feature/branch"
+      assert task.file_hints == file_hints
+      assert task.success_criteria == success_criteria
+      assert task.verification_steps == verification_steps
+      assert task.complexity == nil
+
+      # Verify persisted and retrievable
+      {:ok, fetched} = TaskQueue.get(task.id)
+      assert fetched.repo == "https://github.com/org/repo"
+      assert fetched.branch == "feature/branch"
+      assert fetched.file_hints == file_hints
+      assert fetched.success_criteria == success_criteria
+      assert fetched.verification_steps == verification_steps
+    end
+
+    test "submit without enrichment fields uses defaults (backward compat)" do
+      {:ok, task} = TaskQueue.submit(%{description: "plain task"})
+
+      assert task.repo == nil
+      assert task.branch == nil
+      assert task.file_hints == []
+      assert task.success_criteria == []
+      assert task.verification_steps == []
+      assert task.complexity == nil
+    end
+
+    test "old-format tasks (missing enrichment keys) work with Map.get defaults" do
+      {:ok, task} = TaskQueue.submit(%{description: "old format test"})
+      {:ok, fetched} = TaskQueue.get(task.id)
+
+      # Simulate reading enrichment fields from a task that might lack them
+      assert Map.get(fetched, :repo) == nil
+      assert Map.get(fetched, :branch) == nil
+      assert Map.get(fetched, :file_hints, []) == []
+      assert Map.get(fetched, :success_criteria, []) == []
+      assert Map.get(fetched, :verification_steps, []) == []
+      assert Map.get(fetched, :complexity) == nil
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Helper
   # ---------------------------------------------------------------------------
 
