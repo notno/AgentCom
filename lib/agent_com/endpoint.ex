@@ -44,6 +44,8 @@ defmodule AgentCom.Endpoint do
   - POST   /api/onboard/register — Register new agent, get token (no auth)
   - GET    /api/config/default-repo — Get default repository URL (no auth)
   - PUT    /api/config/default-repo — Set default repository URL (auth required)
+  - GET    /api/metrics          — System metrics (queue depth, latency, utilization, errors)
+  - GET    /api/alerts           — Active alerts (placeholder for plan 02)
   - GET    /api/schemas           — Schema discovery (no auth)
   - WS     /ws                   — WebSocket for agent connections
   """
@@ -896,6 +898,13 @@ defmodule AgentCom.Endpoint do
           send_json(conn, 404, %{"error" => "task_not_found", "task_id" => task_id})
       end
     end
+  end
+
+  # --- Metrics API (no auth -- same visibility as dashboard) ---
+
+  get "/api/metrics" do
+    snapshot = AgentCom.MetricsCollector.snapshot()
+    send_json(conn, 200, snapshot)
   end
 
   # --- Dashboard API (no auth -- local network only) ---

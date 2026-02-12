@@ -38,6 +38,7 @@ defmodule AgentCom.Application do
       {AgentCom.AgentSupervisor, []},
       {AgentCom.TaskQueue, []},
       {AgentCom.Scheduler, []},
+      {AgentCom.MetricsCollector, []},
       {AgentCom.DashboardState, []},
       {AgentCom.DashboardNotifier, []},
       {AgentCom.DetsBackup, []},
