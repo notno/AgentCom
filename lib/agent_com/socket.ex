@@ -459,6 +459,41 @@ defmodule AgentCom.Socket do
     end
   end
 
+  # --- LLM Registry: Sidecar auto-reporting ---
+
+  # Sidecar auto-reports local Ollama endpoint
+  defp handle_msg(%{"type" => "ollama_report", "ollama_url" => url}, state) when is_binary(url) do
+    uri = URI.parse(url)
+    host = uri.host || "localhost"
+    port = uri.port || 11434
+
+    AgentCom.LlmRegistry.register_endpoint(%{
+      host: host,
+      port: port,
+      name: "#{state.agent_id}-local",
+      source: :auto
+    })
+
+    reply = Jason.encode!(%{type: "ollama_report_ack", status: "registered"})
+    {:push, {:text, reply}, state}
+  end
+
+  # Sidecar reports host resource metrics
+  defp handle_msg(%{"type" => "resource_report"} = msg, state) do
+    metrics = %{
+      cpu_percent: msg["cpu_percent"],
+      ram_used_bytes: msg["ram_used_bytes"],
+      ram_total_bytes: msg["ram_total_bytes"],
+      vram_used_bytes: msg["vram_used_bytes"],
+      vram_total_bytes: msg["vram_total_bytes"]
+    }
+
+    AgentCom.LlmRegistry.report_resources(state.agent_id, metrics)
+
+    # No reply needed -- fire and forget like task_progress
+    {:ok, state}
+  end
+
   defp handle_msg(_unknown, state) do
     reply_error("unknown_message_type", state)
   end
@@ -502,6 +537,19 @@ defmodule AgentCom.Socket do
 
     # Track analytics
     AgentCom.Analytics.record_connect(agent_id)
+
+    # Auto-register Ollama endpoint if sidecar reports one during identify
+    if ollama_url = msg["ollama_url"] do
+      uri = URI.parse(ollama_url)
+      host = uri.host || "localhost"
+      port = uri.port || 11434
+      AgentCom.LlmRegistry.register_endpoint(%{
+        host: host,
+        port: port,
+        name: "#{agent_id}-local",
+        source: :auto
+      })
+    end
 
     new_state = %{state | agent_id: agent_id, identified: true}
     reply = Jason.encode!(%{"type" => "identified", "agent_id" => agent_id})

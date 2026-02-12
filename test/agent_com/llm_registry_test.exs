@@ -9,29 +9,16 @@ defmodule AgentCom.LlmRegistryTest do
     File.mkdir_p!(tmp_dir)
     Application.put_env(:agent_com, :llm_registry_data_dir, tmp_dir)
 
-    # Stop LlmRegistry if running, then start fresh
-    case GenServer.whereis(LlmRegistry) do
-      nil -> :ok
-      _pid -> GenServer.stop(LlmRegistry, :normal, 5_000)
-    end
+    # Stop and restart LlmRegistry via supervisor so it picks up the new data dir
+    Supervisor.terminate_child(AgentCom.Supervisor, AgentCom.LlmRegistry)
+    Supervisor.restart_child(AgentCom.Supervisor, AgentCom.LlmRegistry)
 
-    # Delete ETS table if it exists from a previous test
-    try do
-      :ets.delete(:llm_resource_metrics)
-    rescue
-      ArgumentError -> :ok
-    end
-
-    {:ok, pid} = LlmRegistry.start_link([])
+    pid = Process.whereis(LlmRegistry)
 
     on_exit(fn ->
-      if Process.alive?(pid), do: GenServer.stop(pid, :normal, 5_000)
-
-      try do
-        :ets.delete(:llm_resource_metrics)
-      rescue
-        ArgumentError -> :ok
-      end
+      # Restart LlmRegistry cleanly via supervisor for next test
+      Supervisor.terminate_child(AgentCom.Supervisor, AgentCom.LlmRegistry)
+      Supervisor.restart_child(AgentCom.Supervisor, AgentCom.LlmRegistry)
 
       File.rm_rf!(tmp_dir)
     end)
@@ -262,16 +249,9 @@ defmodule AgentCom.LlmRegistryTest do
     test "endpoints survive GenServer restart" do
       {:ok, _} = LlmRegistry.register_endpoint(%{host: "persist-host", port: 11434, source: :manual})
 
-      # Stop and restart
-      GenServer.stop(LlmRegistry, :normal, 5_000)
-
-      try do
-        :ets.delete(:llm_resource_metrics)
-      rescue
-        ArgumentError -> :ok
-      end
-
-      {:ok, _} = LlmRegistry.start_link([])
+      # Stop and restart via supervisor
+      Supervisor.terminate_child(AgentCom.Supervisor, AgentCom.LlmRegistry)
+      Supervisor.restart_child(AgentCom.Supervisor, AgentCom.LlmRegistry)
 
       endpoints = LlmRegistry.list_endpoints()
       assert length(endpoints) == 1

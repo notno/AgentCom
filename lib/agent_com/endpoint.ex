@@ -56,6 +56,11 @@ defmodule AgentCom.Endpoint do
   - PUT    /api/admin/rate-limits/whitelist — Replace entire whitelist (auth required)
   - POST   /api/admin/rate-limits/whitelist — Add agent to whitelist (auth required)
   - DELETE /api/admin/rate-limits/whitelist/:agent_id — Remove agent from whitelist (auth required)
+  - GET    /api/admin/llm-registry           — List all LLM endpoints (auth required)
+  - GET    /api/admin/llm-registry/snapshot — Full registry snapshot with resources and models (auth required)
+  - GET    /api/admin/llm-registry/:id     — Get single LLM endpoint (auth required)
+  - POST   /api/admin/llm-registry         — Register an Ollama endpoint (auth required)
+  - DELETE /api/admin/llm-registry/:id     — Remove an LLM endpoint (auth required)
   - GET    /api/schemas           — Schema discovery (no auth)
   - WS     /ws                   — WebSocket for agent connections
   """
@@ -1159,6 +1164,73 @@ defmodule AgentCom.Endpoint do
     else
       AgentCom.RateLimiter.remove_override(agent_id)
       send_json(conn, 200, %{"status" => "removed", "agent_id" => agent_id})
+    end
+  end
+
+  # --- Admin: LLM Registry routes (auth required) ---
+
+  get "/api/admin/llm-registry" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      endpoints = AgentCom.LlmRegistry.list_endpoints()
+      send_json(conn, 200, %{endpoints: endpoints})
+    end
+  end
+
+  # IMPORTANT: /snapshot MUST be defined BEFORE /:id to avoid "snapshot" being captured as :id
+  get "/api/admin/llm-registry/snapshot" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      snapshot = AgentCom.LlmRegistry.snapshot()
+      send_json(conn, 200, snapshot)
+    end
+  end
+
+  get "/api/admin/llm-registry/:id" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case AgentCom.LlmRegistry.get_endpoint(id) do
+        {:ok, endpoint} -> send_json(conn, 200, endpoint)
+        {:error, :not_found} -> send_json(conn, 404, %{error: "endpoint_not_found"})
+      end
+    end
+  end
+
+  post "/api/admin/llm-registry" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      body = conn.body_params
+      params = %{
+        host: body["host"],
+        port: body["port"] || 11434,
+        name: body["name"] || "#{body["host"]}:#{body["port"] || 11434}",
+        source: :manual
+      }
+
+      case AgentCom.LlmRegistry.register_endpoint(params) do
+        {:ok, endpoint} -> send_json(conn, 201, endpoint)
+        {:error, reason} -> send_json(conn, 400, %{error: to_string(reason)})
+      end
+    end
+  end
+
+  delete "/api/admin/llm-registry/:id" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case AgentCom.LlmRegistry.remove_endpoint(id) do
+        :ok -> send_json(conn, 200, %{status: "removed", id: id})
+        {:error, :not_found} -> send_json(conn, 404, %{error: "endpoint_not_found"})
+      end
     end
   end
 

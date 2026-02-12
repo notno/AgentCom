@@ -31,12 +31,14 @@ defmodule AgentCom.TestHelpers.DetsHelpers do
     Application.put_env(:agent_com, :channels_path, Path.join(tmp_dir, "channels"))
     Application.put_env(:agent_com, :config_data_dir, Path.join(tmp_dir, "config"))
     Application.put_env(:agent_com, :threads_data_dir, Path.join(tmp_dir, "threads"))
+    Application.put_env(:agent_com, :llm_registry_data_dir, Path.join(tmp_dir, "llm_registry"))
 
     # Ensure subdirectories exist
     File.mkdir_p!(Path.join(tmp_dir, "task_queue"))
     File.mkdir_p!(Path.join(tmp_dir, "channels"))
     File.mkdir_p!(Path.join(tmp_dir, "config"))
     File.mkdir_p!(Path.join(tmp_dir, "threads"))
+    File.mkdir_p!(Path.join(tmp_dir, "llm_registry"))
 
     tmp_dir
   end
@@ -58,16 +60,25 @@ defmodule AgentCom.TestHelpers.DetsHelpers do
       AgentCom.Channels,
       AgentCom.Threads,
       AgentCom.Config,
-      AgentCom.Auth
+      AgentCom.Auth,
+      AgentCom.LlmRegistry
     ]
 
     for child <- stop_order do
-      Supervisor.terminate_child(AgentCom.Supervisor, child)
+      try do
+        Supervisor.terminate_child(AgentCom.Supervisor, child)
+      catch
+        :exit, _ -> :ok
+      end
     end
 
     # Restart in reverse order: data stores first, then consumers
     for child <- Enum.reverse(stop_order) do
-      Supervisor.restart_child(AgentCom.Supervisor, child)
+      try do
+        Supervisor.restart_child(AgentCom.Supervisor, child)
+      catch
+        :exit, _ -> :ok
+      end
     end
 
     :ok

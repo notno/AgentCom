@@ -48,6 +48,7 @@ defmodule AgentCom.Application do
       {AgentCom.MetricsCollector, []},
       {AgentCom.Alerter, []},
       {AgentCom.RateLimiter.Sweeper, []},
+      {AgentCom.LlmRegistry, []},
       {AgentCom.DashboardState, []},
       {AgentCom.DashboardNotifier, []},
       {AgentCom.DetsBackup, []},
