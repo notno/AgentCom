@@ -19,7 +19,7 @@ Progress: [██░░░░░░░░] 20%
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 55 (19 v1.0 + 32 v1.1 + 4 v1.2)
+- Total plans completed: 56 (19 v1.0 + 32 v1.1 + 5 v1.2)
 - Average duration: 5 min
 - Total execution time: 3.8 hours
 
@@ -37,13 +37,14 @@ Progress: [██░░░░░░░░] 20%
 | 16-operations-docs | 4 | 14 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 17-03 (4 min), 17-02 (4 min), 17-01 (4 min), 16-04 (1 min), 16-03 (5 min)
+- Last 5 plans: 18-02 (2 min), 18-01 (4 min), 17-03 (4 min), 17-02 (4 min), 17-01 (4 min)
 - Trend: Stable
 
 *Updated after each plan completion*
 | Phase 17 P01 | 4min | 1 task (TDD) | 2 files |
 | Phase 17 P02 | 4min | 2 tasks | 6 files |
 | Phase 17 P03 | 4min | 2 tasks | 6 files |
+| Phase 18 P01 | 4min | 1 task (TDD) | 2 files |
 | Phase 18 P02 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
@@ -63,6 +64,11 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - 17-03: Complexity.build called for every submission (heuristic always runs for observability)
 - 17-03: Enrichment fields propagated with additive-only pattern and safe defaults at every pipeline stage
 - 17-03: TaskQueue emits disagreement telemetry with task_id context for pipeline-level observability
+- 18-01: 30s health check interval matching sidecar heartbeat cadence
+- 18-01: 2 consecutive failures before marking unhealthy (tolerance for transient blips)
+- 18-01: Immediate recovery on first successful health check (no probation)
+- 18-01: host:port as canonical endpoint ID for deduplication across auto/manual registration
+- 18-01: report_resources/get_resources bypass GenServer for ETS direct read/write (zero-cost)
 - 18-02: CPU percent from os.loadavg[0] / core count (simple, cross-platform, 1-min average)
 - 18-02: VRAM from Ollama /api/ps size_vram sum (no nvidia-smi dependency)
 - 18-02: Separate resource_report WS message type rather than piggybacking on ping
