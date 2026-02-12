@@ -30,6 +30,8 @@ defmodule AgentCom.Channels do
 
   @impl true
   def init(_opts) do
+    Logger.metadata(module: __MODULE__)
+
     channels_path = dets_path("channels") |> String.to_charlist()
     history_path = dets_path("channel_history") |> String.to_charlist()
     File.mkdir_p!(Path.dirname(dets_path("channels")))
@@ -112,7 +114,7 @@ defmodule AgentCom.Channels do
   def handle_call({:subscribe, channel, agent_id}, _from, state) do
     case :dets.lookup(@table, channel) do
       {:error, reason} ->
-        Logger.error("DETS corruption detected in #{@table}: #{inspect(reason)}")
+        Logger.error("dets_corruption_detected", table: @table, reason: inspect(reason))
         GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @table, reason})
         {:reply, {:error, :table_corrupted}, state}
 
@@ -148,7 +150,7 @@ defmodule AgentCom.Channels do
   def handle_call({:publish, channel, msg}, _from, state) do
     case :dets.lookup(@table, channel) do
       {:error, reason} ->
-        Logger.error("DETS corruption detected in #{@table}: #{inspect(reason)}")
+        Logger.error("dets_corruption_detected", table: @table, reason: inspect(reason))
         GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @table, reason})
         {:reply, {:error, :table_corrupted}, state}
 

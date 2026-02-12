@@ -74,6 +74,8 @@ defmodule AgentCom.Socket do
 
   @behaviour WebSock
 
+  require Logger
+
   alias AgentCom.{Message, Presence, Router, Validation}
   alias AgentCom.Validation.ViolationTracker
 
@@ -81,11 +83,15 @@ defmodule AgentCom.Socket do
 
   @impl true
   def init(_opts) do
+    Logger.metadata(module: __MODULE__)
     {:ok, %__MODULE__{agent_id: nil, identified: false}}
   end
 
   @impl true
   def handle_in({text, [opcode: :text]}, state) do
+    request_id = Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
+    Logger.metadata(request_id: request_id)
+
     case Jason.decode(text) do
       {:ok, msg} ->
         case Validation.validate_ws_message(msg) do
@@ -398,6 +404,8 @@ defmodule AgentCom.Socket do
   # — Identity —
 
   defp do_identify(agent_id, msg, state) do
+    Logger.metadata(agent_id: agent_id)
+
     name = Map.get(msg, "name", agent_id)
     status = Map.get(msg, "status", "connected")
     capabilities = Map.get(msg, "capabilities", [])
@@ -441,8 +449,7 @@ defmodule AgentCom.Socket do
   # — Helpers —
 
   defp log_task_event(agent_id, event, task_id, msg) do
-    require Logger
-    Logger.info("Task event: #{event} from #{agent_id} for task #{task_id}")
+    Logger.info(event, task_id: task_id, agent_id: agent_id, payload_type: Map.get(msg, "type"))
     # Broadcast to PubSub for future dashboard/monitoring consumption
     Phoenix.PubSub.broadcast(AgentCom.PubSub, "tasks", {:task_event, %{
       agent_id: agent_id,

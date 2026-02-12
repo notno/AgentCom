@@ -31,6 +31,8 @@ defmodule AgentCom.Config do
 
   @impl true
   def init(_opts) do
+    Logger.metadata(module: __MODULE__)
+
     dets_path = Path.join(data_dir(), "config.dets") |> String.to_charlist()
     {:ok, @table} = :dets.open_file(@table, file: dets_path, type: :set)
     {:ok, %{table: @table}}
@@ -43,7 +45,7 @@ defmodule AgentCom.Config do
         [{^key, val}] -> val
         [] -> Map.get(@defaults, key)
         {:error, reason} ->
-          Logger.error("DETS corruption detected in #{@table}: #{inspect(reason)}")
+          Logger.error("dets_corruption_detected", table: @table, reason: inspect(reason))
           GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @table, reason})
           Map.get(@defaults, key)
       end
@@ -59,7 +61,7 @@ defmodule AgentCom.Config do
         {:reply, :ok, state}
 
       {:error, reason} ->
-        Logger.error("DETS corruption detected in #{@table}: #{inspect(reason)}")
+        Logger.error("dets_corruption_detected", table: @table, reason: inspect(reason))
         GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @table, reason})
         {:reply, {:error, :table_corrupted}, state}
     end

@@ -45,6 +45,8 @@ defmodule AgentCom.Threads do
 
   @impl true
   def init(_opts) do
+    Logger.metadata(module: __MODULE__)
+
     msg_path = dets_path("thread_messages")
     rep_path = dets_path("thread_replies")
     {:ok, @messages_table} = :dets.open_file(@messages_table, file: msg_path, type: :set)
@@ -64,7 +66,7 @@ defmodule AgentCom.Threads do
               [{_, existing}] -> existing
               [] -> []
               {:error, reason} ->
-                Logger.error("DETS corruption detected in #{@replies_table}: #{inspect(reason)}")
+                Logger.error("dets_corruption_detected", table: @replies_table, reason: inspect(reason))
                 GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @replies_table, reason})
                 []
             end
@@ -73,7 +75,7 @@ defmodule AgentCom.Threads do
             case :dets.insert(@replies_table, {msg.reply_to, children ++ [msg.id]}) do
               :ok -> :ok
               {:error, reason} ->
-                Logger.error("DETS corruption detected in #{@replies_table}: #{inspect(reason)}")
+                Logger.error("dets_corruption_detected", table: @replies_table, reason: inspect(reason))
                 GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @replies_table, reason})
             end
           end
@@ -84,7 +86,7 @@ defmodule AgentCom.Threads do
         {:noreply, state}
 
       {:error, reason} ->
-        Logger.error("DETS corruption detected in #{@messages_table}: #{inspect(reason)}")
+        Logger.error("dets_corruption_detected", table: @messages_table, reason: inspect(reason))
         GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @messages_table, reason})
         {:noreply, state}
     end

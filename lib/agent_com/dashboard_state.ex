@@ -48,6 +48,8 @@ defmodule AgentCom.DashboardState do
 
   @impl true
   def init(_opts) do
+    Logger.metadata(module: __MODULE__)
+
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "tasks")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "presence")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "backups")
@@ -67,7 +69,7 @@ defmodule AgentCom.DashboardState do
       validation_disconnects: []
     }
 
-    Logger.info("DashboardState: started, subscribed to tasks, presence, and validation topics")
+    Logger.info("started", topics: ["tasks", "presence", "backups", "validation"])
 
     {:ok, state}
   end
@@ -227,20 +229,20 @@ defmodule AgentCom.DashboardState do
   end
 
   def handle_info({:compaction_failed, info}, state) do
-    Logger.warning("DetsBackup: compaction failures detected: #{inspect(info[:failures] || info.failures)}")
+    Logger.warning("compaction_failures_detected", failures: inspect(info[:failures] || info.failures))
     {:noreply, state}
   end
 
   def handle_info({:recovery_complete, info}, state) do
     trigger = info[:trigger] || :unknown
     table = info[:table] || :unknown
-    Logger.info("DetsBackup: recovery complete for #{table} (trigger: #{trigger})")
+    Logger.info("recovery_complete", table: table, trigger: trigger)
     {:noreply, state}
   end
 
   def handle_info({:recovery_failed, info}, state) do
     table = info[:table] || :unknown
-    Logger.error("DetsBackup: recovery failed for #{table}: #{inspect(info[:reason])}")
+    Logger.error("recovery_failed", table: table, reason: inspect(info[:reason]))
     {:noreply, state}
   end
 

@@ -34,6 +34,8 @@ defmodule AgentCom.DashboardNotifier do
 
   @impl true
   def init(_opts) do
+    Logger.metadata(module: __MODULE__)
+
     # Subscribe to PubSub for agent offline events and backup/compaction alerts
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "presence")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "backups")
@@ -105,7 +107,7 @@ defmodule AgentCom.DashboardNotifier do
         end
       rescue
         e ->
-          Logger.warning("DashboardNotifier health check failed: #{inspect(e)}")
+          Logger.warning("health_check_failed", error: inspect(e))
           state
       end
 
@@ -186,22 +188,22 @@ defmodule AgentCom.DashboardNotifier do
           :ok
         {:ok, %{status_code: 410}} ->
           # Gone -- subscription expired
-          Logger.debug("Push subscription expired, removing")
+          Logger.debug("push_subscription_expired")
           :error
         {:ok, %{status_code: 404}} ->
           # Not found -- subscription invalid
-          Logger.debug("Push subscription not found, removing")
+          Logger.debug("push_subscription_not_found")
           :error
         {:ok, %{status_code: status}} ->
-          Logger.debug("Push notification returned status #{status}")
+          Logger.debug("push_notification_status", status_code: status)
           :ok  # Keep subscription, might be transient
         {:error, reason} ->
-          Logger.debug("Push notification failed: #{inspect(reason)}")
+          Logger.debug("push_notification_failed", reason: inspect(reason))
           :ok  # Keep subscription, might be transient
       end
     rescue
       e ->
-        Logger.debug("Push notification error: #{inspect(e)}")
+        Logger.debug("push_notification_error", error: inspect(e))
         :ok  # Keep subscription on unexpected errors
     end
   end

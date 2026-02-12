@@ -29,6 +29,7 @@ defmodule AgentCom.Endpoint do
   - POST   /api/admin/compact     — Compact all DETS tables (auth required)
   - POST   /api/admin/compact/:table — Compact a specific DETS table (auth required)
   - POST   /api/admin/restore/:table — Restore a DETS table from backup (auth required)
+  - PUT    /api/admin/log-level    — Change runtime log level (auth required, resets on restart)
   - POST   /api/tasks             — Submit a task to the queue (auth required)
   - GET    /api/tasks             — List tasks with optional filters (auth required)
   - GET    /api/tasks/dead-letter — List dead-letter tasks (auth required)
@@ -47,6 +48,8 @@ defmodule AgentCom.Endpoint do
   - WS     /ws                   — WebSocket for agent connections
   """
   use Plug.Router
+
+  require Logger
 
   alias AgentCom.Validation
 
@@ -527,8 +530,7 @@ defmodule AgentCom.Endpoint do
       if agent_id not in @admin_agents do
         send_json(conn, 403, %{"error" => "admin_only", "message" => "Only admin agents can reset the hub"})
       else
-        require Logger
-        Logger.warning("Hub reset triggered by #{agent_id}")
+        Logger.warning("hub_reset_triggered", triggered_by: agent_id)
 
         # Send response before restarting to avoid killing the connection mid-flight
         spawn(fn ->
@@ -543,6 +545,24 @@ defmodule AgentCom.Endpoint do
         end)
 
         send_json(conn, 200, %{"status" => "reset_scheduled", "triggered_by" => agent_id})
+      end
+    end
+  end
+
+  # --- Admin: Runtime log level ---
+
+  put "/api/admin/log-level" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      level = conn.body_params["level"]
+      if level in ~w(debug info notice warning error) do
+        Logger.configure(level: String.to_existing_atom(level))
+        Logger.notice("log_level_changed", new_level: level, changed_by: conn.assigns[:authenticated_agent])
+        send_json(conn, 200, %{"status" => "ok", "level" => level})
+      else
+        send_json(conn, 422, %{"error" => "invalid_level", "valid" => ["debug", "info", "notice", "warning", "error"]})
       end
     end
   end

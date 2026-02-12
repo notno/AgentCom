@@ -19,6 +19,8 @@ defmodule AgentCom.MessageHistory do
 
   @impl true
   def init(_opts) do
+    Logger.metadata(module: __MODULE__)
+
     path = dets_path() |> String.to_charlist()
     File.mkdir_p!(Path.dirname(dets_path()))
 
@@ -75,7 +77,7 @@ defmodule AgentCom.MessageHistory do
         {:reply, {:ok, seq}, %{state | seq: seq}}
 
       {:error, reason} ->
-        Logger.error("DETS corruption detected in #{@table}: #{inspect(reason)}")
+        Logger.error("dets_corruption_detected", table: @table, reason: inspect(reason))
         GenServer.cast(AgentCom.DetsBackup, {:corruption_detected, @table, reason})
         {:reply, {:error, :table_corrupted}, state}
     end
