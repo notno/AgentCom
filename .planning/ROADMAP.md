@@ -121,12 +121,13 @@ Plans:
   2. A task assigned with strategy "cloud_llm" calls the Claude API and returns the model's response
   3. A task assigned with strategy "trivial" executes the specified shell command locally with zero LLM tokens consumed
   4. Every completed task result includes the model used (or "none" for trivial), tokens consumed, and estimated cost
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 20-01: TBD
-- [ ] 20-02: TBD
-- [ ] 20-03: TBD
+- [ ] 20-01-PLAN.md -- Cost calculator and progress emitter (TDD: pure-function cost estimation and event batching)
+- [ ] 20-02-PLAN.md -- Hub wiring (routing_decision in task_assign, execution metadata in task_complete, execution_event in task_progress)
+- [ ] 20-03-PLAN.md -- Three executors + dispatcher + index.js integration (OllamaExecutor, ClaudeExecutor, ShellExecutor, conditional dispatch)
+- [ ] 20-04-PLAN.md -- Dashboard execution streaming and cost display (execution output panel, cost breakdown, visual checkpoint)
 
 ### Phase 21: Verification Infrastructure
 **Goal**: After task execution, deterministic mechanical checks produce a structured verification report that confirms work was done correctly before submission
