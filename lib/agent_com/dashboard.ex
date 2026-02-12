@@ -427,6 +427,29 @@ defmodule AgentCom.Dashboard do
         .btn-ack:hover { background: rgba(126, 184, 218, 0.15); }
         .btn-ack:disabled { opacity: 0.4; cursor: default; }
         .agent-metrics-table { width: 100%; border-collapse: collapse; }
+
+        /* === LLM Registry === */
+        .llm-fleet-summary { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+        .llm-fleet-chip { background: #1a1a2e; border: 1px solid #333; border-radius: 6px; padding: 4px 10px; font-size: 0.85em; }
+        .llm-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+        .llm-table th, .llm-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #222; }
+        .llm-table th { color: #888; font-weight: 500; font-size: 0.85em; text-transform: uppercase; }
+        .llm-status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .llm-status-healthy { background: #4caf50; }
+        .llm-status-unhealthy { background: #f44336; }
+        .llm-status-unknown { background: #888; }
+        .resource-bar-container { width: 100%; max-width: 120px; height: 8px; background: #1a1a2e; border-radius: 4px; overflow: hidden; display: inline-block; vertical-align: middle; }
+        .resource-bar { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+        .resource-bar-cpu { background: #7eb8da; }
+        .resource-bar-ram { background: #a78bfa; }
+        .resource-bar-vram { background: #f59e0b; }
+        .llm-add-form { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+        .llm-add-form input { background: #1a1a2e; border: 1px solid #333; border-radius: 4px; padding: 6px 10px; color: #e0e0e0; font-size: 0.9em; }
+        .llm-add-form input::placeholder { color: #666; }
+        .llm-add-btn { background: #2563eb; color: white; border: none; border-radius: 4px; padding: 6px 14px; cursor: pointer; font-size: 0.9em; }
+        .llm-add-btn:hover { background: #1d4ed8; }
+        .llm-remove-btn { background: none; border: none; color: #f44336; cursor: pointer; font-size: 0.85em; padding: 2px 6px; }
+        .llm-remove-btn:hover { text-decoration: underline; }
       </style>
     </head>
     <body>
@@ -681,6 +704,40 @@ defmodule AgentCom.Dashboard do
           </div>
           <div id="rl-top-offenders"></div>
           <div class="empty-state" id="rl-empty">No rate limit data</div>
+        </div>
+      </div>
+
+      <!-- LLM Registry -->
+      <div style="margin-top: 12px;">
+        <div class="panel" id="panel-llm-registry">
+          <div class="panel-title">LLM Registry <span class="panel-count" id="llm-endpoint-count">0</span></div>
+          <div id="llm-fleet-summary" class="llm-fleet-summary"></div>
+          <div class="table-wrap">
+            <table class="llm-table">
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Host</th>
+                  <th>Port</th>
+                  <th>Models</th>
+                  <th>Source</th>
+                  <th>CPU</th>
+                  <th>RAM</th>
+                  <th>VRAM</th>
+                  <th>Last Checked</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="llm-registry-body"></tbody>
+            </table>
+          </div>
+          <div class="llm-add-form">
+            <input type="text" id="llm-add-host" placeholder="Host (e.g. 192.168.1.10)" />
+            <input type="number" id="llm-add-port" placeholder="Port" value="11434" style="width: 80px;" />
+            <input type="text" id="llm-add-name" placeholder="Name (optional)" />
+            <button class="llm-add-btn" onclick="addLlmEndpoint()">Add Endpoint</button>
+          </div>
+          <div class="empty-state" id="llm-empty">No LLM endpoints registered</div>
         </div>
       </div>
 
@@ -1306,6 +1363,9 @@ defmodule AgentCom.Dashboard do
           // -- Rate limits --
           renderRateLimits(data.rate_limits || null, data.agents || []);
 
+          // -- LLM Registry --
+          renderLlmRegistry(data);
+
           updateLastUpdate();
         }
 
@@ -1808,6 +1868,107 @@ defmodule AgentCom.Dashboard do
         }
 
         // =====================================================================
+        // LLM Registry
+        // =====================================================================
+        function renderLlmRegistry(data) {
+          var reg = data.llm_registry;
+          if (!reg) return;
+
+          var endpoints = reg.endpoints || [];
+          var resources = reg.resources || {};
+          var fleetModels = reg.fleet_models || {};
+          var countEl = document.getElementById('llm-endpoint-count');
+          var emptyEl = document.getElementById('llm-empty');
+          var summaryEl = document.getElementById('llm-fleet-summary');
+          var tbody = document.getElementById('llm-registry-body');
+
+          if (countEl) countEl.textContent = endpoints.length;
+
+          // Fleet model summary chips
+          var modelKeys = Object.keys(fleetModels);
+          if (summaryEl) {
+            if (modelKeys.length > 0) {
+              summaryEl.innerHTML = modelKeys.map(function(model) {
+                var count = fleetModels[model];
+                return '<span class="llm-fleet-chip">' + escapeHtml(model) + ' (' + count + ' host' + (count > 1 ? 's' : '') + ')</span>';
+              }).join('');
+            } else {
+              summaryEl.innerHTML = '';
+            }
+          }
+
+          if (endpoints.length === 0) {
+            if (tbody) tbody.innerHTML = '';
+            if (emptyEl) emptyEl.style.display = 'block';
+            return;
+          }
+          if (emptyEl) emptyEl.style.display = 'none';
+
+          if (tbody) {
+            tbody.innerHTML = endpoints.map(function(ep) {
+              var statusClass = ep.status === 'healthy' ? 'llm-status-healthy' :
+                                (ep.status === 'unhealthy' ? 'llm-status-unhealthy' : 'llm-status-unknown');
+              var statusLabel = ep.status || 'unknown';
+              var models = (ep.models || []).join(', ') || '--';
+              var source = ep.source || 'manual';
+              var lastChecked = ep.last_checked_at ? timeAgo(ep.last_checked_at) : 'never';
+
+              // Resource bars
+              var res = resources[ep.id] || {};
+              var cpuBar = renderResourceBar(res.cpu_percent, 'cpu');
+              var ramBar = renderResourceBar(res.ram_used_bytes && res.ram_total_bytes ? (res.ram_used_bytes / res.ram_total_bytes * 100) : null, 'ram');
+              var vramBar = renderResourceBar(res.vram_used_bytes && res.vram_total_bytes ? (res.vram_used_bytes / res.vram_total_bytes * 100) : null, 'vram');
+
+              var removeBtn = source === 'manual'
+                ? '<button class="llm-remove-btn" onclick="removeLlmEndpoint(\\'' + escapeHtml(ep.id) + '\\')">Remove</button>'
+                : '';
+
+              return '<tr>' +
+                '<td><span class="llm-status-dot ' + statusClass + '"></span>' + escapeHtml(statusLabel) + '</td>' +
+                '<td>' + escapeHtml(ep.host || '--') + '</td>' +
+                '<td>' + (ep.port || '--') + '</td>' +
+                '<td>' + escapeHtml(models) + '</td>' +
+                '<td>' + escapeHtml(String(source)) + '</td>' +
+                '<td>' + cpuBar + '</td>' +
+                '<td>' + ramBar + '</td>' +
+                '<td>' + vramBar + '</td>' +
+                '<td>' + lastChecked + '</td>' +
+                '<td>' + removeBtn + '</td>' +
+                '</tr>';
+            }).join('');
+          }
+        }
+
+        function renderResourceBar(pct, type) {
+          if (pct == null || isNaN(pct)) return '<span style="color: #555; font-size: 0.8em;">N/A</span>';
+          pct = Math.min(100, Math.max(0, pct));
+          var color = type === 'cpu' ? 'resource-bar-cpu' : (type === 'ram' ? 'resource-bar-ram' : 'resource-bar-vram');
+          return '<div style="display: flex; align-items: center; gap: 4px;">' +
+            '<div class="resource-bar-container"><div class="resource-bar ' + color + '" style="width: ' + pct.toFixed(1) + '%;"></div></div>' +
+            '<span style="font-size: 0.75em; color: #aaa;">' + pct.toFixed(0) + '%</span></div>';
+        }
+
+        function addLlmEndpoint() {
+          var host = document.getElementById('llm-add-host').value.trim();
+          var port = parseInt(document.getElementById('llm-add-port').value) || 11434;
+          var name = document.getElementById('llm-add-name').value.trim();
+          if (!host) { alert('Host is required'); return; }
+          if (!dashConn || !dashConn.ws || dashConn.ws.readyState !== 1) return;
+          var msg = {type: 'register_llm_endpoint', host: host, port: port};
+          if (name) msg.name = name;
+          dashConn.ws.send(JSON.stringify(msg));
+          document.getElementById('llm-add-host').value = '';
+          document.getElementById('llm-add-name').value = '';
+          document.getElementById('llm-add-port').value = '11434';
+        }
+
+        function removeLlmEndpoint(id) {
+          if (!confirm('Remove endpoint ' + id + '?')) return;
+          if (!dashConn || !dashConn.ws || dashConn.ws.readyState !== 1) return;
+          dashConn.ws.send(JSON.stringify({type: 'remove_llm_endpoint', id: id}));
+        }
+
+        // =====================================================================
         // Incremental event handlers
         // =====================================================================
         function handleEvents(events) {
@@ -1827,6 +1988,11 @@ defmodule AgentCom.Dashboard do
               case 'alert_fired': addAlert(ev.data); updateAlertBanner(); break;
               case 'alert_cleared': removeAlert(ev.rule_id); updateAlertBanner(); break;
               case 'alert_acknowledged': markAlertAcknowledged(ev.rule_id); break;
+              case 'llm_registry_update':
+                if (dashConn && dashConn.ws && dashConn.ws.readyState === 1) {
+                  dashConn.ws.send(JSON.stringify({type: 'request_snapshot'}));
+                }
+                break;
             }
           });
           updateLastUpdate();
@@ -1949,6 +2115,16 @@ defmodule AgentCom.Dashboard do
                     markAlertAcknowledged(msg.rule_id);
                   }
                   break;
+                case 'llm_endpoint_registered':
+                case 'llm_endpoint_removed':
+                  // Refresh snapshot to get updated registry data
+                  if (dashConn && dashConn.ws && dashConn.ws.readyState === 1) {
+                    dashConn.ws.send(JSON.stringify({type: 'request_snapshot'}));
+                  }
+                  break;
+                case 'llm_endpoint_error':
+                  console.warn('LLM endpoint error:', msg.error);
+                  break;
               }
             } catch (e) {
               console.error('Dashboard: failed to parse message', e);
@@ -2067,6 +2243,7 @@ defmodule AgentCom.Dashboard do
             renderDeadLetter(dashState.dead_letter_tasks || []);
             renderDetsHealth(dashState.dets_health || null);
             renderValidationHealth(dashState.validation || null);
+            renderLlmRegistry(dashState);
             // Update uptime
             if (dashState.uptime_ms) {
               dashState.uptime_ms += 30000;
