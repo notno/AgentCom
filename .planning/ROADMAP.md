@@ -34,7 +34,7 @@
 - Decimal phases (e.g., 10.1): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 9: Testing Infrastructure** - Test isolation, helpers, factories, and comprehensive test coverage for all GenServers and pipelines
-- [ ] **Phase 10: DETS Backup + Monitoring** - Automated backup, manual trigger, and health monitoring for all DETS tables
+- [x] **Phase 10: DETS Backup + Monitoring** - Automated backup, manual trigger, and health monitoring for all DETS tables
 - [ ] **Phase 11: DETS Compaction + Recovery** - Scheduled compaction/defragmentation and documented corruption recovery
 - [ ] **Phase 12: Input Validation** - Schema validation at all WebSocket and HTTP entry points with structured error responses
 - [ ] **Phase 13: Structured Logging + Telemetry** - JSON logging with consistent metadata and telemetry events for key lifecycle points
@@ -78,7 +78,7 @@ Plans:
 Plans:
 - [x] 10-01-PLAN.md -- DetsBackup GenServer (core backup + health logic, config, supervision tree)
 - [x] 10-02-PLAN.md -- API endpoints + dashboard integration (manual backup trigger, health endpoint, DETS health card)
-- [ ] 10-03-PLAN.md -- Gap closure: normalize tagged tuples in health_metrics to fix DashboardSocket Jason crash
+- [x] 10-03-PLAN.md -- Gap closure: normalize tagged tuples in health_metrics to fix DashboardSocket Jason crash
 
 ### Phase 11: DETS Compaction + Recovery
 **Goal**: DETS tables stay performant through compaction and can recover from corruption
@@ -172,7 +172,7 @@ Phases execute in numeric order: 9 -> 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 9. Testing Infrastructure | v1.1 | 7/7 | Complete | 2026-02-11 |
-| 10. DETS Backup + Monitoring | v1.1 | 2/3 | Gap closure | - |
+| 10. DETS Backup + Monitoring | v1.1 | 3/3 | Complete | 2026-02-12 |
 | 11. DETS Compaction + Recovery | v1.1 | 0/3 | Not started | - |
 | 12. Input Validation | v1.1 | 0/3 | Planned | - |
 | 13. Structured Logging + Telemetry | v1.1 | 0/TBD | Not started | - |
