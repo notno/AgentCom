@@ -86,12 +86,13 @@ Plans:
   3. Registry distinguishes between models currently loaded in VRAM (warm) and models only downloaded (cold) per host
   4. Dashboard shows per-machine resource utilization (CPU, RAM, GPU/VRAM) reported by each sidecar
   5. Registered endpoints and resource metrics survive hub restart (DETS persistence)
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 18-01: TBD
-- [ ] 18-02: TBD
-- [ ] 18-03: TBD
+- [ ] 18-01-PLAN.md -- LLM Registry GenServer core (TDD: DETS persistence, health checks, model discovery)
+- [ ] 18-02-PLAN.md -- Sidecar resource reporting (resources.js, identify extension, periodic metrics)
+- [ ] 18-03-PLAN.md -- Pipeline wiring (WS handlers, HTTP admin routes, validation schemas, supervisor)
+- [ ] 18-04-PLAN.md -- Dashboard integration (registry table, resource bars, fleet summary, add/remove controls)
 
 ### Phase 19: Model-Aware Scheduler
 **Goal**: Scheduler sends trivial tasks to sidecar direct execution, standard tasks to local Ollama agents, and complex tasks to Claude agents -- picking the best available endpoint
@@ -162,7 +163,7 @@ Phases execute in numeric order: 17 -> 17.1 -> 17.2 -> 18 -> ... -> 22
 | 1-8 | v1.0 | 19/19 | Complete | 2026-02-11 |
 | 9-16 | v1.1 | 32/32 | Complete | 2026-02-12 |
 | 17. Enriched Task Format | v1.2 | 3/3 | Complete | 2026-02-12 |
-| 18. LLM Registry + Host Resources | v1.2 | 0/TBD | Not started | - |
+| 18. LLM Registry + Host Resources | v1.2 | 0/4 | Planned | - |
 | 19. Model-Aware Scheduler | v1.2 | 0/TBD | Not started | - |
 | 20. Sidecar Execution | v1.2 | 0/TBD | Not started | - |
 | 21. Verification Infrastructure | v1.2 | 0/TBD | Not started | - |
