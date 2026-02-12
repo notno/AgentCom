@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 ## Current Position
 
 Phase: 13-structured-logging
-Plan: 1 of 4 complete
+Plan: 2 of 4 complete
 Status: Executing
-Last activity: 2026-02-12 -- Completed 13-01-PLAN.md (logging infrastructure and telemetry module)
+Last activity: 2026-02-12 -- Completed 13-02-PLAN.md (core module telemetry + structured logging)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 17 (v1.1)
+- Total plans completed: 18 (v1.1)
 - Average duration: 5 min
-- Total execution time: 1.4 hours
+- Total execution time: 1.55 hours
 
 **By Phase:**
 
@@ -29,10 +29,10 @@ Last activity: 2026-02-12 -- Completed 13-01-PLAN.md (logging infrastructure and
 | 10-dets-backup | 3 | 8 min | 3 min |
 | 11-dets-compaction | 3 | 15 min | 5 min |
 | 12-input-validation | 3 | 13 min | 4 min |
-| 13-structured-logging | 1 | 8 min | 8 min |
+| 13-structured-logging | 2 | 17 min | 9 min |
 
 **Recent Trend:**
-- Last 5 plans: 13-01 (8 min), 12-03 (5 min), 12-02 (4 min), 12-01 (4 min), 11-03 (5 min)
+- Last 5 plans: 13-02 (9 min), 13-01 (8 min), 12-03 (5 min), 12-02 (4 min), 12-01 (4 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -93,6 +93,9 @@ Recent decisions affecting current work:
 - [Phase 13-01]: Tuple config format {Module, opts} in config.exs -- Module.new/1 unavailable at config eval time
 - [Phase 13-01]: File handler added programmatically via :logger.add_handler in Application.start (Config.config/2 requires keyword lists)
 - [Phase 13-01]: RedactKeys takes plain list of key strings, not keyword list
+- [Phase 13-02]: Scheduler emits telemetry attempt even with 0 idle agents (capacity planning metric)
+- [Phase 13-02]: DetsBackup wraps per-table compaction in telemetry.span (not compact_table directly) to avoid double-wrapping
+- [Phase 13-02]: Lazy Logger.debug(fn -> ... end) for backup cleanup paths per plan guidance
 
 ### Pending Todos
 
@@ -110,5 +113,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 13-01-PLAN.md (logging infrastructure and telemetry module). Phase 13 in progress (1/4 plans).
+Stopped at: Completed 13-02-PLAN.md (core module telemetry + structured logging). Phase 13 in progress (2/4 plans).
 Resume file: None
