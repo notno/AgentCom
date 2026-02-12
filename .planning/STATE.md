@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 19 of 22 (Model-Aware Scheduler)
-Plan: --
-Status: Ready to plan
-Last activity: 2026-02-12 -- Phase 18 verified and complete (4/4 plans, 4/5 success criteria, 1 accepted gap)
+Plan: 1 of 4
+Status: Executing
+Last activity: 2026-02-12 -- Completed 19-01 TaskRouter routing decision engine (TDD)
 
-Progress: [██░░░░░░░░] 33%
+Progress: [██░░░░░░░░] 35%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 58 (19 v1.0 + 32 v1.1 + 7 v1.2)
+- Total plans completed: 59 (19 v1.0 + 32 v1.1 + 8 v1.2)
 - Average duration: 5 min
-- Total execution time: 4.0 hours
+- Total execution time: 4.1 hours
 
 **By Phase (v1.1 recent):**
 
@@ -37,7 +37,7 @@ Progress: [██░░░░░░░░] 33%
 | 16-operations-docs | 4 | 14 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 18-04 (8 min), 18-03 (11 min), 18-02 (2 min), 18-01 (4 min), 17-03 (4 min)
+- Last 5 plans: 19-01 (4 min), 18-04 (8 min), 18-03 (11 min), 18-02 (2 min), 18-01 (4 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -48,6 +48,7 @@ Progress: [██░░░░░░░░] 33%
 | Phase 18 P02 | 2min | 2 tasks | 2 files |
 | Phase 18 P03 | 11min | 2 tasks | 8 files |
 | Phase 18 P04 | 8min | 3 tasks (1 checkpoint) | 4 files |
+| Phase 19 P01 | 4min | 1 task (TDD) | 4 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,11 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - 18-04: Resource bars inline per host row (CPU=blue, RAM=purple, VRAM=amber)
 - 18-04: Strip http:// prefix from host input to prevent malformed health check URLs
 - 18-VERIFY: Warm/cold model distinction accepted as gap -- binary availability sufficient, deferred per locked design decision
+- 19-01: 15% warm model bonus for endpoints with task model loaded (discretion area)
+- 19-01: 5% repo affinity bonus simplified for Phase 19 (resource metadata repo field)
+- 19-01: Neutral defaults for missing resource data (cpu=50%, vram=0.9, capacity=1.0)
+- 19-01: 16GB reference capacity for normalization, capped at 1.5x
+- 19-01: Classification reason format: "source:tier (confidence X, word_count=Y, files=Z)"
 
 ### Pending Todos
 
@@ -110,5 +116,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Phase 18 verified complete. Ready to plan Phase 19.
+Stopped at: Completed 19-01-PLAN.md (TaskRouter routing decision engine)
 Resume file: None
