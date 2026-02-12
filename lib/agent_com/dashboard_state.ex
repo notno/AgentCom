@@ -50,6 +50,7 @@ defmodule AgentCom.DashboardState do
   def init(_opts) do
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "tasks")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "presence")
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "backups")
 
     Process.send_after(self(), :check_queue_growth, @queue_check_interval_ms)
     Process.send_after(self(), :reset_hourly, @hourly_reset_interval_ms)
@@ -129,6 +130,12 @@ defmodule AgentCom.DashboardState do
       dead_letter: Map.get(queue_stats, :dead_letter, 0)
     }
 
+    dets_health = try do
+      AgentCom.DetsBackup.health_metrics()
+    rescue
+      _ -> nil
+    end
+
     snapshot = %{
       uptime_ms: now - state.started_at,
       timestamp: now,
@@ -137,7 +144,8 @@ defmodule AgentCom.DashboardState do
       queue: queue,
       dead_letter_tasks: formatted_dead_letter,
       recent_completions: state.recent_completions,
-      throughput: throughput
+      throughput: throughput,
+      dets_health: dets_health
     }
 
     {:reply, snapshot, state}
@@ -304,6 +312,45 @@ defmodule AgentCom.DashboardState do
       if length(stuck_tasks) > 0 do
         ids = Enum.map(stuck_tasks, & &1.id) |> Enum.join(", ")
         ["Stuck tasks: #{ids}" | conditions]
+      else
+        conditions
+      end
+
+    # 5. Stale DETS Backup
+    dets_metrics = try do
+      AgentCom.DetsBackup.health_metrics()
+    rescue
+      _ -> nil
+    end
+
+    conditions =
+      if dets_metrics do
+        now_ms = now
+        case dets_metrics.last_backup_at do
+          nil ->
+            ["DETS backup: never run" | conditions]
+          ts when now_ms - ts > 48 * 60 * 60 * 1000 ->
+            hours_ago = div(now_ms - ts, 3_600_000)
+            ["DETS backup stale: last backup #{hours_ago}h ago" | conditions]
+          _ ->
+            conditions
+        end
+      else
+        conditions
+      end
+
+    # 6. High DETS Fragmentation
+    conditions =
+      if dets_metrics do
+        high_frag_tables = dets_metrics.tables
+          |> Enum.filter(fn t -> t.status == :ok and t.fragmentation_ratio > 0.5 end)
+          |> Enum.map(fn t -> to_string(t.table) end)
+
+        if length(high_frag_tables) > 0 do
+          ["DETS fragmentation >50%: #{Enum.join(high_frag_tables, ", ")}" | conditions]
+        else
+          conditions
+        end
       else
         conditions
       end
