@@ -1,273 +1,182 @@
-# Architecture Patterns: Smart Agent Pipeline Integration
+# Architecture: Smart Agent Pipeline Integration
 
-**Domain:** Distributed LLM routing, enriched tasks, model-aware scheduling, sidecar trivial execution, and agent self-verification for an existing Elixir/BEAM hub + Node.js sidecar system
-**Researched:** 2026-02-11
-**Confidence:** HIGH (grounded in direct codebase analysis of all 24 source files + Ollama API docs + LLM routing research)
-
----
-
-## Current System Inventory
-
-Before designing integration, every component and its extension points.
-
-### Hub-Side GenServers (Elixir/BEAM)
-
-| Module | Role | State | Extension Points for v1.2 |
-|--------|------|-------|---------------------------|
-| TaskQueue | DETS-backed queue with priority/retry/dead-letter | DETS + in-memory priority index | **Task struct**: add enriched fields (context, criteria, model, complexity, verification_steps). **submit/1**: accept new fields. **assign_task/3**: include model routing info in assignment. |
-| Scheduler | Event-driven task-to-agent matcher | Stateless (queries TaskQueue + AgentFSM) | **try_schedule_all/0**: add model-aware matching. **do_assign/1**: include model endpoint in push_task payload. **agent_matches_task?/2**: extend beyond capability matching to include model availability. |
-| AgentFSM | Per-agent state machine (idle/assigned/working/blocked/offline) | In-memory per-process | **No structural changes needed.** FSM transitions are model-agnostic. May add `verifying` state if verification is a distinct phase. |
-| Socket | WebSocket protocol handler | Connection state (agent_id, identified) | **handle_info({:push_task, ...})**: extend task_assign payload with model, context, criteria, verification_steps. **handle_msg("task_complete")**: accept verification_result in result payload. |
-| Config | DETS-backed KV store | DETS | **Store LLM endpoint registry data.** Already supports arbitrary key-value pairs. |
-| Presence | In-memory agent tracker | In-memory map | **No changes.** Presence tracks connection state, not model state. |
-| Analytics | ETS-based metrics | ETS | **Add model-related metrics**: track model used per task, tokens by model, local vs cloud ratio. |
-| Endpoint | HTTP + WS routes | Stateless | **New admin endpoints**: GET /api/llm/endpoints, POST /api/llm/endpoints, DELETE /api/llm/endpoints/:id, GET /api/llm/health. |
-
-### Sidecar-Side (Node.js)
-
-| Module | Role | Extension Points for v1.2 |
-|--------|------|---------------------------|
-| index.js (HubConnection) | WebSocket relay + task lifecycle | **handleTaskAssign**: parse model/context/criteria from task_assign. Route to correct execution path (trivial/local-LLM/cloud-LLM). |
-| index.js (wakeAgent) | Launches agent process | **Model-aware wake**: interpolate model endpoint into wake command. Different wake commands for local vs cloud models. |
-| index.js (handleResult) | Processes task completion | **Verification**: run verification steps before reporting complete. Only sendTaskComplete if verification passes. |
-| lib/queue.js | Persists queue state | **Extended task object**: store model, context, criteria, verification_steps in queue.json. |
-| lib/wake.js | Wake command interpolation | **New variables**: ${MODEL}, ${MODEL_ENDPOINT}, ${COMPLEXITY}. |
-| lib/git-workflow.js | Git branch/PR automation | **No changes needed.** Git workflow is model-agnostic. |
+**Domain:** LLM mesh routing, model-aware scheduling, and agent self-verification for existing Elixir/BEAM hub + Node.js sidecar system
+**Researched:** 2026-02-12
+**Confidence:** HIGH (grounded in direct analysis of all source files in the shipped v1.1 codebase)
 
 ---
 
-## Recommended Architecture
+## Current System Inventory (Post-v1.1)
 
-### New Components
+The v1.1 hardening milestone shipped since the initial architecture research. The actual codebase now includes components that were only projected before. This updated architecture reflects the real system.
 
-Six new components integrate with the existing system. Three are hub-side (Elixir), three are sidecar-side (Node.js enhancements).
+### Hub-Side Components (Elixir/BEAM)
 
-#### Hub-Side New Components
+| Module | Role | State Storage | v1.2 Extension Points |
+|--------|------|--------------|----------------------|
+| **Application** | Supervision tree root. Creates 3 ETS tables in start/2 before children. 22 children in :one_for_one. | N/A | Add LlmRegistry to children list before Scheduler |
+| **TaskQueue** | DETS-backed queue. Priority index in memory. Generation fencing. Overdue sweep on timer. | DETS (:task_queue, :task_dead_letter) + in-memory sorted list | **Primary modification target.** Extend task struct with context, criteria, verification_steps, complexity, assigned_model, assigned_endpoint, verification_result. All additive with nil defaults. |
+| **Scheduler** | Stateless event-driven matcher. Subscribes to PubSub "tasks" + "presence". Queries TaskQueue + AgentFSM per event. Capability-based subset matching. 30s stuck sweep. | No state (queries on demand) | **Primary logic modification.** Add ComplexityClassifier call. Add LlmRegistry query for model endpoint. Extend do_assign to include model routing in push_task payload. |
+| **AgentFSM** | Per-agent :gen_server with lifecycle states (idle/assigned/working/blocked/offline). 60s acceptance timeout. Process-monitors WebSocket pid. | In-memory per-process | **No structural changes.** FSM transitions are model-agnostic. Verification happens in sidecar before task_complete arrives at hub. |
+| **Socket** | WebSocket handler (WebSock behaviour). Handles 15 WS message types. Rate limiting via RateLimiter inline. Validation via Validation module. | Connection state (%__MODULE__{agent_id, identified, violation_count}) | Extend :push_task handler to pass enriched fields. Accept verification_result in task_complete result payload. |
+| **Endpoint** | Plug.Router with 60+ routes. Auth via RequireAuth plug. Rate limiting via RateLimit plug. Validation via Validation module. | Stateless | Add LLM admin endpoints (4 new routes). Extend POST /api/tasks to accept new optional fields. Add validation schemas. |
+| **Config** | DETS-backed KV store. Arbitrary key-value pairs. | DETS (:agentcom_config) | Store LLM config: default cloud model, health check interval, complexity classification patterns. Already supports this -- no code change needed. |
+| **Validation** | Library module with Schemas submodule. 27 schemas (15 WS + 12 HTTP). Pattern matching + guards. Length limits. | N/A (pure functions) | Add schemas for new WS message fields and new HTTP endpoints. |
+| **DetsBackup** | Manages 9 DETS tables. Daily backup, 3-backup retention, 6-hour compaction cycle, fragmentation threshold. Health metrics. | In-memory (backup history, compaction history) | Register new llm_endpoints.dets table for backup/compaction. |
+| **MetricsCollector** | ETS-backed telemetry aggregation. 10s snapshot broadcast. 5m cleanup. 60s handler health check. | ETS (:agent_metrics) | Add model routing metrics: tasks by complexity tier, local vs cloud ratio, model endpoint health stats. |
+| **Alerter** | 5 alert rules with configurable thresholds. 60s check interval. Dashboard integration. Cooldowns. | In-memory (active alerts, cooldowns) | Add alert rules: LLM endpoint unhealthy, high verification failure rate. |
+| **RateLimiter** | ETS-backed token bucket. 3-tier classification (light/normal/heavy). Progressive backoff. Admin overrides. | ETS (:rate_limit_buckets, :rate_limit_overrides) | Add rate tier for new LLM admin endpoints. No structural changes. |
+| **Telemetry** | 22 event types attached on app start. Logs all events via Logger.info. | N/A | Add events: llm.health_check, llm.endpoint_change, task.classify, task.verify. |
+| **Presence** | In-memory agent tracker with PubSub broadcasts. | In-memory | No changes. |
+| **DashboardState** | Aggregates system state for dashboard. | In-memory cache | Include LLM endpoint status in dashboard state. |
 
-**1. AgentCom.LlmRegistry (NEW GenServer)**
+### Sidecar-Side Components (Node.js)
 
-Tracks Ollama instances across the Tailscale mesh. Each endpoint is a machine:port running Ollama with one or more models available.
-
-```
-AgentCom.LlmRegistry (NEW GenServer)
-  |
-  |-- register_endpoint(host, port, opts)    # Add an Ollama endpoint
-  |-- unregister_endpoint(endpoint_id)       # Remove an endpoint
-  |-- list_endpoints()                       # All registered endpoints
-  |-- list_models()                          # All models across all endpoints
-  |-- get_endpoint_for_model(model_name)     # Find healthy endpoint serving model
-  |-- health_check_all()                     # Probe all endpoints
-  |-- report_health(endpoint_id, status)     # Update health status
-  |
-  State stored in DETS (priv/llm_endpoints.dets):
-    %{
-      endpoint_id => %{
-        id: "nathan-desktop",
-        host: "100.x.x.x",          # Tailscale IP
-        port: 11434,
-        models: ["qwen3:8b", "llama3:70b"],
-        status: :healthy | :degraded | :unreachable,
-        last_check: timestamp,
-        last_response_ms: 245,
-        registered_at: timestamp,
-        metadata: %{}                 # VRAM, GPU, etc.
-      }
-    }
-```
-
-**Why a GenServer and not Config KV:** Endpoints need structured data (host, port, models list, health status, last check time), periodic health probing (Process.send_after), and atomic state transitions. Config KV is for scalar values. A dedicated GenServer encapsulates the health-check timer, HTTP client calls to Ollama, and PubSub broadcasts when endpoint status changes.
-
-**Health check protocol:**
-```
-Every 60 seconds (configurable via Config):
-  For each registered endpoint:
-    1. GET http://{host}:{port}/             # Ollama health check
-       -> 200 "Ollama is running"            # Mark :healthy
-       -> timeout/error                      # Mark :unreachable
-    2. GET http://{host}:{port}/api/tags     # List available models
-       -> Update endpoint.models list
-       -> Compare with previous: broadcast model_added/model_removed events
-```
-
-**Integration with existing system:**
-- Added to supervision tree in application.ex (before Scheduler)
-- Registers with DetsManager for backup/compaction (when v1.1 DetsManager ships)
-- Broadcasts to PubSub topic "llm" for Scheduler to react to endpoint changes
-- Admin endpoints in endpoint.ex for CRUD operations
+| Module | Role | v1.2 Extension Points |
+|--------|------|-----------------------|
+| **index.js (HubConnection)** | WebSocket relay. Task lifecycle. Heartbeat. Recovery. | **Primary modification.** handleTaskAssign: route via model-router before wake. handleResult: run verification before sendTaskComplete. |
+| **index.js (wakeAgent)** | Launch agent process with configurable command. 3 retries. Confirmation timeout. | Modify to support model-specific wake commands. New interpolation variables. |
+| **lib/queue.js** | Persistent queue state to queue.json. loadQueue/saveQueue. | No code change -- JSON serialization handles new fields automatically. |
+| **lib/wake.js** | Wake command interpolation (${TASK_ID}, ${TASK_JSON}). execCommand wrapper. | Add ${MODEL}, ${MODEL_ENDPOINT}, ${COMPLEXITY} interpolation variables. |
+| **lib/git-workflow.js** | Git branch/PR automation. | No changes -- model-agnostic. |
+| **lib/log.js** | Structured JSON logging with levels. | No changes. |
 
 ---
 
-**2. AgentCom.ComplexityClassifier (NEW library module -- NOT a GenServer)**
+## New Components
 
-Classifies tasks into complexity tiers based on heuristics. This is a pure function module, not a process. Called by the Scheduler during routing decisions.
+### Hub-Side: AgentCom.LlmRegistry (NEW GenServer)
+
+**Responsibility:** Tracks Ollama instances across the Tailscale mesh. Periodic health checking. Model discovery. Single source of truth for which LLM endpoints are available.
+
+**Why a new GenServer (not an extension of Config):**
+- Endpoints need structured data (host, port, models list, health status, timestamps)
+- Periodic health probing requires Process.send_after timer
+- Atomic state transitions on health changes require GenServer semantics
+- PubSub broadcasts when endpoint status changes (Scheduler reacts)
+- Config KV store is for scalar values, not structured entity collections
+
+**State design:**
 
 ```elixir
-defmodule AgentCom.ComplexityClassifier do
-  @moduledoc """
-  Classifies task complexity to drive model selection.
+# GenServer state
+%{
+  endpoints: %{
+    "nathan-desktop" => %{
+      id: "nathan-desktop",
+      host: "100.x.x.x",           # Tailscale IP
+      port: 11434,
+      models: ["qwen3:8b", "llama3:70b"],
+      status: :healthy,             # :healthy | :degraded | :unreachable
+      last_check: 1707660000000,
+      last_response_ms: 245,
+      consecutive_failures: 0,
+      registered_at: 1707650000000,
+      metadata: %{}                 # VRAM, GPU info, etc.
+    }
+  },
+  check_interval_ms: 60_000         # From Config, default 60s
+}
+```
 
-  Tiers:
-    :trivial   -> sidecar handles directly, zero LLM tokens
-    :simple    -> local Ollama (Qwen3 8B or equivalent)
-    :complex   -> cloud API (Claude, GPT-4, etc.)
-  """
+**Persistence:** DETS (priv/llm_endpoints.dets) for endpoint registrations. Health status is ephemeral (rebuilt on startup via health check sweep). This matches the existing pattern -- DETS for durable config, in-memory for transient state.
 
-  @trivial_patterns [
-    ~r/^(write|create|touch)\s+.*(file|output)/i,
-    ~r/^git\s+(status|fetch|pull|checkout|add|commit|push)/i,
-    ~r/^(check|read|cat|ls|dir)\s+/i,
-    ~r/^echo\s+/i,
-    ~r/^(copy|move|rename|delete|remove)\s+/i
-  ]
+**Health check protocol:**
 
-  @doc """
-  Classify a task based on description, metadata, and explicit overrides.
+```
+Every check_interval_ms (default 60s):
+  For each registered endpoint:
+    1. HTTP GET http://{host}:{port}/
+       200 "Ollama is running" -> mark :healthy, reset consecutive_failures
+       timeout (5s) or error  -> increment consecutive_failures
+         consecutive_failures >= 3 -> mark :unreachable
+         consecutive_failures < 3  -> mark :degraded
 
-  Priority:
-  1. Explicit metadata.complexity (submitter override)
-  2. Explicit metadata.model (forces specific model = skip classification)
-  3. metadata.trivial_ops list (zero-LLM shortcut)
-  4. Heuristic pattern matching on description
-  5. Default to :complex (safe fallback -- never accidentally run complex work on small model)
-  """
-  def classify(task) do
-    cond do
-      # Explicit override in metadata
-      task.metadata["complexity"] ->
-        normalize_complexity(task.metadata["complexity"])
+    2. HTTP GET http://{host}:{port}/api/tags
+       Parse response -> update endpoint.models list
+       Compare with previous -> broadcast :model_added/:model_removed if changed
+```
 
-      # Explicit model forces specific tier
-      task.metadata["model"] ->
-        :explicit_model
+**HTTP client:** Erlang's built-in :httpc. The hub makes ~5 health checks per minute. Adding Req would pull in Finch, Mint, NimblePool, NimbleOptions as transitive deps -- overkill for periodic probes. If the project later needs connection pooling or streaming, Req can be added then.
 
-      # Trivial ops list in metadata
-      is_list(task.metadata["trivial_ops"]) ->
-        :trivial
+**Public API:**
 
-      # Pattern matching on description
-      matches_trivial?(task.description) ->
-        :trivial
+```elixir
+defmodule AgentCom.LlmRegistry do
+  # CRUD
+  def register_endpoint(id, host, port, opts \\ %{})
+  def unregister_endpoint(endpoint_id)
+  def list_endpoints()
+  def get_endpoint(endpoint_id)
 
-      # Short descriptions with simple verbs tend to be simple
-      simple_task?(task.description) ->
-        :simple
+  # Model queries (used by Scheduler)
+  def list_models()
+  def get_endpoint_for_model(model_name)  # Returns healthy endpoint serving model
+  def get_endpoints_for_model(model_name) # All endpoints serving model (for load spread)
 
-      # Default: complex (safe)
-      true ->
-        :complex
-    end
-  end
+  # Health
+  def health_check_all()                  # Force immediate check cycle
+  def get_health_summary()                # Aggregate health status
+
+  # Admin
+  def update_endpoint_metadata(endpoint_id, metadata)
 end
 ```
 
-**Why a library module not a GenServer:** Classification is a pure function of the task data. No state to maintain. No timers. No subscriptions. A GenServer would serialize all classification through a single process for no reason. The Scheduler calls `ComplexityClassifier.classify/1` inline during scheduling.
-
-**Why heuristic-based not ML-based:** At 5 agents with <100 tasks/day, an ML classifier is overkill. Heuristics are transparent, debuggable, and tunable via Config. The classification can be overridden per-task via `metadata.complexity` by the submitter. If heuristics prove insufficient at scale, they can be replaced with a model-based classifier later without changing the interface.
+**Integration points:**
+- Supervision tree: Added to application.ex children list AFTER Config, BEFORE Scheduler
+- DetsBackup: Register llm_endpoints.dets table (add to @tables list in dets_backup.ex)
+- PubSub: Broadcasts on "llm" topic for endpoint status changes
+- Scheduler: Queries get_endpoint_for_model/1 during assignment (cached state, no network call)
+- Endpoint: 4 new admin HTTP routes
+- Telemetry: Emits [:agent_com, :llm, :health_check] and [:agent_com, :llm, :endpoint_change]
 
 ---
 
-**3. Task Format Extension (modification to TaskQueue)**
+### Hub-Side: AgentCom.ComplexityClassifier (NEW library module)
 
-The task struct grows with new optional fields. All existing tasks continue to work (new fields default to nil/empty).
+**Responsibility:** Classifies task complexity to drive model selection. Pure function module -- no GenServer, no state, no timer.
 
-```elixir
-# CURRENT task struct (in TaskQueue.submit/1):
-%{
-  id: task_id,
-  description: "...",
-  metadata: %{},
-  priority: 2,
-  status: :queued,
-  assigned_to: nil,
-  generation: 0,
-  retry_count: 0,
-  max_retries: 3,
-  needed_capabilities: [],
-  result: nil,
-  tokens_used: nil,
-  ...
-}
+**Why not a GenServer:** Classification is a deterministic function of task data. No state to maintain. Serializing through a single process would add latency to every scheduling attempt for no benefit. The Scheduler calls `ComplexityClassifier.classify/1` inline.
 
-# ENRICHED task struct (v1.2 additions shown with # NEW):
-%{
-  id: task_id,
-  description: "...",
-  metadata: %{},
-  priority: 2,
-  status: :queued,
-  assigned_to: nil,
-  generation: 0,
-  retry_count: 0,
-  max_retries: 3,
-  needed_capabilities: [],
+**Classification tiers:**
 
-  # NEW: Enriched context
-  context: %{                           # NEW -- optional context block
-    "repo" => "AgentCom",               # Working repository
-    "branch" => "main",                 # Base branch
-    "related_files" => ["lib/agent_com/scheduler.ex"],
-    "depends_on" => ["task-abc123"],     # Task dependencies
-    "notes" => "See ARCHITECTURE.md"    # Human notes
-  },
+| Tier | Meaning | Model Route |
+|------|---------|-------------|
+| :trivial | Zero LLM tokens needed. Git, file I/O, shell commands. | Sidecar handles directly |
+| :simple | Single-step coding, small edits, documentation. | Local Ollama (fast, free) |
+| :complex | Multi-file changes, architecture, debugging. | Cloud API (Claude, GPT-4) |
+| :explicit_model | Submitter specified exact model. | Use specified model |
 
-  # NEW: Success criteria
-  criteria: [                           # NEW -- list of checkable conditions
-    %{"type" => "file_exists", "path" => "lib/agent_com/llm_registry.ex"},
-    %{"type" => "test_passes", "command" => "mix test test/llm_registry_test.exs"},
-    %{"type" => "no_warnings", "command" => "mix compile --warnings-as-errors"},
-    %{"type" => "custom", "description" => "Module implements health_check/0"}
-  ],
+**Classification priority chain:**
 
-  # NEW: Verification steps (run by sidecar after task completion)
-  verification_steps: [                 # NEW -- ordered list of verification commands
-    %{"name" => "compile_check", "command" => "mix compile --warnings-as-errors", "expect" => "exit_0"},
-    %{"name" => "test_run", "command" => "mix test test/llm_registry_test.exs", "expect" => "exit_0"},
-    %{"name" => "file_check", "command" => "test -f lib/agent_com/llm_registry.ex", "expect" => "exit_0"}
-  ],
-
-  # NEW: Model routing
-  complexity: :complex,                 # NEW -- :trivial | :simple | :complex (set by classifier)
-  assigned_model: nil,                  # NEW -- model string set during assignment (e.g., "ollama/qwen3:8b")
-  assigned_endpoint: nil,               # NEW -- endpoint ID set during assignment
-  model_override: nil,                  # NEW -- explicit model from submitter (bypasses classifier)
-
-  # NEW: Verification result
-  verification_result: nil,             # NEW -- populated by sidecar after verification
-
-  result: nil,
-  tokens_used: nil,
-  ...
-}
+```
+1. task.metadata["complexity"]    -> explicit override by submitter
+2. task.metadata["model"]         -> explicit model forces :explicit_model
+3. task.metadata["trivial_ops"]   -> explicit trivial ops list = :trivial
+4. Pattern match on description   -> regex heuristics
+5. Default                        -> :complex (safe fallback)
 ```
 
-**Backward compatibility:** All new fields default to nil or empty list. Existing task submission (POST /api/tasks with just `description`) continues to work. The Scheduler classifies tasks that lack explicit complexity. Sidecars that do not understand the new fields ignore them (they only read `task_id`, `description`, `metadata`, `generation`).
+**Why heuristic-based, not ML-based:** At 5 agents with <100 tasks/day, an ML classifier is unjustifiable complexity. Heuristics are transparent, debuggable, and tunable via Config. The submitter can always override via `metadata.complexity`. If heuristics prove insufficient, the module interface stays the same -- only the implementation changes.
 
 ---
 
-#### Sidecar-Side Enhancements
+### Sidecar: lib/model-router.js (NEW module)
 
-**4. Model Router (enhancement to sidecar index.js)**
-
-A new module `lib/model-router.js` that the sidecar calls to determine how to execute a task.
+**Responsibility:** Determines execution strategy for a task based on hub-assigned routing info.
 
 ```javascript
-// lib/model-router.js
-
 /**
- * Determine execution strategy for a task based on assigned model/complexity.
- *
  * Returns: { strategy: 'trivial' | 'local_llm' | 'cloud_llm' | 'wake_default', config: {...} }
  */
 function routeTask(task, sidecarConfig) {
-  // Strategy 1: Trivial execution (zero LLM tokens)
-  if (task.complexity === 'trivial' || (task.metadata && task.metadata.trivial_ops)) {
-    return {
-      strategy: 'trivial',
-      config: { ops: task.metadata.trivial_ops || inferTrivialOps(task.description) }
-    };
+  // 1. Trivial: zero LLM tokens
+  if (task.complexity === 'trivial' || task.metadata?.trivial_ops) {
+    return { strategy: 'trivial', config: { ops: task.metadata?.trivial_ops || [] } };
   }
 
-  // Strategy 2: Explicit model assigned by scheduler
+  // 2. Explicit model assigned by hub
   if (task.assigned_model) {
     const isLocal = task.assigned_model.startsWith('ollama/');
     if (isLocal && task.assigned_endpoint) {
@@ -275,403 +184,353 @@ function routeTask(task, sidecarConfig) {
         strategy: 'local_llm',
         config: {
           model: task.assigned_model.replace('ollama/', ''),
-          endpoint: task.assigned_endpoint,  // { host, port }
+          endpoint: task.assigned_endpoint,
           api_url: `http://${task.assigned_endpoint.host}:${task.assigned_endpoint.port}`
         }
       };
     }
-    // Cloud model
-    return {
-      strategy: 'cloud_llm',
-      config: { model: task.assigned_model }
-    };
+    return { strategy: 'cloud_llm', config: { model: task.assigned_model } };
   }
 
-  // Strategy 3: Default -- wake agent with existing wake_command
+  // 3. Default: wake agent with existing command (backward compatible)
   return { strategy: 'wake_default', config: {} };
 }
 ```
 
-**Integration with existing sidecar:** `handleTaskAssign` in index.js calls `routeTask()` before deciding whether to call `wakeAgent()`, execute trivially, or call Ollama directly.
+**Key principle:** The sidecar does NOT decide which model to use. The hub decides during scheduling and passes `assigned_model` + `assigned_endpoint` in the task_assign message. The sidecar only translates the assignment into an execution strategy.
 
 ---
 
-**5. Trivial Executor (new sidecar module)**
+### Sidecar: lib/trivial-executor.js (NEW module)
 
-Handles zero-LLM-token tasks: git operations, file I/O, shell commands.
+**Responsibility:** Execute zero-LLM-token tasks. Git operations, file I/O, shell commands.
+
+**Security model:** Allowlist of permitted commands in sidecar config.json. Commands not in `trivial_execution.allowed_commands` are rejected. Working directory constrained to `trivial_execution.working_dir`.
+
+**Interface:**
 
 ```javascript
-// lib/trivial-executor.js
-
 /**
- * Execute a trivial task without invoking any LLM.
- * Returns { status: 'success' | 'failure', output: string, reason?: string }
+ * Returns: { status: 'success' | 'failure', output: [...results], reason?: string }
  */
-async function executeTrivial(task, ops, config) {
-  const results = [];
-
-  for (const op of ops) {
-    switch (op.type) {
-      case 'shell':
-        const result = await execCommand(op.command);
-        results.push({ op: op.type, command: op.command, exit_code: result.code, stdout: result.stdout });
-        if (result.code !== 0) return { status: 'failure', output: results, reason: `shell command failed: ${op.command}` };
-        break;
-
-      case 'write_file':
-        fs.writeFileSync(op.path, op.content);
-        results.push({ op: op.type, path: op.path });
-        break;
-
-      case 'read_file':
-        const content = fs.readFileSync(op.path, 'utf8');
-        results.push({ op: op.type, path: op.path, content });
-        break;
-
-      case 'git':
-        const gitResult = await execCommand(`git ${op.args}`);
-        results.push({ op: op.type, args: op.args, exit_code: gitResult.code, stdout: gitResult.stdout });
-        break;
-
-      default:
-        return { status: 'failure', output: results, reason: `unknown op type: ${op.type}` };
-    }
-  }
-
-  return { status: 'success', output: results };
-}
+async function executeTrivial(task, ops, config)
 ```
+
+**Supported op types:** `shell`, `write_file`, `read_file`, `git`. Each executes sequentially. First failure aborts remaining ops.
 
 ---
 
-**6. Self-Verification Runner (new sidecar module)**
+### Sidecar: lib/verification.js (NEW module)
 
-Executes verification steps after task completion, before reporting to hub.
+**Responsibility:** Run verification steps after task completion, before reporting to hub. Deterministic code (shell commands with exit code checks), not LLM judgment.
+
+**Why sidecar-side, not hub-side:**
+- Verification steps are shell commands (mix compile, mix test, file existence checks)
+- They must run in the agent's working directory on the agent's machine
+- The hub has no filesystem access to agent machines
+- The sidecar already has execCommand infrastructure (lib/wake.js)
+
+**Why deterministic verification, not LLM self-assessment:**
+- LLM agents can hallucinate "all tests pass" without running tests
+- Shell commands return factual results (exit codes, stdout/stderr)
+- The verification module makes pass/fail decisions based on exit codes, not LLM judgment
+- This aligns with the 2026 consensus: "verification-aware planning" with machine-checkable checks
+
+**Interface:**
 
 ```javascript
-// lib/verification.js
-
 /**
- * Run verification steps against task criteria.
- * Returns { passed: boolean, results: [...], summary: string }
+ * Returns: { passed: boolean, results: [...stepResults], summary: string }
  */
-async function runVerification(task, verificationSteps) {
-  if (!verificationSteps || verificationSteps.length === 0) {
-    return { passed: true, results: [], summary: 'no_verification_steps' };
-  }
-
-  const results = [];
-  let allPassed = true;
-
-  for (const step of verificationSteps) {
-    const startTime = Date.now();
-    let stepResult;
-
-    try {
-      const cmdResult = await execCommand(step.command);
-      const passed = evaluateExpectation(step.expect, cmdResult);
-
-      stepResult = {
-        name: step.name,
-        command: step.command,
-        passed,
-        exit_code: cmdResult.code,
-        stdout: cmdResult.stdout.substring(0, 2000),  // Truncate
-        stderr: cmdResult.stderr.substring(0, 2000),
-        duration_ms: Date.now() - startTime
-      };
-    } catch (err) {
-      stepResult = {
-        name: step.name,
-        command: step.command,
-        passed: false,
-        error: err.message,
-        duration_ms: Date.now() - startTime
-      };
-    }
-
-    results.push(stepResult);
-    if (!stepResult.passed) allPassed = false;
-  }
-
-  return {
-    passed: allPassed,
-    results,
-    summary: allPassed
-      ? `all ${results.length} verification steps passed`
-      : `${results.filter(r => !r.passed).length}/${results.length} steps failed`
-  };
-}
-
-function evaluateExpectation(expect, cmdResult) {
-  switch (expect) {
-    case 'exit_0': return cmdResult.code === 0;
-    case 'exit_nonzero': return cmdResult.code !== 0;
-    case 'contains': return cmdResult.stdout.includes(expect.substring);
-    default: return cmdResult.code === 0;  // Default: success = exit 0
-  }
-}
+async function runVerification(task, verificationSteps)
 ```
+
+**Verification is a gate, not a feedback loop.** If verification fails, the sidecar reports `task_failed` with the verification result. The hub's existing retry logic (TaskQueue.fail_task -> retry or dead-letter) handles the retry decision. This avoids building a second retry mechanism in the sidecar.
 
 ---
 
-### Component Boundaries
+## Modified Components: Detailed Change Maps
 
-| Component | Responsibility | Communicates With |
-|-----------|---------------|-------------------|
-| **LlmRegistry** (NEW hub GenServer) | Tracks Ollama endpoints, health-checks them, serves model lookups | Scheduler (model routing queries), Endpoint (admin CRUD), Config (check interval), PubSub "llm" topic |
-| **ComplexityClassifier** (NEW hub library) | Classifies task complexity for model routing | Scheduler (called inline), Config (pattern overrides) |
-| **TaskQueue** (MODIFIED) | Stores enriched tasks with context, criteria, verification, model fields | Scheduler (reads tasks), Socket (receives results with verification), Endpoint (CRUD) |
-| **Scheduler** (MODIFIED) | Model-aware task-to-agent matching with endpoint selection | TaskQueue, AgentFSM, LlmRegistry, ComplexityClassifier |
-| **Socket** (MODIFIED) | Extended task_assign payload, verification results in task_complete | AgentFSM, TaskQueue, Scheduler |
-| **Endpoint** (MODIFIED) | LLM admin endpoints, enriched task submission | LlmRegistry, TaskQueue |
-| **model-router.js** (NEW sidecar module) | Routes tasks to trivial/local/cloud execution | index.js (called from handleTaskAssign) |
-| **trivial-executor.js** (NEW sidecar module) | Zero-LLM-token task execution | model-router.js (called when strategy=trivial) |
-| **verification.js** (NEW sidecar module) | Runs verification steps before reporting complete | index.js (called after task execution, before sendTaskComplete) |
+### TaskQueue Changes
+
+**File:** `lib/agent_com/task_queue.ex`
+**Change type:** Schema extension (additive, backward compatible)
+
+The task map in `handle_call({:submit, params}, ...)` grows with 8 new optional fields:
+
+```elixir
+# Additions to the task map in submit/1:
+task = %{
+  # ... all 18 existing fields unchanged ...
+
+  # NEW: enriched context (optional)
+  context: Map.get(params, :context, Map.get(params, "context", nil)),
+
+  # NEW: success criteria (optional list)
+  criteria: Map.get(params, :criteria, Map.get(params, "criteria", [])),
+
+  # NEW: verification steps (optional list)
+  verification_steps: Map.get(params, :verification_steps,
+    Map.get(params, "verification_steps", [])),
+
+  # NEW: model routing (set by classifier/scheduler, not submitter)
+  complexity: nil,
+  assigned_model: nil,
+  assigned_endpoint: nil,
+
+  # NEW: explicit model override from submitter
+  model_override: Map.get(params, :model_override,
+    Map.get(params, "model_override", nil)),
+
+  # NEW: verification result (set on completion)
+  verification_result: nil
+}
+```
+
+**assign_task/3 changes:** After assigning, set `complexity`, `assigned_model`, `assigned_endpoint` on the task record based on Scheduler's routing decision.
+
+**complete_task/3 changes:** Accept `verification_result` in result_params and store on the task record.
+
+**DETS compatibility:** Existing tasks in DETS lack the new fields. `Map.get(task, :context, nil)` pattern handles this gracefully. No migration needed.
+
+**Risk:** LOW. All changes are additive. Defaults are nil/empty. Existing code paths (submit without new fields, complete without verification_result) continue to work unchanged.
 
 ---
 
-### Data Flow Changes
+### Scheduler Changes
 
-#### Current Flow (v1.0): Task Submit -> Schedule -> Assign -> Wake -> Complete
+**File:** `lib/agent_com/scheduler.ex`
+**Change type:** Logic extension (medium risk -- core scheduling path)
+
+**Changes to try_schedule_all/1:**
+
+After getting `queued_tasks` from TaskQueue, the Scheduler now checks:
+1. Is the task classified? If not, classify inline.
+2. What model does it need? Query LlmRegistry.
+
+**Changes to do_match_loop/2:**
+
+The matching logic extends from pure capability matching to:
 
 ```
-POST /api/tasks {description, priority}
-  |
-  v
-TaskQueue.submit/1 -> stores in DETS -> broadcasts :task_submitted
-  |
-  v
-Scheduler.try_schedule_all/0
-  | queries: TaskQueue.list(status: :queued) + AgentFSM.list_all()
-  | matches: capability-based (needed_capabilities subset of agent.capabilities)
-  |
-  v
-TaskQueue.assign_task/3 -> updates DETS -> broadcasts :task_assigned
-  |
-  v
-Socket.handle_info({:push_task, ...})
-  | sends: {"type":"task_assign", "task_id":..., "description":..., "metadata":..., "generation":...}
-  |
-  v
-Sidecar.handleTaskAssign(msg)
-  | persists to queue.json
-  | sendTaskAccepted(task_id)
-  | git start-task (if repo_dir configured)
-  | wakeAgent(task) -- executes wake_command
-  |
-  v
-Agent works... writes {task_id}.json to results dir
-  |
-  v
-Sidecar.handleResult(taskId, filePath, hub)
-  | reads result JSON
-  | git submit (if repo_dir configured)
-  | hub.sendTaskComplete(taskId, result)
-  |
-  v
-Socket.handle_msg("task_complete")
-  | TaskQueue.complete_task(task_id, generation, result_params)
-  | AgentFSM.task_completed(agent_id)
-  | broadcasts :task_completed -> triggers Scheduler for next task
+1. Capability match (existing -- needed_capabilities subset of agent.capabilities)
+2. If task.complexity == :trivial -> any idle agent with capabilities matches
+3. If task.complexity == :simple ->
+     a. Query LlmRegistry for healthy endpoint serving the needed model
+     b. If no healthy endpoint -> skip (leave task queued for retry on next health check)
+     c. Prefer agents on the same Tailscale node as the Ollama endpoint (locality)
+4. If task.complexity == :complex -> any idle agent (cloud model, location irrelevant)
+5. If task has model_override -> check LlmRegistry for that specific model
 ```
 
-#### New Flow (v1.2): Enriched Task -> Classify -> Model-Route -> Execute/Wake -> Verify -> Complete
+**Changes to do_assign/2:**
+
+The push_task payload enrichment:
+
+```elixir
+# CURRENT:
+task_data = %{
+  task_id: assigned_task.id,
+  description: assigned_task.description,
+  metadata: assigned_task.metadata,
+  generation: assigned_task.generation
+}
+
+# NEW:
+task_data = %{
+  task_id: assigned_task.id,
+  description: assigned_task.description,
+  metadata: assigned_task.metadata,
+  generation: assigned_task.generation,
+  # v1.2 enriched fields
+  context: assigned_task.context,
+  criteria: assigned_task.criteria,
+  verification_steps: assigned_task.verification_steps,
+  complexity: assigned_task.complexity,
+  assigned_model: assigned_task.assigned_model,
+  assigned_endpoint: assigned_task.assigned_endpoint
+}
+```
+
+**Risk:** MEDIUM. The scheduling hot path changes. Mitigation: LlmRegistry queries are against cached GenServer state (zero network I/O in scheduler). ComplexityClassifier is a pure function (microsecond execution). Fallback: if LlmRegistry is unreachable or has no endpoints, fall back to existing behavior (assign to any capable agent, sidecar uses wake_default).
+
+---
+
+### Socket Changes
+
+**File:** `lib/agent_com/socket.ex`
+**Change type:** Payload extension (low risk)
+
+**handle_info({:push_task, task})** -- Pass through new fields:
+
+```elixir
+push = %{
+  "type" => "task_assign",
+  "task_id" => task[:task_id],
+  "description" => task[:description] || "",
+  "metadata" => task[:metadata] || %{},
+  "generation" => task[:generation] || 0,
+  "assigned_at" => System.system_time(:millisecond),
+  # v1.2 enriched fields (nil-safe)
+  "context" => task[:context],
+  "criteria" => task[:criteria],
+  "verification_steps" => task[:verification_steps],
+  "complexity" => task[:complexity] && to_string(task[:complexity]),
+  "assigned_model" => task[:assigned_model],
+  "assigned_endpoint" => task[:assigned_endpoint]
+}
+```
+
+**handle_msg("task_complete")** -- Accept verification_result:
+
+```elixir
+# Add to the result_params passed to TaskQueue.complete_task:
+verification_result: msg["verification_result"]
+```
+
+**Risk:** LOW. Additive fields only. Sidecars running v1.0 code ignore unknown fields in task_assign.
+
+---
+
+### Sidecar index.js Changes
+
+**File:** `sidecar/index.js`
+**Change type:** Flow branching (medium risk -- core task path)
+
+**handleTaskAssign:** After persisting task and sending acceptance, route via model-router:
+
+```javascript
+// CURRENT flow:
+//   persist -> accept -> git start-task -> wakeAgent
+
+// NEW flow:
+//   persist -> accept -> git start-task ->
+//     routeTask(task, _config) ->
+//       'trivial'     -> executeTrivialTask -> handleTrivialResult
+//       'local_llm'   -> wakeAgentWithModel
+//       'cloud_llm'   -> wakeAgentWithModel
+//       'wake_default' -> wakeAgent (existing, unchanged)
+```
+
+**handleResult:** After reading result JSON, before sendTaskComplete:
+
+```javascript
+// CURRENT flow:
+//   readResult -> gitSubmit -> sendTaskComplete
+
+// NEW flow:
+//   readResult ->
+//     if task.verification_steps:
+//       runVerification(task, task.verification_steps) ->
+//         passed: true  -> gitSubmit -> sendTaskComplete({...result, verification: verResult})
+//         passed: false -> sendTaskFailed('verification_failed: ' + summary)
+//     else:
+//       gitSubmit -> sendTaskComplete (existing, unchanged)
+```
+
+**Risk:** MEDIUM. Two branch points in the core task lifecycle. Mitigation: wake_default strategy preserves exact existing behavior. Verification only runs if verification_steps are present (empty list = no verification). Both new paths are independently testable.
+
+---
+
+## Data Flow: Complete v1.2 Pipeline
 
 ```
 POST /api/tasks {description, priority, context, criteria, verification_steps, model_override}
-  |                                                                         # NEW FIELDS
+  |
+  v
+Validation.validate_http(:post_task, params)          # Extended schema
+  |
   v
 TaskQueue.submit/1
-  | stores enriched task in DETS (new fields: context, criteria,
-  |   verification_steps, model_override)
-  | ComplexityClassifier.classify(task) -> sets task.complexity              # NEW
-  | broadcasts :task_submitted
+  | Creates task with enriched fields (all new fields nil/empty by default)
+  | ComplexityClassifier.classify(task) -> sets task.complexity
+  | DETS persist
+  | PubSub broadcast :task_submitted
   |
   v
-Scheduler.try_schedule_all/0
-  | queries: TaskQueue.list(status: :queued) + AgentFSM.list_all()
+Scheduler.handle_info({:task_event, %{event: :task_submitted}})
+  | try_schedule_all(:task_submitted)
+  | Get queued tasks + idle agents
   |
-  | NEW MATCHING LOGIC:
-  | 1. Capability match (existing)
-  | 2. Complexity classification (already set on task)
-  | 3. Model selection:
-  |    - task.model_override? -> use it directly
-  |    - :trivial -> no model needed (sidecar handles)
-  |    - :simple -> LlmRegistry.get_endpoint_for_model("qwen3:8b")
-  |    - :complex -> use cloud model (from Config, e.g., "anthropic/claude-opus-4-6")
-  | 4. Agent selection:
-  |    - :trivial/:simple -> prefer agent on same machine as Ollama endpoint
-  |    - :complex -> any idle agent with matching capabilities
+  | FOR EACH (task, agent) match candidate:
+  |   1. Capability check (existing)
+  |   2. Model routing:
+  |      :trivial  -> no model needed, any capable agent
+  |      :simple   -> LlmRegistry.get_endpoint_for_model(default_local_model)
+  |                   prefer agent co-located with endpoint
+  |      :complex  -> Config.get(:default_cloud_model), any capable agent
+  |      :explicit -> LlmRegistry check for specific model
+  |   3. If healthy endpoint found (or not needed): assign
+  |      If no healthy endpoint: skip, leave queued
   |
   v
 TaskQueue.assign_task/3
-  | updates task: assigned_model, assigned_endpoint, complexity              # NEW
-  | broadcasts :task_assigned
+  | Updates: assigned_model, assigned_endpoint, complexity on task record
+  | DETS persist, PubSub broadcast :task_assigned
   |
   v
-Socket.handle_info({:push_task, ...})
-  | sends ENRICHED task_assign:                                              # MODIFIED
-  | {
-  |   "type": "task_assign",
-  |   "task_id": "...",
-  |   "description": "...",
-  |   "metadata": {...},
-  |   "generation": 1,
-  |   "assigned_at": 1234567890,
-  |   "context": {...},                    # NEW
-  |   "criteria": [...],                   # NEW
-  |   "verification_steps": [...],         # NEW
-  |   "complexity": "simple",              # NEW
-  |   "assigned_model": "ollama/qwen3:8b", # NEW
-  |   "assigned_endpoint": {               # NEW
-  |     "host": "100.x.x.x",
-  |     "port": 11434
-  |   }
-  | }
+Socket.handle_info({:push_task, task_data})
+  | Sends enriched task_assign over WebSocket:
+  | { type, task_id, description, metadata, generation, assigned_at,
+  |   context, criteria, verification_steps, complexity,
+  |   assigned_model, assigned_endpoint }
   |
   v
-Sidecar.handleTaskAssign(msg)
-  | persists enriched task to queue.json
+Sidecar: handleTaskAssign(msg)
+  | Persist enriched task to queue.json
   | sendTaskAccepted(task_id)
+  | git start-task (if repo_dir configured)
   |
-  | model-router.routeTask(task, config)                                     # NEW
-  |   |
-  |   |--> strategy: 'trivial'
-  |   |     trivial-executor.executeTrivial(task, ops, config)
-  |   |     -> skip wakeAgent entirely, produce result directly
-  |   |
-  |   |--> strategy: 'local_llm'
-  |   |     wakeAgent with modified wake_command using Ollama endpoint
-  |   |     e.g., "openclaw agent --model ollama/qwen3:8b --api-url http://100.x.x.x:11434 ..."
-  |   |
-  |   |--> strategy: 'cloud_llm'
-  |   |     wakeAgent with cloud model in wake_command
-  |   |     e.g., "openclaw agent --model anthropic/claude-opus-4-6 ..."
-  |   |
-  |   |--> strategy: 'wake_default'
-  |         wakeAgent() with existing wake_command (backward compatible)
+  | model-router.routeTask(task, config) -> { strategy, config }
+  |
+  +--> strategy: 'trivial'
+  |    trivial-executor.executeTrivial(task, ops, config)
+  |    -> produces result directly (no LLM, no wake)
+  |
+  +--> strategy: 'local_llm'
+  |    wakeAgentWithModel(task, { model, endpoint, api_url })
+  |    -> e.g., "openclaw agent --model qwen3:8b --api-url http://100.x.x.x:11434 ..."
+  |
+  +--> strategy: 'cloud_llm'
+  |    wakeAgentWithModel(task, { model })
+  |    -> e.g., "openclaw agent --model claude-opus-4-6 ..."
+  |
+  +--> strategy: 'wake_default'
+       wakeAgent(task) -- EXISTING behavior, fully backward compatible
   |
   v
 Agent works... writes {task_id}.json to results dir
   |
   v
-Sidecar.handleResult(taskId, filePath, hub)                                  # MODIFIED
-  | reads result JSON
+Sidecar: handleResult(taskId, filePath, hub)
+  | Read result JSON
   |
-  | VERIFICATION (NEW):
-  | if task has verification_steps:
+  | IF task.verification_steps exist AND verification.enabled:
   |   verification.runVerification(task, task.verification_steps)
   |   |
-  |   |--> passed: true
-  |   |     git submit (if repo_dir)
-  |   |     hub.sendTaskComplete(taskId, { ...result, verification: verificationResult })
+  |   +--> passed: true
+  |   |    git submit (if repo_dir)
+  |   |    hub.sendTaskComplete(taskId, { ...result, verification_result })
   |   |
-  |   |--> passed: false
-  |         log verification failure
-  |         hub.sendTaskFailed(taskId, 'verification_failed: ' + summary)
-  |         -> TaskQueue retries or dead-letters based on retry_count
+  |   +--> passed: false
+  |        hub.sendTaskFailed(taskId, 'verification_failed: ' + summary)
+  |        -> Hub retry/dead-letter logic handles it
   |
-  | else (no verification_steps -- backward compatible):
+  | ELSE (no verification -- backward compatible):
   |   git submit + sendTaskComplete (existing behavior)
   |
   v
-Socket.handle_msg("task_complete")
-  | TaskQueue.complete_task(task_id, generation, {
-  |   result: result,
-  |   tokens_used: tokens_used,
-  |   verification_result: verification_result                               # NEW
-  | })
-  | AgentFSM.task_completed(agent_id)
-  | broadcasts :task_completed
+Socket.handle_msg("task_complete" or "task_failed")
+  | TaskQueue.complete_task or fail_task (with verification_result stored)
+  | AgentFSM state transition
+  | PubSub broadcast -> Scheduler picks up next task
 ```
 
 ---
 
-### Updated Supervision Tree
+## WebSocket Protocol Extensions
 
-```
-AgentCom.Supervisor (:one_for_one)
-  |
-  |-- Phoenix.PubSub (name: AgentCom.PubSub)
-  |-- Registry (name: AgentCom.AgentRegistry)
-  |-- Registry (name: AgentCom.AgentFSMRegistry)
-  |
-  |-- AgentCom.Config                  # existing
-  |-- AgentCom.Auth                    # existing
-  |-- AgentCom.LlmRegistry            # NEW -- must start before Scheduler
-  |-- AgentCom.Mailbox                 # existing
-  |-- AgentCom.Channels               # existing
-  |-- AgentCom.Presence               # existing
-  |-- AgentCom.Analytics              # existing
-  |-- AgentCom.Threads                # existing
-  |-- AgentCom.MessageHistory          # existing
-  |-- AgentCom.Reaper                  # existing
-  |-- AgentCom.AgentSupervisor         # existing (DynamicSupervisor)
-  |-- AgentCom.TaskQueue               # existing (MODIFIED: enriched task struct)
-  |-- AgentCom.Scheduler               # existing (MODIFIED: model-aware matching)
-  |-- AgentCom.DashboardState          # existing
-  |-- AgentCom.DashboardNotifier       # existing
-  |-- Bandit                           # existing
-```
-
-**Ordering rationale:**
-- LlmRegistry starts after Config (reads health check interval from Config) and before Scheduler (Scheduler queries LlmRegistry for model endpoints)
-- ComplexityClassifier is a library module, not in supervision tree
-- All existing children unchanged in position
-
----
-
-### Updated Sidecar Architecture
-
-```
-sidecar/
-  index.js                    # MODIFIED: handleTaskAssign routes via model-router
-  lib/
-    queue.js                  # MODIFIED: extended task object in queue.json
-    wake.js                   # MODIFIED: new interpolation variables (${MODEL}, ${MODEL_ENDPOINT})
-    git-workflow.js           # UNCHANGED
-    model-router.js           # NEW: routeTask() returns execution strategy
-    trivial-executor.js       # NEW: executeTrivial() for zero-LLM tasks
-    verification.js           # NEW: runVerification() against criteria
-  config.json                 # MODIFIED: new optional fields
-```
-
-**Sidecar config.json additions:**
-
-```json
-{
-  "agent_id": "my-agent",
-  "token": "...",
-  "hub_url": "ws://hub-hostname:4000/ws",
-  "wake_command": "openclaw agent --message \"Task: ${TASK_JSON}\" --session-id ${TASK_ID}",
-  "capabilities": ["code"],
-
-  "model_wake_commands": {
-    "ollama/*": "openclaw agent --model ${MODEL} --api-url ${MODEL_ENDPOINT} --message \"Task: ${TASK_JSON}\" --session-id ${TASK_ID}",
-    "anthropic/*": "openclaw agent --model ${MODEL} --message \"Task: ${TASK_JSON}\" --session-id ${TASK_ID}",
-    "default": "openclaw agent --message \"Task: ${TASK_JSON}\" --session-id ${TASK_ID}"
-  },
-
-  "trivial_execution": {
-    "enabled": true,
-    "allowed_commands": ["git", "cat", "ls", "echo", "test", "mkdir", "cp", "mv"],
-    "working_dir": "/path/to/agent/repo"
-  },
-
-  "verification": {
-    "enabled": true,
-    "timeout_ms": 120000,
-    "max_retries_on_failure": 1
-  }
-}
-```
-
----
-
-### WebSocket Protocol Extensions
-
-#### Extended task_assign (hub -> sidecar)
+### task_assign (hub -> sidecar) -- Extended
 
 ```json
 {
@@ -686,43 +545,34 @@ sidecar/
     "repo": "AgentCom",
     "branch": "main",
     "related_files": ["lib/agent_com/llm_registry.ex"],
-    "notes": "See ARCHITECTURE.md for design"
+    "notes": "See ARCHITECTURE.md"
   },
-
   "criteria": [
     {"type": "file_exists", "path": "lib/agent_com/llm_registry.ex"},
     {"type": "test_passes", "command": "mix test test/llm_registry_test.exs"}
   ],
-
   "verification_steps": [
     {"name": "compile", "command": "mix compile --warnings-as-errors", "expect": "exit_0"},
     {"name": "tests", "command": "mix test test/llm_registry_test.exs", "expect": "exit_0"}
   ],
-
   "complexity": "simple",
   "assigned_model": "ollama/qwen3:8b",
-  "assigned_endpoint": {
-    "host": "100.64.0.1",
-    "port": 11434
-  }
+  "assigned_endpoint": {"host": "100.64.0.1", "port": 11434}
 }
 ```
 
-#### Extended task_complete (sidecar -> hub)
+All new fields are optional. Sidecars running v1.0 code ignore them. Protocol version stays at 1 (all changes additive).
+
+### task_complete (sidecar -> hub) -- Extended
 
 ```json
 {
   "type": "task_complete",
   "task_id": "task-abc123",
   "generation": 1,
-  "result": {
-    "status": "success",
-    "output": "LlmRegistry module created with health_check/0",
-    "pr_url": "https://github.com/org/AgentCom/pull/42"
-  },
+  "result": {"status": "success", "output": "...", "pr_url": "..."},
   "tokens_used": 1250,
   "model_used": "ollama/qwen3:8b",
-
   "verification_result": {
     "passed": true,
     "results": [
@@ -734,7 +584,7 @@ sidecar/
 }
 ```
 
-#### Extended task_failed with verification failure (sidecar -> hub)
+### task_failed with verification failure (sidecar -> hub)
 
 ```json
 {
@@ -746,14 +596,94 @@ sidecar/
     "passed": false,
     "results": [
       {"name": "compile", "passed": true, "exit_code": 0, "duration_ms": 3200},
-      {"name": "tests", "passed": false, "exit_code": 1, "duration_ms": 5400, "stderr": "1 test failed"}
+      {"name": "tests", "passed": false, "exit_code": 1, "duration_ms": 5400,
+       "stderr": "1 test, 1 failure"}
     ],
     "summary": "1/2 steps failed"
   }
 }
 ```
 
-**Backward compatibility:** Sidecars running v1.0 code ignore unknown fields in task_assign. Hub accepts task_complete without verification_result (existing behavior). Protocol version remains 1 because all changes are additive.
+---
+
+## Updated Supervision Tree
+
+```
+AgentCom.Supervisor (:one_for_one)
+  |
+  |-- Phoenix.PubSub (name: AgentCom.PubSub)
+  |-- Registry (keys: :unique, name: AgentCom.AgentRegistry)
+  |-- AgentCom.Config
+  |-- AgentCom.Auth
+  |-- AgentCom.Mailbox
+  |-- AgentCom.Channels
+  |-- AgentCom.Presence
+  |-- AgentCom.Analytics
+  |-- AgentCom.Threads
+  |-- AgentCom.MessageHistory
+  |-- AgentCom.Reaper
+  |-- Registry (keys: :unique, name: AgentCom.AgentFSMRegistry)
+  |-- AgentCom.AgentSupervisor
+  |-- AgentCom.LlmRegistry                 # NEW -- after Config, before TaskQueue
+  |-- AgentCom.TaskQueue                    # MODIFIED (enriched task struct)
+  |-- AgentCom.Scheduler                    # MODIFIED (model-aware matching)
+  |-- AgentCom.MetricsCollector
+  |-- AgentCom.Alerter
+  |-- AgentCom.RateLimiter.Sweeper
+  |-- AgentCom.DashboardState
+  |-- AgentCom.DashboardNotifier
+  |-- AgentCom.DetsBackup
+  |-- Bandit
+```
+
+**LlmRegistry placement rationale:**
+- After Config (reads health check interval from Config)
+- Before TaskQueue and Scheduler (Scheduler queries LlmRegistry during assignment)
+- ComplexityClassifier is a pure function module, not in supervision tree
+
+---
+
+## Updated Sidecar Architecture
+
+```
+sidecar/
+  index.js                    # MODIFIED: handleTaskAssign routes via model-router
+  lib/
+    queue.js                  # UNCHANGED (JSON serialization handles new fields)
+    wake.js                   # MODIFIED: new interpolation variables
+    git-workflow.js           # UNCHANGED
+    log.js                    # UNCHANGED
+    model-router.js           # NEW: routeTask() returns execution strategy
+    trivial-executor.js       # NEW: executeTrivial() for zero-LLM tasks
+    verification.js           # NEW: runVerification() against criteria
+  config.json                 # MODIFIED: new optional fields
+  test/
+    model-router.test.js      # NEW
+    trivial-executor.test.js  # NEW
+    verification.test.js      # NEW
+```
+
+**Sidecar config.json additions (all optional, backward compatible):**
+
+```json
+{
+  "model_wake_commands": {
+    "ollama/*": "openclaw agent --model ${MODEL} --api-url ${MODEL_ENDPOINT} ...",
+    "anthropic/*": "openclaw agent --model ${MODEL} ...",
+    "default": "openclaw agent ..."
+  },
+  "trivial_execution": {
+    "enabled": true,
+    "allowed_commands": ["git", "cat", "ls", "echo", "test", "mkdir", "cp", "mv"],
+    "working_dir": "/path/to/agent/repo"
+  },
+  "verification": {
+    "enabled": true,
+    "timeout_ms": 120000,
+    "max_retries_on_failure": 1
+  }
+}
+```
 
 ---
 
@@ -761,72 +691,23 @@ sidecar/
 
 ### Pattern 1: Additive Schema Evolution
 
-**What:** Add new optional fields to existing data structures rather than breaking the schema.
+All v1.2 changes add optional fields with nil/empty defaults. Existing DETS data, existing sidecars, existing API callers continue to work without modification. No data migration.
 
-**When:** Every v1.2 change touches existing data (task struct, WebSocket messages, sidecar config).
+### Pattern 2: Hub Decides, Sidecar Executes
 
-**Example:**
-```elixir
-# TaskQueue.submit/1 -- add new fields with defaults
-task = %{
-  # ... existing fields unchanged ...
+All routing decisions happen in the hub (LlmRegistry state, ComplexityClassifier logic, model selection in Scheduler). The sidecar receives explicit instructions (assigned_model, assigned_endpoint) and executes them. This avoids split-brain scenarios and keeps the sidecar as a thin relay.
 
-  # NEW fields with safe defaults
-  context: Map.get(params, :context, Map.get(params, "context", nil)),
-  criteria: Map.get(params, :criteria, Map.get(params, "criteria", [])),
-  verification_steps: Map.get(params, :verification_steps, Map.get(params, "verification_steps", [])),
-  complexity: nil,           # Set by ComplexityClassifier after creation
-  assigned_model: nil,       # Set during assignment
-  assigned_endpoint: nil,    # Set during assignment
-  model_override: Map.get(params, :model_override, Map.get(params, "model_override", nil)),
-  verification_result: nil   # Set on completion
-}
-```
+### Pattern 3: Strategy Dispatch in Sidecar
 
-**Why:** Existing DETS data (tasks created before v1.2) will not have the new fields. Map.get with defaults handles this gracefully. No migration needed.
-
-### Pattern 2: Strategy Dispatch in Sidecar
-
-**What:** Use a strategy object to decouple task routing from execution logic.
-
-**When:** Sidecar must handle multiple execution paths (trivial, local LLM, cloud LLM, default wake).
-
-**Example:**
-```javascript
-// In handleTaskAssign:
-const route = routeTask(task, _config);
-
-switch (route.strategy) {
-  case 'trivial':
-    await executeTrivialTask(task, route.config, this);
-    break;
-  case 'local_llm':
-  case 'cloud_llm':
-    await wakeAgentWithModel(task, route.config, this);
-    break;
-  case 'wake_default':
-    await wakeAgent(task, this);
-    break;
-}
-```
-
-**Why:** Each strategy is independently testable. Adding a new strategy (e.g., `cached_response`) requires no changes to the dispatch logic.
-
-### Pattern 3: Hub Decides, Sidecar Executes
-
-**What:** All routing decisions (which model, which endpoint, complexity classification) happen in the hub. The sidecar receives instructions and executes them.
-
-**When:** All v1.2 features.
-
-**Why:** The hub has global visibility (all endpoints, all agents, all tasks). The sidecar only knows about its own agent. Centralizing decisions in the hub avoids split-brain scenarios where sidecars make conflicting choices. The sidecar remains a thin relay + executor, consistent with v1.0 design.
+The model-router returns a strategy object. handleTaskAssign dispatches on strategy type. Each strategy is independently testable. Adding a new strategy requires no changes to dispatch logic.
 
 ### Pattern 4: Verification as Gate, Not Feedback Loop
 
-**What:** Verification is a pass/fail gate before task completion, not a retry-within-the-agent loop.
+Verification is pass/fail. If it fails, the sidecar reports task_failed. The hub's existing retry logic handles retries. No new retry mechanism in the sidecar. This preserves the hub as single source of truth for task lifecycle.
 
-**When:** Self-verification feature.
+### Pattern 5: No Network I/O in Scheduler Hot Path
 
-**Why:** The sidecar runs verification steps after the agent produces output. If verification fails, the sidecar reports `task_failed` with the verification result. The hub's existing retry logic (TaskQueue.fail_task -> retry or dead-letter) handles the retry decision. This avoids building a second retry mechanism in the sidecar and keeps the hub as the single source of truth for task lifecycle.
+LlmRegistry health-checks asynchronously on a timer. Scheduler reads cached state from LlmRegistry GenServer. Zero network calls during scheduling. If LlmRegistry is unavailable, scheduling falls back to existing behavior (ignore model routing, assign to any capable agent).
 
 ---
 
@@ -834,89 +715,103 @@ switch (route.strategy) {
 
 ### Anti-Pattern 1: Sidecar Making Model Decisions
 
-**What:** Sidecar reads task description, classifies complexity, and picks a model independently.
-
-**Why bad:** Multiple sidecars might pick different models for similar tasks. No global optimization (all sidecars hit the same Ollama endpoint simultaneously). Hub cannot enforce cost policies. Sidecar state diverges from hub state.
-
-**Instead:** Hub classifies complexity during submit, selects model+endpoint during assign. Sidecar receives explicit instructions.
+The sidecar must NOT classify complexity or select models. Multiple sidecars making independent decisions leads to uncoordinated endpoint load, inconsistent classification, and inability to enforce cost policies from the hub.
 
 ### Anti-Pattern 2: Health Checking from Sidecars
 
-**What:** Each sidecar independently health-checks Ollama endpoints.
-
-**Why bad:** N sidecars x M endpoints = N*M health checks per interval. Sidecars on different machines may see different health states (network partitions). No single source of truth for "which endpoints are healthy."
-
-**Instead:** Hub's LlmRegistry does all health checking. Single source of truth. Broadcasts health changes via PubSub. Scheduler reads from LlmRegistry, not from sidecars.
+N sidecars x M endpoints = N*M health checks per interval. No single source of truth. The hub's LlmRegistry is the sole health checker.
 
 ### Anti-Pattern 3: Storing Model Config in Sidecar Config
 
-**What:** Each sidecar config.json contains the list of available models and their endpoints.
+Adding a new Ollama instance would require updating every sidecar config. The hub's LlmRegistry is the single registry. Sidecars receive model+endpoint per task_assign message. Sidecar config only contains execution preferences (wake command templates, trivial execution config, verification config).
 
-**Why bad:** Adding a new Ollama instance requires updating every sidecar config file on every machine. Configuration drift. No dynamic discovery.
+### Anti-Pattern 4: LLM Self-Assessment for Verification
 
-**Instead:** LlmRegistry on the hub is the single registry. Sidecars receive model+endpoint info in each task_assign message. Sidecar config only contains execution preferences (trivial_execution.enabled, allowed_commands, model_wake_commands templates).
-
-### Anti-Pattern 4: Verification Inside the Agent Session
-
-**What:** The LLM agent itself runs verification and decides whether to report success.
-
-**Why bad:** LLM agents can hallucinate "all tests pass" without actually running tests. Self-assessment is unreliable. The agent might enter an infinite retry loop trying to fix verification failures, consuming tokens without bound.
-
-**Instead:** Sidecar (deterministic code) runs verification steps as shell commands. Results are factual (exit code, stdout). The sidecar makes the pass/fail decision based on exit codes, not LLM judgment.
+The LLM agent must NOT judge whether its own work passes verification. Shell commands with exit codes are factual. LLM self-assessment is unreliable and can hallucinate success.
 
 ### Anti-Pattern 5: Blocking Health Checks on Scheduler Path
 
-**What:** Scheduler calls LlmRegistry.get_endpoint_for_model which makes a synchronous HTTP call to Ollama.
-
-**Why bad:** Scheduler blocks on network I/O. If Ollama is slow or unreachable, scheduling all tasks stalls.
-
-**Instead:** LlmRegistry probes asynchronously on a timer. Scheduler reads cached health state (last_check, status) from LlmRegistry's GenServer state. Zero network calls in the scheduling hot path.
+The Scheduler must NOT make synchronous HTTP calls to Ollama endpoints during scheduling. It reads cached state from LlmRegistry.
 
 ---
 
-## Integration Matrix: New vs Modified
+## Integration Matrix
 
 ### New Components (build from scratch)
 
 | Component | Type | Location | Lines (est.) | Depends On |
 |-----------|------|----------|-------------|------------|
-| AgentCom.LlmRegistry | Elixir GenServer | lib/agent_com/llm_registry.ex | ~250 | Config, PubSub, HTTP client (built-in :httpc or req) |
-| AgentCom.ComplexityClassifier | Elixir module | lib/agent_com/complexity_classifier.ex | ~80 | None (pure functions) |
+| LlmRegistry | Elixir GenServer | lib/agent_com/llm_registry.ex | ~300 | Config, PubSub, :httpc, DETS |
+| ComplexityClassifier | Elixir module | lib/agent_com/complexity_classifier.ex | ~100 | None (pure functions) |
 | model-router.js | Node.js module | sidecar/lib/model-router.js | ~60 | None |
-| trivial-executor.js | Node.js module | sidecar/lib/trivial-executor.js | ~80 | wake.js (execCommand) |
-| verification.js | Node.js module | sidecar/lib/verification.js | ~100 | wake.js (execCommand) |
+| trivial-executor.js | Node.js module | sidecar/lib/trivial-executor.js | ~100 | wake.js (execCommand) |
+| verification.js | Node.js module | sidecar/lib/verification.js | ~120 | wake.js (execCommand) |
 
-### Modified Components (extend existing)
+### Modified Components
 
-| Component | Change Type | Change Summary | Risk |
-|-----------|------------|----------------|------|
-| TaskQueue (task_queue.ex) | Schema extension | Add 8 optional fields to task struct in submit/1. Add complexity, assigned_model, assigned_endpoint in assign_task/3. Store verification_result in complete_task/3. | LOW -- all additive, defaults to nil |
-| Scheduler (scheduler.ex) | Logic extension | Add ComplexityClassifier.classify/1 call. Add LlmRegistry.get_endpoint_for_model/1 query. Extend do_assign/1 to include model routing in push_task payload. | MEDIUM -- core scheduling logic changes |
-| Socket (socket.ex) | Payload extension | Extend :push_task handler to include context, criteria, verification_steps, complexity, model, endpoint. Accept verification_result in task_complete handler. | LOW -- additive fields |
-| Endpoint (endpoint.ex) | New routes | Add 4 LLM admin endpoints. Extend POST /api/tasks to accept new fields. | LOW -- new routes, existing routes unchanged |
-| Sidecar index.js | Flow branching | handleTaskAssign calls routeTask, dispatches to trivial/wake/model-wake. handleResult calls runVerification before sendTaskComplete. | MEDIUM -- core task flow branching |
-| Sidecar lib/wake.js | Variable addition | Add ${MODEL}, ${MODEL_ENDPOINT}, ${COMPLEXITY} interpolation. | LOW -- additive |
-| Sidecar lib/queue.js | No code change | Task objects in queue.json naturally grow with new fields (JSON serialization handles it). | NONE |
-| Sidecar config.json | Schema extension | Add model_wake_commands, trivial_execution, verification blocks. All optional. | LOW -- backward compatible |
-| application.ex | Child addition | Add LlmRegistry to supervision tree before Scheduler. | LOW -- one line |
-| Analytics (analytics.ex) | Metric extension | Add model_used tracking. | LOW |
+| Component | File | Change Summary | Risk |
+|-----------|------|----------------|------|
+| TaskQueue | task_queue.ex | +8 optional fields in submit/1. Set model fields in assign_task/3. Store verification_result in complete_task/3. | LOW |
+| Scheduler | scheduler.ex | ComplexityClassifier.classify/1 call. LlmRegistry query. Extended do_assign payload. Model-aware matching in do_match_loop. | MEDIUM |
+| Socket | socket.ex | Pass enriched fields in :push_task handler. Accept verification_result in task_complete. | LOW |
+| Endpoint | endpoint.ex | 4 new LLM admin routes. Extended POST /api/tasks schema. | LOW |
+| Validation.Schemas | validation/schemas.ex | New fields in post_task schema. New schemas for LLM endpoints. | LOW |
+| Sidecar index.js | index.js | handleTaskAssign routes via model-router. handleResult runs verification. | MEDIUM |
+| Sidecar wake.js | lib/wake.js | Add ${MODEL}, ${MODEL_ENDPOINT}, ${COMPLEXITY} interpolation. | LOW |
+| Application | application.ex | Add LlmRegistry to children list. | LOW |
+| DetsBackup | dets_backup.ex | Add :llm_endpoints to @tables list. | LOW |
+| Telemetry | telemetry.ex | Add 4 new event types for LLM operations. | LOW |
+| MetricsCollector | metrics_collector.ex | Track model routing metrics in snapshot. | LOW |
 
 ---
 
-## HTTP Client for LlmRegistry Health Checks
+## Build Order (Dependency-Constrained)
 
-The LlmRegistry needs to make HTTP requests to Ollama endpoints. Options:
-
-**Recommended: Erlang's built-in :httpc**
-
-```elixir
-# Already available -- no dependency. Good enough for periodic health checks.
-:httpc.request(:get, {~c"http://#{host}:#{port}/", []}, [timeout: 5000], [])
+```
+Phase 1: Enriched Task Format
+  TaskQueue schema + Endpoint accepts new fields + Socket passes through
+  ComplexityClassifier module (pure functions, independently testable)
+  Validation schema updates
+  |
+  v
+Phase 2: LLM Endpoint Registry
+  LlmRegistry GenServer + DETS + health checking
+  Admin HTTP endpoints (CRUD + health)
+  DetsBackup integration
+  Telemetry events
+  |
+  v
+Phase 3: Model-Aware Scheduler
+  Scheduler modifications (classify + route + assign)
+  Wire ComplexityClassifier into task submit/schedule
+  Wire LlmRegistry into scheduler assignment
+  |
+  v
+Phase 4: Sidecar Model Routing
+  model-router.js module
+  wake.js interpolation variables
+  index.js handleTaskAssign branching
+  config.json schema extension
+  |
+  v
+Phase 5: Sidecar Trivial Execution
+  trivial-executor.js module
+  Wire into model-router 'trivial' strategy
+  |
+  v
+Phase 6: Self-Verification
+  verification.js module
+  Wire into index.js handleResult
+  (Can be built in parallel with Phases 2-5 since it only touches completion path)
 ```
 
-**Why not Req/Finch/HTTPoison:** LlmRegistry makes ~5 health check requests per minute (one per endpoint). The built-in :httpc is sufficient. Adding Req would add Finch, Mint, NimblePool, and NimbleOptions as transitive dependencies -- massive dep tree for 5 HTTP requests/minute. If the project later needs a more capable HTTP client (connection pooling, streaming), Req can be added then.
-
-**Why not :httpc for Ollama chat/generate:** The sidecar (Node.js) calls Ollama for inference, not the hub. The hub only does health checks. The sidecar uses Node.js fetch or the ollama-js library.
+**Rationale:**
+- Task format first: every other feature reads from it
+- LlmRegistry second: Scheduler needs it for model routing
+- Scheduler third: connects classification + registry into assignment flow
+- Sidecar routing fourth: consumes hub decisions
+- Trivial execution fifth: special case of routing
+- Verification independent: only touches completion path, not assignment path
 
 ---
 
@@ -924,85 +819,39 @@ The LlmRegistry needs to make HTTP requests to Ollama endpoints. Options:
 
 | Concern | At 5 agents (current) | At 20 agents | At 50 agents |
 |---------|----------------------|-------------|-------------|
-| LLM health checks | 5 endpoints x 1/min = 5 req/min | 10 endpoints x 1/min = 10 req/min | 20 endpoints x 1/min = 20 req/min |
-| Complexity classification | ~50 tasks/day, microseconds each | ~200 tasks/day | ~500 tasks/day, still trivial |
-| Model routing (Scheduler) | One LlmRegistry lookup per assignment | Same, cached | Same, cached |
-| DETS storage for enriched tasks | +~500 bytes per task (context, criteria) | Same per task | Monitor file sizes |
-| Verification steps | 0-3 shell commands per task | Same | Consider per-agent verification parallelism |
+| LLM health checks | 3 endpoints x 1/min = 3 req/min | 10 endpoints x 1/min = 10 req/min | 20 endpoints x 1/min = 20 req/min |
+| Complexity classification | ~50 tasks/day, microseconds each | ~200 tasks/day, trivial | ~500 tasks/day, still trivial |
+| Model routing (Scheduler) | 1 LlmRegistry GenServer.call per assignment | Same, cached | Same, cached |
+| DETS storage per task | +~500 bytes (context, criteria, verification) | Same per task | Monitor file sizes |
+| Verification steps | 0-3 shell commands per task | Same | Same |
 | Trivial execution | Near-instant, no LLM calls | Same | Same |
-| Sidecar memory | ~50MB with queue.json + modules | Same | Same |
 
-No architectural changes needed at any realistic scale. The bottleneck is LLM inference time, not coordination overhead.
-
----
-
-## Build Order (Dependency-Constrained)
-
-Features have the following dependency relationships:
-
-```
-1. Enriched Task Format (TaskQueue modification)
-   |
-   +--> 2. LLM Endpoint Registry (LlmRegistry GenServer)
-   |         |
-   |         +--> 3. Complexity Classifier + Model-Aware Scheduler
-   |                   |
-   |                   +--> 4. Sidecar Model Routing (model-router.js + wake.js changes)
-   |                            |
-   |                            +--> 5. Sidecar Trivial Execution (trivial-executor.js)
-   |
-   +--> 6. Sidecar Self-Verification (verification.js)
-            (can be built in parallel with 2-5 -- only touches handleResult, not handleTaskAssign)
-```
-
-**Recommended order:**
-
-1. **Enriched Task Format** -- Foundation. Extend TaskQueue schema, Endpoint accepts new fields, Socket passes them through. All fields optional with nil defaults. Zero functional change -- just data plumbing.
-
-2. **LLM Endpoint Registry** -- New GenServer. CRUD for Ollama endpoints. Health checking on timer. PubSub broadcasts. Admin HTTP endpoints. Fully testable in isolation.
-
-3. **Complexity Classifier + Model-Aware Scheduler** -- Connect ClassifCrifier to TaskQueue.submit. Connect LlmRegistry to Scheduler.do_assign. This is where routing decisions start working.
-
-4. **Sidecar Model Routing** -- model-router.js. handleTaskAssign reads new fields and dispatches. wake.js gets new interpolation variables. model_wake_commands in config.
-
-5. **Sidecar Trivial Execution** -- trivial-executor.js. Requires model routing to be in place (routes trivial tasks to executor instead of wake).
-
-6. **Self-Verification** -- verification.js. Hooks into handleResult. Independent of model routing (verification runs regardless of which model executed the task). Can be built in parallel with steps 2-5 if desired.
-
-**Rationale:**
-- Enriched task format first because every other feature reads from it
-- LlmRegistry second because Scheduler needs it for model routing
-- Classifier + Scheduler together because they form one logical unit (classify then route)
-- Sidecar model routing before trivial execution because trivial is a special case of routing
-- Verification last (or parallel) because it only touches the completion path, not the assignment path
+No architectural changes needed at realistic scale. The bottleneck is LLM inference time, not coordination overhead.
 
 ---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- AgentCom v2 codebase -- all 24 source files in lib/agent_com/, sidecar/, config/ (direct analysis)
-- [Ollama API documentation](https://github.com/ollama/ollama/blob/main/docs/api.md) -- REST endpoints, health check, model listing, chat/generate formats
-- [Ollama OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility) -- /v1/chat/completions, /v1/models endpoints
-- [Ollama Elixir library (v0.3.0)](https://hexdocs.pm/ollama/0.3.0/Ollama.API.html) -- Elixir client API (evaluated, not recommended for health checks)
-- AgentCom docs/local-llm-offloads.md -- Option B (task-level model routing) recommended, tiered complexity classification
-- AgentCom docs/gastown_learnings.md -- convoy pattern, formula-based workflows
+- AgentCom v1.1 shipped codebase -- all source files in lib/agent_com/ and sidecar/ (direct analysis, 2026-02-12)
+- [Ollama API documentation](https://github.com/ollama/ollama/blob/main/docs/api.md) -- GET / health check, GET /api/tags model listing, POST /api/chat, POST /api/generate
+- [Ollama health check issue #1378](https://github.com/ollama/ollama/issues/1378) -- GET / returns "Ollama is running"
+- [Ollama REST API reference](https://docs.ollama.com/api/introduction) -- endpoint documentation
 
 ### Secondary (MEDIUM confidence)
-- [Intelligent LLM Routing (Requesty)](https://www.requesty.ai/blog/intelligent-llm-routing-in-enterprise-ai-uptime-cost-efficiency-and-model-selection) -- model routing architecture patterns, cost optimization
-- [Multi-LLM routing strategies (AWS)](https://aws.amazon.com/blogs/machine-learning/multi-llm-routing-strategies-for-generative-ai-applications-on-aws/) -- central router controller pattern
-- [vLLM Semantic Router v0.1 Iris](https://blog.vllm.ai/2026/01/05/vllm-sr-iris.html) -- production semantic routing, complexity classification approaches
-- [Self-Verification Prompting](https://learnprompting.org/docs/advanced/self_criticism/self_verification) -- forward reasoning + backward verification pattern
-- [Agents At Work: 2026 Playbook](https://promptengineering.org/agents-at-work-the-2026-playbook-for-building-reliable-agentic-workflows/) -- verification-aware planning, acceptance criteria per subtask
-- [Ollama health check issue #1378](https://github.com/ollama/ollama/issues/1378) -- GET / returns "Ollama is running" as health check
-- [Ollama JavaScript library](https://github.com/ollama/ollama-js) -- Node.js client for sidecar Ollama calls
+- [LLM routing architecture patterns (OpenRouter guide)](https://medium.com/@milesk_33/a-practical-guide-to-openrouter-unified-llm-apis-model-routing-and-real-world-use-d3c4c07ed170) -- reverse proxy and routing layer patterns
+- [Complete Guide to LLM Routing (2026)](https://medium.com/@kamyashah2018/the-complete-guide-to-llm-routing-5-ai-gateways-transforming-production-ai-infrastructure-b5c68ee6d641) -- gateway architecture, routing strategies
+- [LiteLLM proxy documentation](https://docs.litellm.ai/docs/simple_proxy) -- model routing, load balancing patterns
+- [Self-Verification Prompting](https://learnprompting.org/docs/advanced/self_criticism/self_verification) -- verification patterns for LLM output
+- [Agents at Work: 2026 Playbook](https://promptengineering.org/agents-at-work-the-2026-playbook-for-building-reliable-agentic-workflows/) -- verification-aware planning, machine-checkable acceptance criteria
+- [Elixir GenServer health check polling pattern](https://lucapeppe31.medium.com/how-to-easily-create-a-healthcheck-endpoint-for-your-phoenix-app-the-elixir-way-d0eeb0b3a271) -- per-service GenServer with configurable interval
 
 ### Tertiary (LOW confidence)
-- [Developer's Guide to Model Routing (Google Cloud)](https://medium.com/google-cloud/a-developers-guide-to-model-routing-1f21ecc34d60) -- general model routing concepts
-- [AgentSpec: Runtime Enforcement for LLM Agents](https://arxiv.org/pdf/2503.18666) -- rule-based agent safety patterns
-- [Distributed Systems and Service Discovery in Elixir](https://softwarepatternslexicon.com/patterns-elixir/14/12/) -- GenServer registry patterns
+- [NVIDIA LLM Router blueprint](https://github.com/NVIDIA-AI-Blueprints/llm-router) -- complexity-based model selection (ML approach, not adopted)
+- [LLM Semantic Router (Red Hat)](https://developers.redhat.com/articles/2025/05/20/llm-semantic-router-intelligent-request-routing) -- semantic routing concepts
 
 ---
 
-*Architecture research for: Smart Agent Pipeline integration into existing AgentCom v2 system*
-*Researched: 2026-02-11*
+*Architecture research for: Smart Agent Pipeline (v1.2) integration into AgentCom v1.1-hardened system*
+*Researched: 2026-02-12*
+*Based on: shipped v1.1 codebase with 22 supervision tree children, 9 DETS tables, 22 telemetry events*
