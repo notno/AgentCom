@@ -751,6 +751,17 @@ defmodule AgentCom.Dashboard do
         let sortAsc = false;
         let reconnectCount = 0;
 
+        // Metrics state
+        window.metricsCharts = {};
+        window.metricsData = {
+          queueDepth: [[], []],
+          latency: [[], [], [], []],
+          utilization: [[], []],
+          errors: [[], [], []]
+        };
+        window.activeAlerts = {};
+        var MAX_CHART_POINTS = 360;
+
         // =====================================================================
         // Utility functions
         // =====================================================================
@@ -822,6 +833,365 @@ defmodule AgentCom.Dashboard do
         function formatTime(ms) {
           if (!ms) return '--';
           return new Date(ms).toLocaleTimeString();
+        }
+
+        // =====================================================================
+        // Tab switching
+        // =====================================================================
+        function switchTab(tabName) {
+          document.querySelectorAll('.tab-content').forEach(function(el) { el.style.display = 'none'; el.classList.remove('active'); });
+          document.querySelectorAll('.tab-btn').forEach(function(el) { el.classList.remove('active'); });
+          var tabEl = document.getElementById('tab-' + tabName);
+          if (tabEl) { tabEl.style.display = 'block'; tabEl.classList.add('active'); }
+          var btnEl = document.querySelector('[data-tab="' + tabName + '"]');
+          if (btnEl) btnEl.classList.add('active');
+
+          if (tabName === 'metrics' && window.metricsCharts) {
+            Object.values(window.metricsCharts).forEach(function(chart) {
+              if (chart && chart.root) {
+                var width = chart.root.parentElement.clientWidth;
+                if (width > 0) chart.setSize({width: width, height: 300});
+              }
+            });
+          }
+        }
+
+        // =====================================================================
+        // Metrics format helpers
+        // =====================================================================
+        function formatMs(ms) {
+          if (ms == null || ms === '--') return '--';
+          ms = Number(ms);
+          if (isNaN(ms)) return '--';
+          if (ms >= 60000) {
+            var m = Math.floor(ms / 60000);
+            var s = Math.floor((ms % 60000) / 1000);
+            return m + 'm ' + s + 's';
+          }
+          if (ms >= 1000) return (ms / 1000).toFixed(1) + 's';
+          return Math.round(ms) + 'ms';
+        }
+
+        function formatPct(pct) {
+          if (pct == null || pct === '--') return '--';
+          pct = Number(pct);
+          if (isNaN(pct)) return '--';
+          return pct.toFixed(1) + '%';
+        }
+
+        function formatTimestamp(ms) {
+          if (!ms) return '--';
+          return new Date(ms).toLocaleTimeString();
+        }
+
+        function severityClass(severity) {
+          if (!severity) return '';
+          var s = String(severity).toLowerCase();
+          if (s === 'critical') return 'critical';
+          if (s === 'warning') return 'warning';
+          return '';
+        }
+
+        // =====================================================================
+        // uPlot chart initialization
+        // =====================================================================
+        function initMetricsCharts() {
+          if (typeof uPlot === 'undefined') {
+            setTimeout(initMetricsCharts, 200);
+            return;
+          }
+
+          var chartColors = {
+            blue: '#60a5fa',
+            green: '#4ade80',
+            yellow: '#fbbf24',
+            red: '#ef4444',
+            cyan: '#7eb8da',
+            orange: '#f97316'
+          };
+
+          var baseOpts = {
+            width: 400,
+            height: 300,
+            cursor: { show: true },
+            axes: [
+              { stroke: '#555', grid: { stroke: '#1a1a2e' } },
+              { stroke: '#555', grid: { stroke: '#1a1a2e' } }
+            ],
+            scales: { x: { time: true } }
+          };
+
+          // Queue Depth chart
+          var qdContainer = document.getElementById('chart-queue-depth');
+          if (qdContainer) {
+            var qdOpts = Object.assign({}, baseOpts, {
+              width: qdContainer.clientWidth || 400,
+              series: [
+                {},
+                { label: 'Depth', stroke: chartColors.blue, width: 2, fill: 'rgba(96,165,250,0.1)' }
+              ]
+            });
+            window.metricsCharts.queueDepth = new uPlot(qdOpts, [[], []], qdContainer);
+          }
+
+          // Latency chart
+          var latContainer = document.getElementById('chart-latency');
+          if (latContainer) {
+            var latOpts = Object.assign({}, baseOpts, {
+              width: latContainer.clientWidth || 400,
+              series: [
+                {},
+                { label: 'p50', stroke: chartColors.green, width: 2 },
+                { label: 'p90', stroke: chartColors.yellow, width: 2 },
+                { label: 'p99', stroke: chartColors.red, width: 2 }
+              ]
+            });
+            window.metricsCharts.latency = new uPlot(latOpts, [[], [], [], []], latContainer);
+          }
+
+          // Utilization chart
+          var utilContainer = document.getElementById('chart-utilization');
+          if (utilContainer) {
+            var utilOpts = Object.assign({}, baseOpts, {
+              width: utilContainer.clientWidth || 400,
+              series: [
+                {},
+                { label: 'Utilization %', stroke: chartColors.cyan, width: 2, fill: 'rgba(126,184,218,0.1)' }
+              ]
+            });
+            window.metricsCharts.utilization = new uPlot(utilOpts, [[], []], utilContainer);
+          }
+
+          // Error Rate chart
+          var errContainer = document.getElementById('chart-errors');
+          if (errContainer) {
+            var errOpts = Object.assign({}, baseOpts, {
+              width: errContainer.clientWidth || 400,
+              series: [
+                {},
+                { label: 'Failure %', stroke: chartColors.red, width: 2, fill: 'rgba(239,68,68,0.1)' },
+                { label: 'Errors/hr', stroke: chartColors.orange, width: 2 }
+              ]
+            });
+            window.metricsCharts.errors = new uPlot(errOpts, [[], [], []], errContainer);
+          }
+        }
+
+        // =====================================================================
+        // Metrics display update
+        // =====================================================================
+        function updateMetricsDisplay(data) {
+          if (!data) return;
+          var now = Math.floor(Date.now() / 1000);
+
+          // Update summary cards
+          var qd = data.queue_depth || {};
+          var el = document.getElementById('mc-queue-depth');
+          if (el) el.textContent = qd.current != null ? qd.current : '--';
+          var trendEl = document.getElementById('mc-queue-trend');
+          if (trendEl) {
+            var trend = qd.trend || '--';
+            trendEl.textContent = '1h trend: ' + trend;
+          }
+
+          var lat = data.task_latency || {};
+          var p50El = document.getElementById('mc-latency-p50');
+          if (p50El) p50El.textContent = formatMs(lat.p50);
+          var rangeEl = document.getElementById('mc-latency-range');
+          if (rangeEl) rangeEl.textContent = 'p90: ' + formatMs(lat.p90) + ' / p99: ' + formatMs(lat.p99);
+
+          var util = data.agent_utilization || {};
+          var utilEl = document.getElementById('mc-utilization');
+          if (utilEl) utilEl.textContent = formatPct(util.system_utilization);
+          var agentsEl = document.getElementById('mc-agents-status');
+          if (agentsEl) {
+            var online = util.agents_online || 0;
+            var idle = util.agents_idle || 0;
+            agentsEl.textContent = online + ' online / ' + idle + ' idle';
+          }
+
+          var errs = data.error_rates || {};
+          var errEl = document.getElementById('mc-error-rate');
+          if (errEl) errEl.textContent = formatPct(errs.failure_rate_pct);
+          var errCountEl = document.getElementById('mc-error-count');
+          if (errCountEl) errCountEl.textContent = (errs.window_failures || 0) + ' failures/hr';
+
+          // Append data points to charts
+          var md = window.metricsData;
+
+          // Queue Depth
+          md.queueDepth[0].push(now);
+          md.queueDepth[1].push(qd.current != null ? qd.current : 0);
+
+          // Latency
+          md.latency[0].push(now);
+          md.latency[1].push(lat.p50 != null ? lat.p50 : 0);
+          md.latency[2].push(lat.p90 != null ? lat.p90 : 0);
+          md.latency[3].push(lat.p99 != null ? lat.p99 : 0);
+
+          // Utilization
+          md.utilization[0].push(now);
+          md.utilization[1].push(util.system_utilization != null ? util.system_utilization : 0);
+
+          // Errors
+          md.errors[0].push(now);
+          md.errors[1].push(errs.failure_rate_pct != null ? errs.failure_rate_pct : 0);
+          md.errors[2].push(errs.window_failures != null ? errs.window_failures : 0);
+
+          // Trim to MAX_CHART_POINTS
+          var datasets = [md.queueDepth, md.latency, md.utilization, md.errors];
+          datasets.forEach(function(ds) {
+            if (ds[0].length > MAX_CHART_POINTS) {
+              var excess = ds[0].length - MAX_CHART_POINTS;
+              for (var i = 0; i < ds.length; i++) {
+                ds[i] = ds[i].slice(excess);
+              }
+            }
+          });
+          // Reassign after slice (slice creates new arrays)
+          window.metricsData.queueDepth = datasets[0];
+          window.metricsData.latency = datasets[1];
+          window.metricsData.utilization = datasets[2];
+          window.metricsData.errors = datasets[3];
+
+          // Update charts
+          var charts = window.metricsCharts;
+          if (charts.queueDepth) charts.queueDepth.setData(window.metricsData.queueDepth);
+          if (charts.latency) charts.latency.setData(window.metricsData.latency);
+          if (charts.utilization) charts.utilization.setData(window.metricsData.utilization);
+          if (charts.errors) charts.errors.setData(window.metricsData.errors);
+
+          // Update per-agent table
+          updateAgentMetricsTable(util.per_agent || []);
+        }
+
+        function updateAgentMetricsTable(perAgent) {
+          var tbody = document.getElementById('agent-metrics-tbody');
+          if (!tbody) return;
+
+          if (!perAgent || perAgent.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No agent metrics</td></tr>';
+            return;
+          }
+
+          tbody.innerHTML = perAgent.map(function(a) {
+            var agentId = a.agent_id || '--';
+            var state = a.state || a.fsm_state || '--';
+            var utilPct = a.utilization != null ? formatPct(a.utilization) : '--';
+            var tasksHr = a.tasks_completed_hour != null ? a.tasks_completed_hour : '--';
+            var avgDur = a.avg_duration_ms != null ? formatMs(a.avg_duration_ms) : '--';
+
+            return '<tr>' +
+              '<td>' + escapeHtml(agentId) + '</td>' +
+              '<td><span class="dot ' + fsmStateClass(state) + '"></span>' + escapeHtml(String(state)) + '</td>' +
+              '<td>' + utilPct + '</td>' +
+              '<td>' + tasksHr + '</td>' +
+              '<td>' + avgDur + '</td>' +
+              '</tr>';
+          }).join('');
+        }
+
+        // =====================================================================
+        // Alert management
+        // =====================================================================
+        function addAlert(alert) {
+          if (!alert || !alert.rule_id) return;
+          window.activeAlerts[alert.rule_id] = alert;
+          renderAlertsList();
+        }
+
+        function removeAlert(ruleId) {
+          if (!ruleId) return;
+          delete window.activeAlerts[ruleId];
+          renderAlertsList();
+        }
+
+        function markAlertAcknowledged(ruleId) {
+          if (!ruleId) return;
+          var alert = window.activeAlerts[ruleId];
+          if (alert) {
+            alert.acknowledged = true;
+            renderAlertsList();
+          }
+          updateAlertBanner();
+        }
+
+        function renderAlertsList() {
+          var container = document.getElementById('alerts-list');
+          if (!container) return;
+
+          var alertKeys = Object.keys(window.activeAlerts);
+          if (alertKeys.length === 0) {
+            container.innerHTML = '<p class="no-alerts">No active alerts</p>';
+            return;
+          }
+
+          container.innerHTML = alertKeys.map(function(ruleId) {
+            var a = window.activeAlerts[ruleId];
+            var sevClass = severityClass(a.severity);
+            var ackHtml = a.acknowledged
+              ? '<span class="alert-ack-badge">Acknowledged</span>'
+              : '<button class="btn-ack" onclick="acknowledgeAlert(\\'' + escapeHtml(ruleId) + '\\')">Acknowledge</button>';
+
+            return '<div class="alert-item ' + sevClass + '">' +
+              '<div class="alert-item-info">' +
+              '<div class="alert-item-rule">' + escapeHtml(ruleId) + ' - ' + escapeHtml(String(a.severity || '').toUpperCase()) + '</div>' +
+              '<div class="alert-item-message">' + escapeHtml(a.message || '') + '</div>' +
+              '<div class="alert-item-time">' + formatTimestamp(a.fired_at || a.timestamp) + '</div>' +
+              '</div>' +
+              '<div class="alert-item-actions">' + ackHtml + '</div>' +
+              '</div>';
+          }).join('');
+        }
+
+        function updateAlertBanner() {
+          var banner = document.getElementById('alert-banner');
+          var text = document.getElementById('alert-banner-text');
+          var details = document.getElementById('alert-details');
+          if (!banner) return;
+
+          var alertKeys = Object.keys(window.activeAlerts);
+          var unacked = alertKeys.filter(function(k) { return !window.activeAlerts[k].acknowledged; });
+
+          if (unacked.length === 0) {
+            banner.style.display = 'none';
+            return;
+          }
+
+          banner.style.display = 'block';
+
+          // Determine highest severity
+          var hasCritical = unacked.some(function(k) { return String(window.activeAlerts[k].severity).toLowerCase() === 'critical'; });
+          banner.className = 'alert-banner' + (hasCritical ? ' critical' : '');
+
+          text.textContent = unacked.length + ' active alert' + (unacked.length > 1 ? 's' : '') +
+            (hasCritical ? ' (CRITICAL)' : ' (WARNING)');
+
+          // Render details panel
+          if (details) {
+            details.innerHTML = unacked.map(function(k) {
+              var a = window.activeAlerts[k];
+              var sevClass = severityClass(a.severity);
+              return '<div class="alert-details-item">' +
+                '<span>' + escapeHtml(a.message || k) + '</span>' +
+                '<span class="alert-severity ' + sevClass + '">' + escapeHtml(String(a.severity || '').toUpperCase()) + '</span>' +
+                '</div>';
+            }).join('');
+          }
+        }
+
+        function acknowledgeAlert(ruleId) {
+          if (!dashConn || !dashConn.ws || dashConn.ws.readyState !== 1) return;
+          dashConn.ws.send(JSON.stringify({type: 'acknowledge_alert', rule_id: ruleId}));
+          // Disable the button optimistically
+          var btn = document.querySelector('.btn-ack[onclick*="' + ruleId + '"]');
+          if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+        }
+
+        function toggleAlertDetails() {
+          var details = document.getElementById('alert-details');
+          if (!details) return;
+          details.style.display = details.style.display === 'none' ? 'block' : 'none';
         }
 
         // =====================================================================
@@ -1340,6 +1710,10 @@ defmodule AgentCom.Dashboard do
                   dashConn.ws.send(JSON.stringify({type: 'request_snapshot'}));
                 }
                 break;
+              case 'metrics_snapshot': updateMetricsDisplay(ev.data); break;
+              case 'alert_fired': addAlert(ev.data); updateAlertBanner(); break;
+              case 'alert_cleared': removeAlert(ev.rule_id); updateAlertBanner(); break;
+              case 'alert_acknowledged': markAlertAcknowledged(ev.rule_id); break;
             }
           });
           updateLastUpdate();
@@ -1429,12 +1803,37 @@ defmodule AgentCom.Dashboard do
               switch (msg.type) {
                 case 'snapshot':
                   renderFullState(msg.data);
+                  // Load alerts from initial snapshot
+                  if (msg.data && msg.data.alerts) {
+                    window.activeAlerts = {};
+                    msg.data.alerts.forEach(function(a) { addAlert(a); });
+                    updateAlertBanner();
+                  }
                   break;
                 case 'events':
                   handleEvents(msg.data);
                   break;
                 case 'retry_result':
                   handleRetryResult(msg);
+                  break;
+                case 'metrics_snapshot':
+                  updateMetricsDisplay(msg.data);
+                  break;
+                case 'alert_fired':
+                  addAlert(msg.data);
+                  updateAlertBanner();
+                  break;
+                case 'alert_cleared':
+                  removeAlert(msg.rule_id);
+                  updateAlertBanner();
+                  break;
+                case 'alert_acknowledged':
+                  markAlertAcknowledged(msg.rule_id);
+                  break;
+                case 'alert_ack_result':
+                  if (msg.status === 'ok') {
+                    markAlertAcknowledged(msg.rule_id);
+                  }
                   break;
               }
             } catch (e) {
@@ -1447,6 +1846,9 @@ defmodule AgentCom.Dashboard do
         // Initialize
         // =====================================================================
         var dashConn = new DashboardConnection();
+
+        // Initialize uPlot charts (waits for uPlot script to load)
+        initMetricsCharts();
 
         // =====================================================================
         // Push Notifications
