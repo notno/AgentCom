@@ -19,7 +19,7 @@ Requirements for milestone v1.2 Smart Agent Pipeline. Each maps to roadmap phase
 - [ ] **HOST-01**: Sidecar periodically reports CPU utilization (total and per-thread), RAM usage, and GPU utilization to the hub
 - [ ] **HOST-02**: GPU VRAM usage is tracked per host via Ollama /api/ps response data
 - [ ] **HOST-03**: Host resource metrics are visible on the dashboard per machine
-- [ ] **HOST-04**: Resource utilization data is available to the scheduler for routing decisions
+- [x] **HOST-04**: Resource utilization data is available to the scheduler for routing decisions
 
 ### Task Enrichment
 
@@ -31,10 +31,10 @@ Requirements for milestone v1.2 Smart Agent Pipeline. Each maps to roadmap phase
 
 ### Model Routing
 
-- [ ] **ROUTE-01**: Scheduler routes trivial tasks to sidecar direct execution, standard tasks to Ollama-backed agents, and complex tasks to Claude-backed agents
-- [ ] **ROUTE-02**: When multiple Ollama hosts have the same model loaded, scheduler distributes by current load
-- [ ] **ROUTE-03**: If preferred model is unavailable, scheduler falls back to next tier in a configurable chain
-- [ ] **ROUTE-04**: Routing decisions are logged with model used, endpoint selected, and classification reason
+- [x] **ROUTE-01**: Scheduler routes trivial tasks to sidecar direct execution, standard tasks to Ollama-backed agents, and complex tasks to Claude-backed agents
+- [x] **ROUTE-02**: When multiple Ollama hosts have the same model loaded, scheduler distributes by current load
+- [x] **ROUTE-03**: If preferred model is unavailable, scheduler falls back to next tier in a configurable chain
+- [x] **ROUTE-04**: Routing decisions are logged with model used, endpoint selected, and classification reason
 
 ### Sidecar Execution
 
