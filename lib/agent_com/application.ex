@@ -9,6 +9,10 @@ defmodule AgentCom.Application do
 
   @impl true
   def start(_type, _args) do
+    # Create ETS table for validation backoff tracking before any child starts.
+    # Public so Socket processes can read/write directly. :set for unique agent_id keys.
+    :ets.new(:validation_backoff, [:named_table, :public, :set])
+
     children = [
       {Phoenix.PubSub, name: AgentCom.PubSub},
       {Registry, keys: :unique, name: AgentCom.AgentRegistry},
