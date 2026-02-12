@@ -73,6 +73,8 @@ defmodule AgentCom.Endpoint do
     json_decoder: Jason
   plug :dispatch
 
+  # --- NOT rate limited: health check, dashboard, WS upgrades, schemas ---
+
   get "/health" do
     agents = AgentCom.Presence.list()
     send_json(conn, 200, %{
@@ -82,21 +84,30 @@ defmodule AgentCom.Endpoint do
     })
   end
 
-  get "/api/agents" do
-    agents = AgentCom.Presence.list()
-    |> Enum.map(fn a ->
-      %{
-        "agent_id" => a.agent_id,
-        "name" => a[:name],
-        "status" => a[:status],
-        "capabilities" => a[:capabilities] || [],
-        "connected_at" => a[:connected_at],
-        "fsm_state" => Map.get(a, :fsm_state, "unknown")
-      }
-    end)
+  # --- Unauthenticated routes with IP-based rate limiting ---
 
-    send_json(conn, 200, %{"agents" => agents})
+  get "/api/agents" do
+    conn = AgentCom.Plugs.RateLimit.call(conn, action: :get_agents)
+    if conn.halted do
+      conn
+    else
+      agents = AgentCom.Presence.list()
+      |> Enum.map(fn a ->
+        %{
+          "agent_id" => a.agent_id,
+          "name" => a[:name],
+          "status" => a[:status],
+          "capabilities" => a[:capabilities] || [],
+          "connected_at" => a[:connected_at],
+          "fsm_state" => Map.get(a, :fsm_state, "unknown")
+        }
+      end)
+
+      send_json(conn, 200, %{"agents" => agents})
+    end
   end
+
+  # --- Authenticated routes with agent-based rate limiting ---
 
   post "/api/message" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
@@ -111,24 +122,24 @@ defmodule AgentCom.Endpoint do
         params = conn.body_params
 
         case Validation.validate_http(:post_message, params) do
-        {:ok, _} ->
-          # Use authenticated agent_id as "from" -- ignore any spoofed "from" field
-          from = authenticated_agent
-          payload = params["payload"]
+          {:ok, _} ->
+            # Use authenticated agent_id as "from" -- ignore any spoofed "from" field
+            from = authenticated_agent
+            payload = params["payload"]
 
-          msg = AgentCom.Message.new(%{
-            from: from,
-            to: params["to"],
-            type: params["type"] || "chat",
-            payload: payload,
-            reply_to: params["reply_to"]
-          })
+            msg = AgentCom.Message.new(%{
+              from: from,
+              to: params["to"],
+              type: params["type"] || "chat",
+              payload: payload,
+              reply_to: params["reply_to"]
+            })
 
-          {:ok, _} = AgentCom.Router.route(msg)
-          send_json(conn, 200, %{"status" => "sent", "id" => msg.id})
+            {:ok, _} = AgentCom.Router.route(msg)
+            send_json(conn, 200, %{"status" => "sent", "id" => msg.id})
 
-        {:error, errors} ->
-          send_validation_error(conn, errors)
+          {:error, errors} ->
+            send_validation_error(conn, errors)
         end
       end
     end
@@ -283,8 +294,13 @@ defmodule AgentCom.Endpoint do
   # --- Channels ---
 
   get "/api/channels" do
-    channels = AgentCom.Channels.list()
-    send_json(conn, 200, %{"channels" => channels})
+    conn = AgentCom.Plugs.RateLimit.call(conn, action: :get_channels)
+    if conn.halted do
+      conn
+    else
+      channels = AgentCom.Channels.list()
+      send_json(conn, 200, %{"channels" => channels})
+    end
   end
 
   post "/api/channels" do
@@ -292,37 +308,47 @@ defmodule AgentCom.Endpoint do
     if conn.halted do
       conn
     else
-      agent_id = conn.assigns[:authenticated_agent]
-      case Validation.validate_http(:post_channel, conn.body_params) do
-        {:ok, _} ->
-          name = conn.body_params["name"]
-          opts = %{
-            description: conn.body_params["description"] || "",
-            created_by: agent_id
-          }
-          case AgentCom.Channels.create(name, opts) do
-            :ok -> send_json(conn, 201, %{"status" => "created", "channel" => name})
-            {:error, :exists} -> send_json(conn, 409, %{"error" => "channel_exists"})
-          end
-        {:error, errors} ->
-          send_validation_error(conn, errors)
+      conn = AgentCom.Plugs.RateLimit.call(conn, action: :post_channel)
+      if conn.halted do
+        conn
+      else
+        agent_id = conn.assigns[:authenticated_agent]
+        case Validation.validate_http(:post_channel, conn.body_params) do
+          {:ok, _} ->
+            name = conn.body_params["name"]
+            opts = %{
+              description: conn.body_params["description"] || "",
+              created_by: agent_id
+            }
+            case AgentCom.Channels.create(name, opts) do
+              :ok -> send_json(conn, 201, %{"status" => "created", "channel" => name})
+              {:error, :exists} -> send_json(conn, 409, %{"error" => "channel_exists"})
+            end
+          {:error, errors} ->
+            send_validation_error(conn, errors)
+        end
       end
     end
   end
 
   get "/api/channels/:channel" do
-    case AgentCom.Channels.info(channel) do
-      {:ok, info} ->
-        send_json(conn, 200, %{
-          "name" => info.name,
-          "description" => info.description,
-          "subscribers" => info.subscribers,
-          "subscriber_count" => length(info.subscribers),
-          "created_at" => info.created_at,
-          "created_by" => info.created_by
-        })
-      {:error, :not_found} ->
-        send_json(conn, 404, %{"error" => "channel_not_found"})
+    conn = AgentCom.Plugs.RateLimit.call(conn, action: :get_channel_info)
+    if conn.halted do
+      conn
+    else
+      case AgentCom.Channels.info(channel) do
+        {:ok, info} ->
+          send_json(conn, 200, %{
+            "name" => info.name,
+            "description" => info.description,
+            "subscribers" => info.subscribers,
+            "subscriber_count" => length(info.subscribers),
+            "created_at" => info.created_at,
+            "created_by" => info.created_by
+          })
+        {:error, :not_found} ->
+          send_json(conn, 404, %{"error" => "channel_not_found"})
+      end
     end
   end
 
@@ -331,11 +357,16 @@ defmodule AgentCom.Endpoint do
     if conn.halted do
       conn
     else
-      agent_id = conn.assigns[:authenticated_agent]
-      case AgentCom.Channels.subscribe(channel, agent_id) do
-        :ok -> send_json(conn, 200, %{"status" => "subscribed", "channel" => channel})
-        {:ok, :already_subscribed} -> send_json(conn, 200, %{"status" => "already_subscribed"})
-        {:error, :not_found} -> send_json(conn, 404, %{"error" => "channel_not_found"})
+      conn = AgentCom.Plugs.RateLimit.call(conn, action: :post_channel_subscribe)
+      if conn.halted do
+        conn
+      else
+        agent_id = conn.assigns[:authenticated_agent]
+        case AgentCom.Channels.subscribe(channel, agent_id) do
+          :ok -> send_json(conn, 200, %{"status" => "subscribed", "channel" => channel})
+          {:ok, :already_subscribed} -> send_json(conn, 200, %{"status" => "already_subscribed"})
+          {:error, :not_found} -> send_json(conn, 404, %{"error" => "channel_not_found"})
+        end
       end
     end
   end
@@ -345,10 +376,15 @@ defmodule AgentCom.Endpoint do
     if conn.halted do
       conn
     else
-      agent_id = conn.assigns[:authenticated_agent]
-      case AgentCom.Channels.unsubscribe(channel, agent_id) do
-        :ok -> send_json(conn, 200, %{"status" => "unsubscribed", "channel" => channel})
-        {:error, :not_found} -> send_json(conn, 404, %{"error" => "channel_not_found"})
+      conn = AgentCom.Plugs.RateLimit.call(conn, action: :post_channel_unsubscribe)
+      if conn.halted do
+        conn
+      else
+        agent_id = conn.assigns[:authenticated_agent]
+        case AgentCom.Channels.unsubscribe(channel, agent_id) do
+          :ok -> send_json(conn, 200, %{"status" => "unsubscribed", "channel" => channel})
+          {:error, :not_found} -> send_json(conn, 404, %{"error" => "channel_not_found"})
+        end
       end
     end
   end
@@ -358,23 +394,28 @@ defmodule AgentCom.Endpoint do
     if conn.halted do
       conn
     else
-      agent_id = conn.assigns[:authenticated_agent]
-      case Validation.validate_http(:post_channel_publish, conn.body_params) do
-        {:ok, _} ->
-          payload = conn.body_params["payload"]
-          msg = AgentCom.Message.new(%{
-            from: agent_id,
-            to: nil,
-            type: conn.body_params["type"] || "chat",
-            payload: payload,
-            reply_to: conn.body_params["reply_to"]
-          })
-          case AgentCom.Channels.publish(channel, msg) do
-            {:ok, seq} -> send_json(conn, 200, %{"status" => "published", "seq" => seq})
-            {:error, :not_found} -> send_json(conn, 404, %{"error" => "channel_not_found"})
-          end
-        {:error, errors} ->
-          send_validation_error(conn, errors)
+      conn = AgentCom.Plugs.RateLimit.call(conn, action: :post_channel_publish)
+      if conn.halted do
+        conn
+      else
+        agent_id = conn.assigns[:authenticated_agent]
+        case Validation.validate_http(:post_channel_publish, conn.body_params) do
+          {:ok, _} ->
+            payload = conn.body_params["payload"]
+            msg = AgentCom.Message.new(%{
+              from: agent_id,
+              to: nil,
+              type: conn.body_params["type"] || "chat",
+              payload: payload,
+              reply_to: conn.body_params["reply_to"]
+            })
+            case AgentCom.Channels.publish(channel, msg) do
+              {:ok, seq} -> send_json(conn, 200, %{"status" => "published", "seq" => seq})
+              {:error, :not_found} -> send_json(conn, 404, %{"error" => "channel_not_found"})
+            end
+          {:error, errors} ->
+            send_validation_error(conn, errors)
+        end
       end
     end
   end
@@ -605,39 +646,44 @@ defmodule AgentCom.Endpoint do
     if conn.halted do
       conn
     else
-      admin_agent = conn.assigns[:authenticated_agent]
+      conn = AgentCom.Plugs.RateLimit.call(conn, action: :post_admin_push_task)
+      if conn.halted do
+        conn
+      else
+        admin_agent = conn.assigns[:authenticated_agent]
 
-      case Validation.validate_http(:post_admin_push_task, conn.body_params) do
-        {:ok, _} ->
-          params = conn.body_params
-          target_agent_id = params["agent_id"]
-          description = params["description"]
+        case Validation.validate_http(:post_admin_push_task, conn.body_params) do
+          {:ok, _} ->
+            params = conn.body_params
+            target_agent_id = params["agent_id"]
+            description = params["description"]
 
-          task = %{
-            "task_id" => "task-" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower),
-            "description" => description,
-            "metadata" => params["metadata"] || %{},
-            "submitted_by" => admin_agent,
-            "submitted_at" => System.system_time(:millisecond)
-          }
+            task = %{
+              "task_id" => "task-" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower),
+              "description" => description,
+              "metadata" => params["metadata"] || %{},
+              "submitted_by" => admin_agent,
+              "submitted_at" => System.system_time(:millisecond)
+            }
 
-          case Registry.lookup(AgentCom.AgentRegistry, target_agent_id) do
-            [{pid, _meta}] ->
-              send(pid, {:push_task, task})
-              send_json(conn, 200, %{
-                "status" => "pushed",
-                "task_id" => task["task_id"],
-                "agent_id" => target_agent_id
-              })
-            [] ->
-              send_json(conn, 404, %{
-                "error" => "agent_not_connected",
-                "agent_id" => target_agent_id
-              })
-          end
+            case Registry.lookup(AgentCom.AgentRegistry, target_agent_id) do
+              [{pid, _meta}] ->
+                send(pid, {:push_task, task})
+                send_json(conn, 200, %{
+                  "status" => "pushed",
+                  "task_id" => task["task_id"],
+                  "agent_id" => target_agent_id
+                })
+              [] ->
+                send_json(conn, 404, %{
+                  "error" => "agent_not_connected",
+                  "agent_id" => target_agent_id
+                })
+            end
 
-        {:error, errors} ->
-          send_validation_error(conn, errors)
+          {:error, errors} ->
+            send_validation_error(conn, errors)
+        end
       end
     end
   end
@@ -805,34 +851,39 @@ defmodule AgentCom.Endpoint do
     if conn.halted do
       conn
     else
-      agent_id = conn.assigns[:authenticated_agent]
-      params = conn.body_params
+      conn = AgentCom.Plugs.RateLimit.call(conn, action: :post_task)
+      if conn.halted do
+        conn
+      else
+        agent_id = conn.assigns[:authenticated_agent]
+        params = conn.body_params
 
-      case Validation.validate_http(:post_task, params) do
-        {:ok, _} ->
-          description = params["description"]
-          task_params = %{
-            description: description,
-            priority: params["priority"] || "normal",
-            metadata: params["metadata"] || %{},
-            max_retries: params["max_retries"] || 3,
-            complete_by: params["complete_by"],
-            needed_capabilities: params["needed_capabilities"] || [],
-            submitted_by: agent_id
-          }
+        case Validation.validate_http(:post_task, params) do
+          {:ok, _} ->
+            description = params["description"]
+            task_params = %{
+              description: description,
+              priority: params["priority"] || "normal",
+              metadata: params["metadata"] || %{},
+              max_retries: params["max_retries"] || 3,
+              complete_by: params["complete_by"],
+              needed_capabilities: params["needed_capabilities"] || [],
+              submitted_by: agent_id
+            }
 
-          case AgentCom.TaskQueue.submit(task_params) do
-            {:ok, task} ->
-              send_json(conn, 201, %{
-                "status" => "queued",
-                "task_id" => task.id,
-                "priority" => task.priority,
-                "created_at" => task.created_at
-              })
-          end
+            case AgentCom.TaskQueue.submit(task_params) do
+              {:ok, task} ->
+                send_json(conn, 201, %{
+                  "status" => "queued",
+                  "task_id" => task.id,
+                  "priority" => task.priority,
+                  "created_at" => task.created_at
+                })
+            end
 
-        {:error, errors} ->
-          send_validation_error(conn, errors)
+          {:error, errors} ->
+            send_validation_error(conn, errors)
+        end
       end
     end
   end
@@ -842,22 +893,27 @@ defmodule AgentCom.Endpoint do
     if conn.halted do
       conn
     else
-      opts = []
-      opts = if s = conn.params["status"] do
-        try do
-          [{:status, String.to_existing_atom(s)} | opts]
-        rescue
-          ArgumentError -> opts
-        end
+      conn = AgentCom.Plugs.RateLimit.call(conn, action: :get_tasks)
+      if conn.halted do
+        conn
       else
-        opts
-      end
-      opts = if p = conn.params["priority"], do: [{:priority, p} | opts], else: opts
-      opts = if a = conn.params["assigned_to"], do: [{:assigned_to, a} | opts], else: opts
+        opts = []
+        opts = if s = conn.params["status"] do
+          try do
+            [{:status, String.to_existing_atom(s)} | opts]
+          rescue
+            ArgumentError -> opts
+          end
+        else
+          opts
+        end
+        opts = if p = conn.params["priority"], do: [{:priority, p} | opts], else: opts
+        opts = if a = conn.params["assigned_to"], do: [{:assigned_to, a} | opts], else: opts
 
-      tasks = AgentCom.TaskQueue.list(opts)
-      formatted = Enum.map(tasks, &format_task/1)
-      send_json(conn, 200, %{"tasks" => formatted, "count" => length(formatted)})
+        tasks = AgentCom.TaskQueue.list(opts)
+        formatted = Enum.map(tasks, &format_task/1)
+        send_json(conn, 200, %{"tasks" => formatted, "count" => length(formatted)})
+      end
     end
   end
 
@@ -888,11 +944,16 @@ defmodule AgentCom.Endpoint do
     if conn.halted do
       conn
     else
-      case AgentCom.TaskQueue.get(task_id) do
-        {:ok, task} ->
-          send_json(conn, 200, format_task(task))
-        {:error, :not_found} ->
-          send_json(conn, 404, %{"error" => "task_not_found", "task_id" => task_id})
+      conn = AgentCom.Plugs.RateLimit.call(conn, action: :get_task_detail)
+      if conn.halted do
+        conn
+      else
+        case AgentCom.TaskQueue.get(task_id) do
+          {:ok, task} ->
+            send_json(conn, 200, format_task(task))
+          {:error, :not_found} ->
+            send_json(conn, 404, %{"error" => "task_not_found", "task_id" => task_id})
+        end
       end
     end
   end
@@ -902,24 +963,34 @@ defmodule AgentCom.Endpoint do
     if conn.halted do
       conn
     else
-      case AgentCom.TaskQueue.retry_dead_letter(task_id) do
-        {:ok, task} ->
-          send_json(conn, 200, %{
-            "status" => "requeued",
-            "task_id" => task.id,
-            "priority" => task.priority
-          })
-        {:error, :not_found} ->
-          send_json(conn, 404, %{"error" => "task_not_found", "task_id" => task_id})
+      conn = AgentCom.Plugs.RateLimit.call(conn, action: :post_task_retry)
+      if conn.halted do
+        conn
+      else
+        case AgentCom.TaskQueue.retry_dead_letter(task_id) do
+          {:ok, task} ->
+            send_json(conn, 200, %{
+              "status" => "requeued",
+              "task_id" => task.id,
+              "priority" => task.priority
+            })
+          {:error, :not_found} ->
+            send_json(conn, 404, %{"error" => "task_not_found", "task_id" => task_id})
+        end
       end
     end
   end
 
-  # --- Metrics API (no auth -- same visibility as dashboard) ---
+  # --- Metrics API (no auth -- same visibility as dashboard, rate limited) ---
 
   get "/api/metrics" do
-    snapshot = AgentCom.MetricsCollector.snapshot()
-    send_json(conn, 200, snapshot)
+    conn = AgentCom.Plugs.RateLimit.call(conn, action: :get_metrics)
+    if conn.halted do
+      conn
+    else
+      snapshot = AgentCom.MetricsCollector.snapshot()
+      send_json(conn, 200, snapshot)
+    end
   end
 
   # --- Alerts API ---
@@ -1071,7 +1142,7 @@ defmodule AgentCom.Endpoint do
     end
   end
 
-  # --- Dashboard API (no auth -- local network only) ---
+  # --- Dashboard API (no auth -- local network only, NOT rate limited) ---
 
   get "/api/dashboard/state" do
     snapshot = AgentCom.DashboardState.snapshot()
@@ -1101,43 +1172,48 @@ defmodule AgentCom.Endpoint do
     end
   end
 
-  # --- Onboarding: Agent registration (no auth -- solves chicken-and-egg problem) ---
+  # --- Onboarding: Agent registration (no auth, rate limited to prevent spam) ---
 
   post "/api/onboard/register" do
-    case Validation.validate_http(:post_onboard_register, conn.body_params) do
-      {:ok, _} ->
-        agent_id = conn.body_params["agent_id"]
+    conn = AgentCom.Plugs.RateLimit.call(conn, action: :post_onboard_register)
+    if conn.halted do
+      conn
+    else
+      case Validation.validate_http(:post_onboard_register, conn.body_params) do
+        {:ok, _} ->
+          agent_id = conn.body_params["agent_id"]
 
-        # Additional check: non-empty string (schema ensures string type, but guard against "")
-        if agent_id == "" do
-          send_validation_error(conn, [%{field: "agent_id", error: :required, detail: "agent_id must not be empty"}])
-        else
-          # Check for existing agent with same name
-          existing = AgentCom.Auth.list()
-          already_registered = Enum.any?(existing, fn entry -> entry.agent_id == agent_id end)
-
-          if already_registered do
-            send_json(conn, 409, %{"error" => "agent_id already registered"})
+          # Additional check: non-empty string (schema ensures string type, but guard against "")
+          if agent_id == "" do
+            send_validation_error(conn, [%{field: "agent_id", error: :required, detail: "agent_id must not be empty"}])
           else
-            {:ok, token} = AgentCom.Auth.generate(agent_id)
-            default_repo = AgentCom.Config.get(:default_repo)
-            host = conn.host
-            port = conn.port
-            hub_ws_url = "ws://#{host}:#{port}/ws"
-            hub_api_url = "http://#{host}:#{port}"
+            # Check for existing agent with same name
+            existing = AgentCom.Auth.list()
+            already_registered = Enum.any?(existing, fn entry -> entry.agent_id == agent_id end)
 
-            send_json(conn, 201, %{
-              "agent_id" => agent_id,
-              "token" => token,
-              "hub_ws_url" => hub_ws_url,
-              "hub_api_url" => hub_api_url,
-              "default_repo" => default_repo
-            })
+            if already_registered do
+              send_json(conn, 409, %{"error" => "agent_id already registered"})
+            else
+              {:ok, token} = AgentCom.Auth.generate(agent_id)
+              default_repo = AgentCom.Config.get(:default_repo)
+              host = conn.host
+              port = conn.port
+              hub_ws_url = "ws://#{host}:#{port}/ws"
+              hub_api_url = "http://#{host}:#{port}"
+
+              send_json(conn, 201, %{
+                "agent_id" => agent_id,
+                "token" => token,
+                "hub_ws_url" => hub_ws_url,
+                "hub_api_url" => hub_api_url,
+                "default_repo" => default_repo
+              })
+            end
           end
-        end
 
-      {:error, errors} ->
-        send_validation_error(conn, errors)
+        {:error, errors} ->
+          send_validation_error(conn, errors)
+      end
     end
   end
 
@@ -1167,7 +1243,7 @@ defmodule AgentCom.Endpoint do
     end
   end
 
-  # --- Schema Discovery (no auth -- agents need to introspect before identifying) ---
+  # --- Schema Discovery (no auth, NOT rate limited) ---
 
   get "/api/schemas" do
     schemas = AgentCom.Validation.Schemas.to_json()
