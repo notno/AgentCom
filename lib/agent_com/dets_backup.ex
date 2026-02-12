@@ -143,6 +143,64 @@ defmodule AgentCom.DetsBackup do
   end
 
   @impl true
+  def handle_call({:restore_table, table_atom}, _from, state) do
+    result = do_restore_table(table_atom, state.backup_dir)
+    now = System.system_time(:millisecond)
+
+    case result do
+      {:ok, info} ->
+        Phoenix.PubSub.broadcast(AgentCom.PubSub, "backups", {:recovery_complete, %{
+          timestamp: now,
+          table: table_atom,
+          backup_used: info[:backup_used],
+          record_count: get_in(info, [:integrity, :record_count]) || 0,
+          trigger: :manual
+        }})
+        {:reply, {:ok, info}, state}
+
+      {:error, reason} ->
+        Phoenix.PubSub.broadcast(AgentCom.PubSub, "backups", {:recovery_failed, %{
+          timestamp: now,
+          table: table_atom,
+          reason: reason,
+          trigger: :manual
+        }})
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  @impl true
+  def handle_cast({:corruption_detected, table_atom, reason}, state) do
+    Logger.error("DetsBackup: corruption detected in #{table_atom}: #{inspect(reason)}, initiating auto-restore")
+    now = System.system_time(:millisecond)
+
+    result = do_restore_table(table_atom, state.backup_dir)
+
+    case result do
+      {:ok, info} ->
+        Logger.warning("DetsBackup: auto-restored #{table_atom} from backup #{info[:backup_used]}")
+        Phoenix.PubSub.broadcast(AgentCom.PubSub, "backups", {:recovery_complete, %{
+          timestamp: now,
+          table: table_atom,
+          backup_used: info[:backup_used],
+          record_count: get_in(info, [:integrity, :record_count]) || 0,
+          trigger: :auto
+        }})
+
+      {:error, err} ->
+        Logger.critical("DetsBackup: auto-restore failed for #{table_atom}: #{inspect(err)}")
+        Phoenix.PubSub.broadcast(AgentCom.PubSub, "backups", {:recovery_failed, %{
+          timestamp: now,
+          table: table_atom,
+          reason: err,
+          trigger: :auto
+        }})
+    end
+
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_info(:daily_backup, state) do
     {_results, updated_state} = do_backup_all(state)
     Process.send_after(self(), :daily_backup, @daily_interval_ms)
@@ -174,6 +232,34 @@ defmodule AgentCom.DetsBackup do
 
     Process.send_after(self(), :scheduled_compaction, @compaction_interval_ms)
     {:noreply, %{state | compaction_history: history, last_compaction_at: now}}
+  end
+
+  @doc """
+  Restore a specific table from its latest backup.
+  Per locked decision: operators can force-restore a table at any time.
+  Returns {:ok, restore_info} or {:error, reason}.
+  """
+  def restore_table(table_atom) when table_atom in @tables do
+    GenServer.call(__MODULE__, {:restore_table, table_atom}, 60_000)
+  end
+
+  @doc "Find the most recent backup file for a table."
+  def find_latest_backup(table_atom, backup_dir) do
+    prefix = "#{table_atom}_"
+
+    case File.ls(backup_dir) do
+      {:ok, files} ->
+        case files
+             |> Enum.filter(fn f -> String.starts_with?(f, prefix) and String.ends_with?(f, ".dets") end)
+             |> Enum.sort()
+             |> List.last() do
+          nil -> {:error, :no_backup_found}
+          filename -> {:ok, Path.join(backup_dir, filename)}
+        end
+
+      {:error, reason} ->
+        {:error, {:backup_dir_unreadable, reason}}
+    end
   end
 
   # --- Compaction Private Functions ---
@@ -245,6 +331,146 @@ defmodule AgentCom.DetsBackup do
           end
       end
     end)
+  end
+
+  # --- Recovery Private Functions ---
+
+  defp get_table_path(table_atom) do
+    case table_atom do
+      :agent_mailbox ->
+        Application.get_env(:agent_com, :mailbox_path, "priv/mailbox.dets")
+
+      :message_history ->
+        Application.get_env(:agent_com, :message_history_path, "priv/message_history.dets")
+
+      :agent_channels ->
+        dir = Application.get_env(:agent_com, :channels_path, "priv")
+        Path.join(dir, "channels.dets")
+
+      :channel_history ->
+        dir = Application.get_env(:agent_com, :channels_path, "priv")
+        Path.join(dir, "channel_history.dets")
+
+      :agentcom_config ->
+        dir = Application.get_env(:agent_com, :config_data_dir,
+          Path.join([System.get_env("HOME") || ".", ".agentcom", "data"]))
+        Path.join(dir, "config.dets")
+
+      :thread_messages ->
+        dir = Application.get_env(:agent_com, :threads_data_dir,
+          Path.join([System.get_env("HOME") || ".", ".agentcom", "data"]))
+        Path.join(dir, "thread_messages.dets")
+
+      :thread_replies ->
+        dir = Application.get_env(:agent_com, :threads_data_dir,
+          Path.join([System.get_env("HOME") || ".", ".agentcom", "data"]))
+        Path.join(dir, "thread_replies.dets")
+
+      :task_queue ->
+        dir = Application.get_env(:agent_com, :task_queue_path, "priv")
+        Path.join(dir, "task_queue.dets")
+
+      :task_dead_letter ->
+        dir = Application.get_env(:agent_com, :task_queue_path, "priv")
+        Path.join(dir, "task_dead_letter.dets")
+    end
+  end
+
+  defp verify_table_integrity(table_atom) do
+    case :dets.info(table_atom, :type) do
+      :undefined ->
+        {:error, :table_not_open}
+
+      _ ->
+        record_count = :dets.info(table_atom, :no_objects)
+        file_size = :dets.info(table_atom, :file_size)
+
+        # Attempt a fold to verify data readability
+        traversal_ok =
+          try do
+            :dets.foldl(fn _record, acc -> acc + 1 end, 0, table_atom)
+            true
+          catch
+            _, _ -> false
+          end
+
+        if traversal_ok do
+          {:ok, %{record_count: record_count, file_size: file_size}}
+        else
+          {:error, :data_unreadable}
+        end
+    end
+  end
+
+  defp do_restore_table(table_atom, backup_dir) do
+    owner = table_owner(table_atom)
+    original_path = get_table_path(table_atom)
+
+    case find_latest_backup(table_atom, backup_dir) do
+      {:ok, backup_path} ->
+        try do
+          # Step 1: Stop owner GenServer (terminate/2 closes DETS tables)
+          :ok = Supervisor.terminate_child(AgentCom.Supervisor, owner)
+
+          # Step 2: Replace corrupted file with backup
+          File.cp!(backup_path, original_path)
+
+          # Step 3: Restart owner GenServer (init/1 opens the restored file)
+          case Supervisor.restart_child(AgentCom.Supervisor, owner) do
+            {:ok, _pid} ->
+              # Step 4: Verify integrity (per locked decision)
+              case verify_table_integrity(table_atom) do
+                {:ok, integrity_info} ->
+                  backup_filename = Path.basename(backup_path)
+                  {:ok, %{table: table_atom, backup_used: backup_filename, integrity: integrity_info}}
+
+                {:error, reason} ->
+                  Logger.error("DetsBackup: integrity verification failed for #{table_atom} after restore: #{inspect(reason)}")
+                  {:error, {:integrity_failed, reason}}
+              end
+
+            {:error, restart_reason} ->
+              Logger.critical("DetsBackup: failed to restart #{owner} after restore: #{inspect(restart_reason)}")
+              handle_restart_failure(table_atom, owner, original_path)
+          end
+        rescue
+          e ->
+            Logger.critical("DetsBackup: restore failed for #{table_atom}: #{inspect(e)}")
+            # Try to restart the owner even if copy failed
+            try do
+              Supervisor.restart_child(AgentCom.Supervisor, owner)
+            catch
+              _, _ -> :ok
+            end
+            {:error, {:restore_failed, e}}
+        end
+
+      {:error, :no_backup_found} ->
+        Logger.critical("DetsBackup: no backup found for #{table_atom}, entering degraded mode")
+        handle_no_backup(table_atom, owner, original_path)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp handle_restart_failure(table_atom, owner, original_path) do
+    Logger.critical("DetsBackup: both table and backup corrupted for #{table_atom}, entering degraded mode with empty table")
+    # Delete corrupted file, let init/1 create fresh empty table
+    File.rm(original_path)
+
+    case Supervisor.restart_child(AgentCom.Supervisor, owner) do
+      {:ok, _pid} ->
+        {:ok, %{table: table_atom, status: :degraded, data_lost: true}}
+
+      {:error, reason} ->
+        {:error, {:degraded_mode_failed, reason}}
+    end
+  end
+
+  defp handle_no_backup(table_atom, owner, original_path) do
+    # Same as restart failure -- enter degraded mode
+    handle_restart_failure(table_atom, owner, original_path)
   end
 
   # --- Backup Private Functions ---
