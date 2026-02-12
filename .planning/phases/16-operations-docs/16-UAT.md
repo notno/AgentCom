@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 16-operations-docs
 source: 16-01-SUMMARY.md, 16-02-SUMMARY.md, 16-03-SUMMARY.md
 started: 2026-02-12T12:00:00Z
@@ -65,6 +65,10 @@ skipped: 0
   reason: "User reported: Mermaid diagrams show as raw code text instead of rendered visual diagrams"
   severity: major
   test: 2
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "ExDoc does not bundle Mermaid.js. The mix.exs docs() config is missing a before_closing_body_tag hook to inject the Mermaid CDN script and initialization code."
+  artifacts:
+    - path: "mix.exs"
+      issue: "docs() function missing before_closing_body_tag with Mermaid.js CDN injection"
+  missing:
+    - "Add before_closing_body_tag to docs() in mix.exs that loads Mermaid from CDN and renders code.mermaid elements as SVG"
+  debug_session: ".planning/debug/mermaid-diagrams-raw-text.md"
