@@ -167,10 +167,12 @@ Plans:
   1. An operations guide documents hub setup from scratch: configuration, dependencies, startup procedures, and verification steps
   2. The guide documents how to use the dashboard, interpret metrics, read structured logs, and respond to alerts
   3. The guide documents troubleshooting procedures for common failure modes (DETS corruption, agent disconnects, queue backlog, stuck tasks) with step-by-step recovery actions
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 16-01: TBD
+- [ ] 16-01-PLAN.md -- ExDoc configuration + architecture overview with Mermaid diagrams
+- [ ] 16-02-PLAN.md -- Setup guide (prerequisites, hub start, agent onboarding, smoke test)
+- [ ] 16-03-PLAN.md -- Daily operations + troubleshooting (dashboard, metrics, logs, symptom-based failure diagnosis)
 
 ## Progress
 
