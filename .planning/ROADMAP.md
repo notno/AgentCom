@@ -54,7 +54,7 @@
   3. An integration test submits a task and observes it flow through the full lifecycle: submit, schedule, assign, accept, complete
   4. An integration test triggers failure paths (timeout, crash, retry) and observes tasks reach dead-letter correctly
   5. Sidecar Node.js tests validate WebSocket relay, queue management, wake trigger, and git workflow functions
-**Plans**: 6 plans
+**Plans**: 7 plans
 
 Plans:
 - [ ] 09-01-PLAN.md -- Test infrastructure foundation (DETS refactoring, config/test.exs, helpers, factory, WS client)
@@ -63,6 +63,7 @@ Plans:
 - [ ] 09-04-PLAN.md -- Integration tests (task lifecycle, failure paths, WebSocket E2E)
 - [ ] 09-05-PLAN.md -- Sidecar module extraction + Node.js unit tests
 - [ ] 09-06-PLAN.md -- GitHub Actions CI workflow
+- [ ] 09-07-PLAN.md -- Gap closure: tag smoke tests with @moduletag :smoke for default exclusion
 
 ### Phase 10: DETS Backup + Monitoring
 **Goal**: All DETS data is protected by automated backups with health visibility
@@ -165,7 +166,7 @@ Phases execute in numeric order: 9 -> 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 9. Testing Infrastructure | v1.1 | 6/6 | Complete | 2026-02-12 |
+| 9. Testing Infrastructure | v1.1 | 6/7 | Gap closure | - |
 | 10. DETS Backup + Monitoring | v1.1 | 0/2 | Not started | - |
 | 11. DETS Compaction + Recovery | v1.1 | 0/TBD | Not started | - |
 | 12. Input Validation | v1.1 | 0/TBD | Not started | - |
