@@ -69,6 +69,7 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 2. Fix 2 test failures in mix test suite (area: testing)
 3. Analyze scalability bottlenecks and machine vs agent scaling tradeoffs (area: architecture)
 4. Pipeline phase discussions and research ahead of execution (area: planning)
+5. Pre-publication repo cleanup synthesized from agent audits (area: general)
 
 ### Blockers/Concerns
 
