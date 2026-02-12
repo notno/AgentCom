@@ -217,6 +217,7 @@ defmodule AgentCom.TaskQueue do
           Map.get(params, "needed_capabilities", [])),
       result: nil,
       tokens_used: nil,
+      last_error: nil,
       submitted_by:
         Map.get(params, :submitted_by, Map.get(params, "submitted_by", "unknown")),
       created_at: now,
