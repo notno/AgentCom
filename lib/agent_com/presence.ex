@@ -3,13 +3,14 @@ defmodule AgentCom.Presence do
   Tracks connected agents and their current status.
 
   Each agent has:
-  - `agent_id` — unique identifier (for example, "my-agent")
-  - `name` — display name
-  - `status` — freeform status text (what they're working on)
-  - `capabilities` — list of things they can help with
-  - `connected_at` — timestamp
+  - `agent_id` -- unique identifier (for example, "my-agent")
+  - `name` -- display name
+  - `status` -- freeform status text (what they're working on)
+  - `capabilities` -- list of things they can help with
+  - `connected_at` -- timestamp
   """
   use GenServer
+  require Logger
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -17,6 +18,7 @@ defmodule AgentCom.Presence do
 
   @impl true
   def init(_opts) do
+    Logger.metadata(module: __MODULE__)
     {:ok, %{}}
   end
 
@@ -66,6 +68,7 @@ defmodule AgentCom.Presence do
       last_seen: now
     })
     Phoenix.PubSub.broadcast(AgentCom.PubSub, "presence", {:agent_joined, entry})
+    Logger.info("presence_agent_registered", agent_id: agent_id)
     {:reply, :ok, Map.put(state, agent_id, entry)}
   end
 
@@ -80,6 +83,7 @@ defmodule AgentCom.Presence do
   @impl true
   def handle_cast({:unregister, agent_id}, state) do
     Phoenix.PubSub.broadcast(AgentCom.PubSub, "presence", {:agent_left, agent_id})
+    Logger.info("presence_agent_unregistered", agent_id: agent_id)
     {:noreply, Map.delete(state, agent_id)}
   end
 

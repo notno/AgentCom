@@ -87,13 +87,18 @@ defmodule AgentCom.DetsBackup do
 
   @impl true
   def init(_opts) do
+    Logger.metadata(module: __MODULE__)
+
     backup_dir = Application.get_env(:agent_com, :backup_dir, "priv/backups")
     File.mkdir_p!(backup_dir)
 
     Process.send_after(self(), :daily_backup, @daily_interval_ms)
     Process.send_after(self(), :scheduled_compaction, @compaction_interval_ms)
 
-    Logger.info("DetsBackup: started, backup_dir=#{backup_dir}, daily interval=24h, compaction interval=#{div(@compaction_interval_ms, 3_600_000)}h")
+    Logger.info("dets_backup_started",
+      backup_dir: backup_dir,
+      compaction_interval_hours: div(@compaction_interval_ms, 3_600_000)
+    )
 
     {:ok, %{
       backup_dir: backup_dir,
@@ -209,14 +214,21 @@ defmodule AgentCom.DetsBackup do
 
   @impl true
   def handle_cast({:corruption_detected, table_atom, reason}, state) do
-    Logger.error("DetsBackup: corruption detected in #{table_atom}: #{inspect(reason)}, initiating auto-restore")
+    Logger.error("dets_corruption_detected",
+      table: table_atom,
+      reason: inspect(reason),
+      action: :auto_restore
+    )
     now = System.system_time(:millisecond)
 
     result = do_restore_table(table_atom, state.backup_dir)
 
     case result do
       {:ok, info} ->
-        Logger.warning("DetsBackup: auto-restored #{table_atom} from backup #{info[:backup_used]}")
+        Logger.warning("dets_auto_restore_complete",
+          table: table_atom,
+          backup_used: info[:backup_used]
+        )
         Phoenix.PubSub.broadcast(AgentCom.PubSub, "backups", {:recovery_complete, %{
           timestamp: now,
           table: table_atom,
@@ -226,7 +238,10 @@ defmodule AgentCom.DetsBackup do
         }})
 
       {:error, err} ->
-        Logger.critical("DetsBackup: auto-restore failed for #{table_atom}: #{inspect(err)}")
+        Logger.critical("dets_auto_restore_failed",
+          table: table_atom,
+          error: inspect(err)
+        )
         Phoenix.PubSub.broadcast(AgentCom.PubSub, "backups", {:recovery_failed, %{
           timestamp: now,
           table: table_atom,
@@ -346,28 +361,48 @@ defmodule AgentCom.DetsBackup do
 
   defp do_compact_all do
     Enum.map(@tables, fn table ->
-      case compact_table(table) do
-        {:compacted, duration} ->
-          %{table: table, status: :compacted, duration_ms: duration}
-
-        {:skipped, reason, _duration} ->
-          %{table: table, status: :skipped, reason: reason}
-
-        {:error, reason, duration} ->
-          # Retry once
-          Logger.warning("DetsBackup: compaction failed for #{table}: #{inspect(reason)}, retrying once")
+      result = :telemetry.span(
+        [:agent_com, :dets, :compaction],
+        %{table: table},
+        fn ->
           case compact_table(table) do
-            {:compacted, retry_duration} ->
-              %{table: table, status: :compacted, duration_ms: duration + retry_duration, retried: true}
+            {:compacted, duration} ->
+              formatted = %{table: table, status: :compacted, duration_ms: duration}
+              {formatted, %{table: table, status: :compacted}}
 
-            {:error, retry_reason, retry_duration} ->
-              Logger.error("DetsBackup: compaction retry failed for #{table}: #{inspect(retry_reason)}")
-              %{table: table, status: :error, reason: retry_reason, duration_ms: duration + retry_duration}
+            {:skipped, reason, _duration} ->
+              formatted = %{table: table, status: :skipped, reason: reason}
+              {formatted, %{table: table, status: :skipped}}
 
-            {:skipped, skip_reason, _} ->
-              %{table: table, status: :skipped, reason: skip_reason}
+            {:error, reason, duration} ->
+              # Retry once
+              Logger.warning("dets_compaction_failed",
+                table: table,
+                reason: inspect(reason),
+                action: :retry
+              )
+              case compact_table(table) do
+                {:compacted, retry_duration} ->
+                  formatted = %{table: table, status: :compacted, duration_ms: duration + retry_duration, retried: true}
+                  {formatted, %{table: table, status: :compacted, retried: true}}
+
+                {:error, retry_reason, retry_duration} ->
+                  Logger.error("dets_compaction_retry_failed",
+                    table: table,
+                    reason: inspect(retry_reason)
+                  )
+                  formatted = %{table: table, status: :error, reason: retry_reason, duration_ms: duration + retry_duration}
+                  {formatted, %{table: table, status: :error}}
+
+                {:skipped, skip_reason, _} ->
+                  formatted = %{table: table, status: :skipped, reason: skip_reason}
+                  {formatted, %{table: table, status: :skipped}}
+              end
           end
-      end
+        end
+      )
+
+      result
     end)
   end
 
@@ -441,6 +476,22 @@ defmodule AgentCom.DetsBackup do
   end
 
   defp do_restore_table(table_atom, backup_dir) do
+    :telemetry.span(
+      [:agent_com, :dets, :restore],
+      %{table: table_atom, trigger: :restore},
+      fn ->
+        result = perform_restore(table_atom, backup_dir)
+        case result do
+          {:ok, info} ->
+            {result, %{table: table_atom, backup_used: info[:backup_used], record_count: get_in(info, [:integrity, :record_count]) || 0}}
+          {:error, _reason} ->
+            {result, %{table: table_atom, status: :error}}
+        end
+      end
+    )
+  end
+
+  defp perform_restore(table_atom, backup_dir) do
     owner = table_owner(table_atom)
     original_path = get_table_path(table_atom)
 
@@ -463,17 +514,29 @@ defmodule AgentCom.DetsBackup do
                   {:ok, %{table: table_atom, backup_used: backup_filename, integrity: integrity_info}}
 
                 {:error, reason} ->
-                  Logger.error("DetsBackup: integrity verification failed for #{table_atom} after restore: #{inspect(reason)}")
+                  Logger.error("dets_integrity_failed",
+                    table: table_atom,
+                    reason: inspect(reason),
+                    phase: :post_restore
+                  )
                   {:error, {:integrity_failed, reason}}
               end
 
             {:error, restart_reason} ->
-              Logger.critical("DetsBackup: failed to restart #{owner} after restore: #{inspect(restart_reason)}")
+              Logger.critical("dets_restart_failed",
+                table: table_atom,
+                owner: inspect(owner),
+                reason: inspect(restart_reason),
+                phase: :post_restore
+              )
               handle_restart_failure(table_atom, owner, original_path)
           end
         rescue
           e ->
-            Logger.critical("DetsBackup: restore failed for #{table_atom}: #{inspect(e)}")
+            Logger.critical("dets_restore_exception",
+              table: table_atom,
+              error: inspect(e)
+            )
             # Try to restart the owner even if copy failed
             try do
               Supervisor.restart_child(AgentCom.Supervisor, owner)
@@ -484,7 +547,10 @@ defmodule AgentCom.DetsBackup do
         end
 
       {:error, :no_backup_found} ->
-        Logger.critical("DetsBackup: no backup found for #{table_atom}, entering degraded mode")
+        Logger.critical("dets_no_backup",
+          table: table_atom,
+          action: :degraded_mode
+        )
         handle_no_backup(table_atom, owner, original_path)
 
       {:error, reason} ->
@@ -493,7 +559,11 @@ defmodule AgentCom.DetsBackup do
   end
 
   defp handle_restart_failure(table_atom, owner, original_path) do
-    Logger.critical("DetsBackup: both table and backup corrupted for #{table_atom}, entering degraded mode with empty table")
+    Logger.critical("dets_degraded_mode",
+      table: table_atom,
+      reason: :both_corrupted,
+      data_lost: true
+    )
     # Delete corrupted file, let init/1 create fresh empty table
     File.rm(original_path)
 
@@ -514,6 +584,17 @@ defmodule AgentCom.DetsBackup do
   # --- Backup Private Functions ---
 
   defp do_backup_all(state) do
+    :telemetry.span(
+      [:agent_com, :dets, :backup],
+      %{table_count: length(@tables)},
+      fn ->
+        result = perform_backup_all(state)
+        {result, %{status: :ok, table_count: length(@tables)}}
+      end
+    )
+  end
+
+  defp perform_backup_all(state) do
     timestamp =
       NaiveDateTime.utc_now()
       |> NaiveDateTime.to_string()
@@ -542,7 +623,10 @@ defmodule AgentCom.DetsBackup do
 
     success_count = length(success_tables)
 
-    Logger.info("DetsBackup: backup complete, #{success_count}/#{length(@tables)} tables backed up")
+    Logger.notice("dets_backup_complete",
+      success_count: success_count,
+      total_tables: length(@tables)
+    )
 
     Phoenix.PubSub.broadcast(AgentCom.PubSub, "backups", {:backup_complete, %{
       timestamp: System.system_time(:millisecond),
@@ -573,7 +657,11 @@ defmodule AgentCom.DetsBackup do
         case :dets.sync(table_atom) do
           :ok -> :ok
           {:error, reason} ->
-            Logger.warning("DetsBackup: sync failed for #{table_atom}: #{inspect(reason)}, continuing with copy")
+            Logger.warning("dets_sync_failed",
+              table: table_atom,
+              reason: inspect(reason),
+              action: :continue_with_copy
+            )
         end
 
         case File.cp(source_path, backup_path) do
@@ -601,7 +689,7 @@ defmodule AgentCom.DetsBackup do
 
           Enum.each(to_delete, fn file ->
             path = Path.join(backup_dir, file)
-            Logger.debug("DetsBackup: removing old backup #{path}")
+            Logger.debug(fn -> "dets_cleanup_old_backup: #{path}" end)
             File.rm(path)
           end)
         end

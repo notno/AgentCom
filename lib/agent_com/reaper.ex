@@ -20,6 +20,8 @@ defmodule AgentCom.Reaper do
   end
 
   def init(opts) do
+    Logger.metadata(module: __MODULE__)
+
     sweep_interval = Keyword.get(opts, :sweep_interval_ms, @default_sweep_interval_ms)
     ttl = Keyword.get(opts, :ttl_ms, @default_ttl_ms)
 
@@ -41,7 +43,20 @@ defmodule AgentCom.Reaper do
 
     for agent <- stale_agents do
       agent_id = agent[:agent_id] || agent.agent_id
-      Logger.warning("Reaper: evicting stale agent #{agent_id} (no ping in #{state.ttl}ms)")
+      last_seen = agent[:last_seen] || agent[:connected_at] || 0
+      stale_ms = now - last_seen
+
+      :telemetry.execute(
+        [:agent_com, :agent, :evict],
+        %{stale_ms: stale_ms},
+        %{agent_id: agent_id}
+      )
+
+      Logger.warning("reaper_evict_stale",
+        agent_id: agent_id,
+        stale_ms: stale_ms,
+        ttl_ms: state.ttl
+      )
 
       # Terminate the WebSocket process if still registered
       case Registry.lookup(AgentCom.AgentRegistry, agent_id) do

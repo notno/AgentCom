@@ -64,12 +64,14 @@ defmodule AgentCom.Scheduler do
 
   @impl true
   def init(_opts) do
+    Logger.metadata(module: __MODULE__)
+
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "tasks")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "presence")
 
     Process.send_after(self(), :sweep_stuck, @stuck_sweep_interval_ms)
 
-    Logger.info("Scheduler: started, subscribed to tasks and presence topics")
+    Logger.info("scheduler_started", subscriptions: ["tasks", "presence"])
 
     {:ok, %{}}
   end
@@ -78,32 +80,32 @@ defmodule AgentCom.Scheduler do
 
   @impl true
   def handle_info({:task_event, %{event: :task_submitted}}, state) do
-    try_schedule_all()
+    try_schedule_all(:task_submitted)
     {:noreply, state}
   end
 
   def handle_info({:task_event, %{event: :task_reclaimed}}, state) do
-    try_schedule_all()
+    try_schedule_all(:task_reclaimed)
     {:noreply, state}
   end
 
   def handle_info({:task_event, %{event: :task_retried}}, state) do
-    try_schedule_all()
+    try_schedule_all(:task_retried)
     {:noreply, state}
   end
 
   def handle_info({:task_event, %{event: :task_completed}}, state) do
-    try_schedule_all()
+    try_schedule_all(:task_completed)
     {:noreply, state}
   end
 
   def handle_info({:agent_joined, _info}, state) do
-    try_schedule_all()
+    try_schedule_all(:agent_joined)
     {:noreply, state}
   end
 
   def handle_info({:agent_idle, _info}, state) do
-    try_schedule_all()
+    try_schedule_all(:agent_idle)
     {:noreply, state}
   end
 
@@ -134,9 +136,10 @@ defmodule AgentCom.Scheduler do
         staleness_ms = now - task.updated_at
         staleness_min = Float.round(staleness_ms / 60_000, 1)
 
-        Logger.warning(
-          "Scheduler: reclaiming stuck task #{task.id} from #{task.assigned_to} " <>
-            "(stale #{staleness_min} min)"
+        Logger.warning("scheduler_reclaim_stuck",
+          task_id: task.id,
+          assigned_to: task.assigned_to,
+          stale_minutes: staleness_min
         )
 
         AgentCom.TaskQueue.reclaim_task(task.id)
@@ -157,17 +160,32 @@ defmodule AgentCom.Scheduler do
   # Private: scheduling logic
   # ---------------------------------------------------------------------------
 
-  defp try_schedule_all do
+  defp try_schedule_all(trigger) do
     idle_agents =
       AgentCom.AgentFSM.list_all()
       |> Enum.filter(fn a -> a.fsm_state == :idle end)
 
     case idle_agents do
       [] ->
+        queued_tasks = AgentCom.TaskQueue.list(status: :queued)
+
+        :telemetry.execute(
+          [:agent_com, :scheduler, :attempt],
+          %{idle_agents: 0, queued_tasks: length(queued_tasks)},
+          %{trigger: trigger}
+        )
+
         :ok
 
       agents ->
         queued_tasks = AgentCom.TaskQueue.list(status: :queued)
+
+        :telemetry.execute(
+          [:agent_com, :scheduler, :attempt],
+          %{idle_agents: length(agents), queued_tasks: length(queued_tasks)},
+          %{trigger: trigger}
+        )
+
         do_match_loop(queued_tasks, agents)
     end
   end
@@ -217,25 +235,33 @@ defmodule AgentCom.Scheduler do
           generation: assigned_task.generation
         }
 
+        :telemetry.execute(
+          [:agent_com, :scheduler, :match],
+          %{},
+          %{task_id: task.id, agent_id: agent.agent_id}
+        )
+
         case Registry.lookup(AgentCom.AgentRegistry, agent.agent_id) do
           [{pid, _meta}] ->
             send(pid, {:push_task, task_data})
 
-            Logger.info(
-              "Scheduler: assigned task #{task.id} to #{agent.agent_id}"
+            Logger.info("scheduler_assigned",
+              task_id: task.id,
+              agent_id: agent.agent_id
             )
 
           [] ->
-            Logger.warning(
-              "Scheduler: assigned task #{task.id} to #{agent.agent_id} " <>
-                "but agent WebSocket not found in registry (self-healing via FSM :DOWN)"
+            Logger.warning("scheduler_ws_not_found",
+              task_id: task.id,
+              agent_id: agent.agent_id
             )
         end
 
       {:error, reason} ->
-        Logger.warning(
-          "Scheduler: failed to assign task #{task.id} to #{agent.agent_id}: #{inspect(reason)} " <>
-            "(race condition, self-healing)"
+        Logger.warning("scheduler_assign_failed",
+          task_id: task.id,
+          agent_id: agent.agent_id,
+          reason: inspect(reason)
         )
     end
   end
