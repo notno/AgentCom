@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 ## Current Position
 
 Phase: 15-rate-limiting
-Plan: 1 of 4 complete
+Plan: 3 of 4 complete
 Status: In Progress
-Last activity: 2026-02-12 -- Completed 15-01-PLAN.md (Token bucket core with ETS-backed lazy refill)
+Last activity: 2026-02-12 -- Completed 15-03-PLAN.md (Admin API for rate limit overrides and whitelist)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 25 (v1.1)
+- Total plans completed: 27 (v1.1)
 - Average duration: 5 min
-- Total execution time: 2.12 hours
+- Total execution time: 2.22 hours
 
 **By Phase:**
 
@@ -31,10 +31,10 @@ Last activity: 2026-02-12 -- Completed 15-01-PLAN.md (Token bucket core with ETS
 | 12-input-validation | 3 | 13 min | 4 min |
 | 13-structured-logging | 4 | 38 min | 10 min |
 | 14-metrics-alerting | 4 | 17 min | 4 min |
-| 15-rate-limiting | 1 | 4 min | 4 min |
+| 15-rate-limiting | 3 | 14 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 15-01 (4 min), 14-04 (4 min), 14-03 (4 min), 14-02 (4 min), 14-01 (5 min)
+- Last 5 plans: 15-03 (5 min), 15-02 (5 min), 15-01 (4 min), 14-04 (4 min), 14-03 (4 min)
 - Trend: --
 
 *Updated after each plan completion*
@@ -127,6 +127,10 @@ Recent decisions affecting current work:
 - [Phase 15-01]: Monotonic time for bucket timing to prevent NTP clock jump issues
 - [Phase 15-01]: Progressive backoff 1s/2s/5s/10s/30s with 60s quiet period reset
 - [Phase 15-01]: ETS tables :rate_limit_buckets and :rate_limit_overrides created in Application.start (public, set)
+- [Phase 15-03]: Lazy DETS->ETS loading with :_loaded flag -- avoids Application.start ordering issues with Config GenServer
+- [Phase 15-03]: ETS foldl for get_overrides/0 -- fast read without DETS GenServer round-trip
+- [Phase 15-03]: parse_override_params converts human-readable tokens/min to internal units at API boundary
+- [Phase 15-03]: Whitelist routes before parameterized :agent_id routes in Plug.Router for correct matching
 
 ### Pending Todos
 
@@ -150,5 +154,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 15-01-PLAN.md (Token bucket core). Phase 15 in progress (1/4 plans).
+Stopped at: Completed 15-03-PLAN.md (Admin API for overrides/whitelist). Phase 15 in progress (3/4 plans).
 Resume file: None
