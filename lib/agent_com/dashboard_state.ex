@@ -413,6 +413,7 @@ defmodule AgentCom.DashboardState do
       end
 
     verification_report = Map.get(task, :verification_report)
+    routing_decision = Map.get(task, :routing_decision)
 
     entry = %{
       task_id: task_id,
@@ -421,7 +422,8 @@ defmodule AgentCom.DashboardState do
       duration_ms: duration_ms,
       tokens_used: tokens_used,
       completed_at: now,
-      verification_report: verification_report
+      verification_report: verification_report,
+      routing_decision: format_routing_decision_for_dashboard(routing_decision)
     }
 
     # Ring buffer: prepend and cap at @ring_buffer_cap
@@ -581,6 +583,28 @@ defmodule AgentCom.DashboardState do
       total_tokens_hour: hourly.total_tokens
     }
   end
+
+  defp format_routing_decision_for_dashboard(nil), do: nil
+  defp format_routing_decision_for_dashboard(rd) when is_map(rd) do
+    %{
+      effective_tier: to_string(Map.get(rd, :effective_tier)),
+      target_type: to_string(Map.get(rd, :target_type)),
+      selected_endpoint: safe_to_string_or_nil(Map.get(rd, :selected_endpoint)),
+      selected_model: safe_to_string_or_nil(Map.get(rd, :selected_model)),
+      fallback_used: Map.get(rd, :fallback_used, false),
+      fallback_from_tier: safe_to_string_or_nil(Map.get(rd, :fallback_from_tier)),
+      fallback_reason: safe_to_string_or_nil(Map.get(rd, :fallback_reason)),
+      candidate_count: Map.get(rd, :candidate_count),
+      classification_reason: safe_to_string_or_nil(Map.get(rd, :classification_reason)),
+      estimated_cost_tier: safe_to_string_or_nil(Map.get(rd, :estimated_cost_tier)),
+      decided_at: Map.get(rd, :decided_at)
+    }
+  end
+
+  defp safe_to_string_or_nil(nil), do: nil
+  defp safe_to_string_or_nil(val) when is_atom(val), do: to_string(val)
+  defp safe_to_string_or_nil(val) when is_binary(val), do: val
+  defp safe_to_string_or_nil(val), do: inspect(val)
 
   defp compute_routing_stats(tasks) do
     routed_tasks =

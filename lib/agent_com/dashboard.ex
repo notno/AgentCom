@@ -472,6 +472,41 @@ defmodule AgentCom.Dashboard do
         .llm-add-btn:hover { background: #1d4ed8; }
         .llm-remove-btn { background: none; border: none; color: #f44336; cursor: pointer; font-size: 0.85em; padding: 2px 6px; }
         .llm-remove-btn:hover { text-decoration: underline; }
+
+        /* === Routing Badges === */
+        .tier-badge {
+          display: inline-block; padding: 2px 7px; border-radius: 10px;
+          font-size: 0.72em; font-weight: 600; text-transform: uppercase;
+        }
+        .tier-badge.trivial { background: rgba(74, 222, 128, 0.15); color: #4ade80; }
+        .tier-badge.standard { background: rgba(96, 165, 250, 0.15); color: #60a5fa; }
+        .tier-badge.complex { background: rgba(168, 85, 247, 0.15); color: #a855f7; }
+        .tier-badge.unknown { background: rgba(107, 114, 128, 0.15); color: #6b7280; }
+        .fb-badge {
+          display: inline-block; padding: 1px 5px; border-radius: 6px;
+          font-size: 0.65em; font-weight: 700; background: rgba(249, 115, 22, 0.2);
+          color: #f97316; margin-left: 4px; vertical-align: middle;
+        }
+        .routing-endpoint { font-size: 0.8em; color: #aaa; margin-left: 4px; }
+        .routing-detail {
+          display: none; padding: 6px 10px; margin-top: 4px;
+          background: #111118; border-radius: 4px; font-size: 0.78em; color: #bbb;
+        }
+        .routing-detail.visible { display: block; }
+        .routing-detail-row { display: flex; gap: 8px; padding: 2px 0; }
+        .routing-detail-label { color: #888; min-width: 120px; flex-shrink: 0; }
+        .routing-detail-value { color: #e0e0e0; }
+        .routing-toggle {
+          background: none; border: none; color: #7eb8da; font-size: 0.75em;
+          cursor: pointer; padding: 0 4px; vertical-align: middle;
+        }
+        .routing-toggle:hover { color: #a0d0f0; }
+        .routing-stats-bar {
+          font-size: 0.78em; color: #aaa; margin-top: 6px; padding: 4px 0;
+        }
+        .routing-stats-bar span { margin-right: 12px; }
+        .routing-stats-bar .rs-label { color: #888; }
+        .routing-stats-bar .rs-value { color: #7eb8da; font-weight: 600; }
       </style>
     </head>
     <body>
@@ -526,6 +561,14 @@ defmodule AgentCom.Dashboard do
               <span class="hm-label">Throughput</span>
             </div>
           </div>
+        </div>
+        <div class="routing-stats-bar" id="routing-stats-bar" style="display:none;">
+          <span class="rs-label">Routed:</span>
+          <span class="rs-value" id="rs-total">0</span>
+          <span>(<span class="rs-label">trivial:</span> <span class="rs-value" id="rs-trivial">0</span>
+          <span class="rs-label">standard:</span> <span class="rs-value" id="rs-standard">0</span>
+          <span class="rs-label">complex:</span> <span class="rs-value" id="rs-complex">0</span>
+          <span class="rs-label">fallbacks:</span> <span class="rs-value" id="rs-fallbacks">0</span>)</span>
         </div>
         <ul class="health-conditions" id="health-conditions"></ul>
       </div>
@@ -636,10 +679,11 @@ defmodule AgentCom.Dashboard do
                   <th onclick="sortTable('recent-table', 0)">Task <span class="sort-arrow" id="sort-0"></span></th>
                   <th onclick="sortTable('recent-table', 1)">Agent <span class="sort-arrow" id="sort-1"></span></th>
                   <th onclick="sortTable('recent-table', 2)">Status <span class="sort-arrow" id="sort-2"></span></th>
-                  <th onclick="sortTable('recent-table', 3)">Duration <span class="sort-arrow" id="sort-3"></span></th>
-                  <th onclick="sortTable('recent-table', 4)">Tokens <span class="sort-arrow" id="sort-4"></span></th>
-                  <th onclick="sortTable('recent-table', 5)">Verify <span class="sort-arrow" id="sort-5"></span></th>
-                  <th onclick="sortTable('recent-table', 6)">Completed <span class="sort-arrow active" id="sort-6">&#9660;</span></th>
+                  <th onclick="sortTable('recent-table', 3)">Routing <span class="sort-arrow" id="sort-3"></span></th>
+                  <th onclick="sortTable('recent-table', 4)">Duration <span class="sort-arrow" id="sort-4"></span></th>
+                  <th onclick="sortTable('recent-table', 5)">Tokens <span class="sort-arrow" id="sort-5"></span></th>
+                  <th onclick="sortTable('recent-table', 6)">Verify <span class="sort-arrow" id="sort-6"></span></th>
+                  <th onclick="sortTable('recent-table', 7)">Completed <span class="sort-arrow active" id="sort-7">&#9660;</span></th>
                 </tr>
               </thead>
               <tbody id="recent-tbody"></tbody>
@@ -847,7 +891,7 @@ defmodule AgentCom.Dashboard do
         // State
         // =====================================================================
         let dashState = null;
-        let sortCol = 6;
+        let sortCol = 7;
         let sortAsc = false;
         let reconnectCount = 0;
 
@@ -1424,6 +1468,9 @@ defmodule AgentCom.Dashboard do
           // -- LLM Registry --
           renderLlmRegistry(data);
 
+          // -- Routing stats --
+          renderRoutingStats(data.routing_stats || null);
+
           updateLastUpdate();
         }
 
@@ -1610,10 +1657,11 @@ defmodule AgentCom.Dashboard do
               case 0: aVal = a.description || ''; bVal = b.description || ''; break;
               case 1: aVal = a.agent_id || ''; bVal = b.agent_id || ''; break;
               case 2: aVal = 'completed'; bVal = 'completed'; break;
-              case 3: aVal = a.duration_ms || 0; bVal = b.duration_ms || 0; break;
-              case 4: aVal = a.tokens_used || 0; bVal = b.tokens_used || 0; break;
-              case 5: aVal = (a.verification_report || {}).status || ''; bVal = (b.verification_report || {}).status || ''; break;
-              case 6: aVal = a.completed_at || 0; bVal = b.completed_at || 0; break;
+              case 3: aVal = getRoutingTier(a); bVal = getRoutingTier(b); break;
+              case 4: aVal = a.duration_ms || 0; bVal = b.duration_ms || 0; break;
+              case 5: aVal = a.tokens_used || 0; bVal = b.tokens_used || 0; break;
+              case 6: aVal = (a.verification_report || {}).status || ''; bVal = (b.verification_report || {}).status || ''; break;
+              case 7: aVal = a.completed_at || 0; bVal = b.completed_at || 0; break;
               default: aVal = 0; bVal = 0;
             }
             if (typeof aVal === 'string') {
@@ -1637,6 +1685,7 @@ defmodule AgentCom.Dashboard do
               '<td title="' + escapeHtml(c.description) + '">' + escapeHtml(truncate(c.description, 35)) + '</td>' +
               '<td>' + escapeHtml(c.agent_id || '--') + '</td>' +
               '<td><span class="badge completed">completed</span></td>' +
+              '<td>' + renderRoutingCell(c.routing_decision, c.task_id) + '</td>' +
               '<td data-sort="' + (c.duration_ms || 0) + '">' + formatDuration(c.duration_ms) + '</td>' +
               '<td>' + (c.tokens_used || 0) + '</td>' +
               '<td>' + renderVerifyBadge(c.verification_report) + '</td>' +
@@ -1654,7 +1703,7 @@ defmodule AgentCom.Dashboard do
           }
 
           // Update sort arrows
-          for (var i = 0; i <= 6; i++) {
+          for (var i = 0; i <= 7; i++) {
             var arrow = document.getElementById('sort-' + i);
             if (arrow) {
               if (i === colIndex) {
@@ -1923,6 +1972,88 @@ defmodule AgentCom.Dashboard do
               btn.classList.remove('failed');
             }, 2000);
           }
+        }
+
+        // =====================================================================
+        // Routing helpers
+        // =====================================================================
+        function getRoutingTier(completion) {
+          var rd = completion.routing_decision;
+          if (!rd) return '';
+          return rd.effective_tier || '';
+        }
+
+        function renderRoutingCell(rd, taskId) {
+          if (!rd) return '<span style="color:#555">-</span>';
+          var tier = rd.effective_tier || 'unknown';
+          var tierClass = tier;
+          if (['trivial', 'standard', 'complex'].indexOf(tier) === -1) tierClass = 'unknown';
+
+          var html = '<span class="tier-badge ' + tierClass + '">' + escapeHtml(tier) + '</span>';
+
+          if (rd.fallback_used) {
+            html += '<span class="fb-badge">FB</span>';
+          }
+
+          // Endpoint summary
+          var endpoint = rd.selected_endpoint || rd.target_type || '';
+          if (endpoint) {
+            html += '<span class="routing-endpoint">' + escapeHtml(truncate(String(endpoint), 18)) + '</span>';
+          }
+
+          // Expand toggle
+          var detailId = 'rd-' + (taskId || Math.random().toString(36).substr(2, 6));
+          html += ' <button class="routing-toggle" onclick="toggleRoutingDetail(\\'' + detailId + '\\')">&#9662;</button>';
+
+          // Expandable detail
+          html += '<div class="routing-detail" id="' + detailId + '">';
+          html += renderRoutingDetailRows(rd);
+          html += '</div>';
+
+          return html;
+        }
+
+        function renderRoutingDetailRows(rd) {
+          var rows = [];
+          if (rd.classification_reason) rows.push(['Reason', rd.classification_reason]);
+          if (rd.candidate_count != null) rows.push(['Candidates', rd.candidate_count]);
+          if (rd.selected_model) rows.push(['Model', rd.selected_model]);
+          if (rd.target_type) rows.push(['Target', rd.target_type]);
+          if (rd.selected_endpoint) rows.push(['Endpoint', rd.selected_endpoint]);
+          if (rd.fallback_used) {
+            if (rd.fallback_reason) rows.push(['Fallback reason', rd.fallback_reason]);
+            if (rd.fallback_from_tier) rows.push(['Fallback from', rd.fallback_from_tier]);
+          }
+          if (rd.estimated_cost_tier) rows.push(['Cost tier', rd.estimated_cost_tier]);
+          if (rd.decided_at) rows.push(['Decided at', formatTime(rd.decided_at)]);
+
+          return rows.map(function(r) {
+            return '<div class="routing-detail-row">' +
+              '<span class="routing-detail-label">' + escapeHtml(r[0]) + '</span>' +
+              '<span class="routing-detail-value">' + escapeHtml(String(r[1])) + '</span>' +
+              '</div>';
+          }).join('');
+        }
+
+        function toggleRoutingDetail(id) {
+          var el = document.getElementById(id);
+          if (el) el.classList.toggle('visible');
+        }
+
+        function renderRoutingStats(stats) {
+          var bar = document.getElementById('routing-stats-bar');
+          if (!bar) return;
+          if (!stats || stats.total_routed === 0) {
+            bar.style.display = 'none';
+            return;
+          }
+          bar.style.display = 'block';
+          var byTier = stats.by_tier || {};
+          document.getElementById('rs-total').textContent = stats.total_routed || 0;
+          document.getElementById('rs-trivial').textContent = byTier.trivial || byTier['trivial'] || 0;
+          document.getElementById('rs-standard').textContent = byTier.standard || byTier['standard'] || 0;
+          document.getElementById('rs-complex').textContent = byTier.complex || byTier['complex'] || 0;
+          document.getElementById('rs-fallbacks').textContent = stats.fallback_count || 0;
         }
 
         // =====================================================================
