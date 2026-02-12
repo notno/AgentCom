@@ -149,7 +149,7 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-None.
+1. Clarify repo_url vs default_repo naming in agent onboarding (area: api)
 
 ### Blockers/Concerns
 
