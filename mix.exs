@@ -24,6 +24,7 @@ defmodule AgentCom.MixProject do
     [
       {:phoenix_pubsub, "~> 2.1"},
       {:jason, "~> 1.4"},
+      {:saxy, "~> 1.6"},
       {:bandit, "~> 1.0"},
       {:websock_adapter, "~> 0.5"},
       {:plug, "~> 1.15"},
