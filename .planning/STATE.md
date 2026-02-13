@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 Phase: None (between milestones)
 Plan: N/A
 Status: v1.2 shipped, next milestone not yet defined
-Last activity: 2026-02-12 -- Completed v1.2 Smart Agent Pipeline milestone
+Last activity: 2026-02-13 -- Completed quick task 2: Fix DETS backup test enoent failure
 
 Progress: All milestones complete
 
@@ -62,6 +62,7 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 1 | Fix pre-existing compilation warnings | 2026-02-12 | 898d665 | [1-fix-pre-existing-compilation-warnings](./quick/1-fix-pre-existing-compilation-warnings/) |
+| 2 | Fix DETS backup test enoent failure | 2026-02-13 | 0882aba | [2-fix-the-enoent-issue](./quick/2-fix-the-enoent-issue/) |
 
 ## Session Continuity
 
