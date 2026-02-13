@@ -81,7 +81,7 @@ Requirements for v1.3 Hub FSM Loop of Self-Improvement. Each maps to roadmap pha
 
 ### Document Format
 
-- [ ] **FORMAT-01**: All new machine-consumed documents (goals, task context, scan results, FSM state) use XML format
+- [x] **FORMAT-01**: All new machine-consumed documents (goals, task context, scan results, FSM state) use XML format
 - [ ] **FORMAT-02**: ~~Existing .planning/ artifacts converted from markdown to XML~~ DESCOPED -- GSD stays markdown
 
 ### Dashboard
@@ -129,8 +129,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FORMAT-01 | Phase 24 | Pending |
-| FORMAT-02 | Phase 24 | Pending |
+| FORMAT-01 | Phase 24 | Done |
+| FORMAT-02 | Phase 24 | Descoped |
 | COST-01 | Phase 25 | Pending |
 | COST-02 | Phase 25 | Pending |
 | COST-03 | Phase 25 | Pending |
