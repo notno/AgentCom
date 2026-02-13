@@ -71,7 +71,7 @@
 - Decimal phases (25.1, 25.2): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 24: Document Format Conversion** - Convert machine-consumed planning artifacts to XML (shipped 2026-02-13)
-- [ ] **Phase 25: Cost Control Infrastructure** - CostLedger GenServer with per-state budgets and telemetry
+- [x] **Phase 25: Cost Control Infrastructure** - CostLedger GenServer with per-state budgets and telemetry (shipped 2026-02-13)
 - [ ] **Phase 26: Claude API Client** - Req-based HTTP client GenServer for hub-side LLM calls
 - [ ] **Phase 27: Goal Backlog** - DETS-backed goal storage with multi-source intake and lifecycle
 - [ ] **Phase 28: Pipeline Dependencies** - Task dependency graph with scheduler filtering
@@ -110,9 +110,9 @@ Plans:
   4. Cost telemetry events are emitted via :telemetry and trigger existing Alerter rules when thresholds are approached
 **Plans:** 3 plans
 Plans:
-- [ ] 25-01-PLAN.md -- CostLedger GenServer with dual-layer DETS+ETS store, supervision tree, DetsBackup
-- [ ] 25-02-PLAN.md -- Telemetry events, Alerter rule 7, DetsHelpers test isolation
-- [ ] 25-03-PLAN.md -- TDD: comprehensive CostLedger test suite
+- [x] 25-01-PLAN.md -- CostLedger GenServer with dual-layer DETS+ETS store, supervision tree, DetsBackup
+- [x] 25-02-PLAN.md -- Telemetry events, Alerter rule 7, DetsHelpers test isolation
+- [x] 25-03-PLAN.md -- TDD: comprehensive CostLedger test suite
 
 ### Phase 26: Claude API Client
 **Goal**: The hub can make structured LLM calls through a rate-limited, cost-aware HTTP client
@@ -244,7 +244,7 @@ Phases execute in numeric order: 24, 25, 26... Decimal phases (if inserted) exec
 | 9-16 | v1.1 | 32/32 | Complete | 2026-02-12 |
 | 17-23 | v1.2 | 25/25 | Complete | 2026-02-12 |
 | 24. Document Format Conversion | v1.3 | 2/2 | Complete | 2026-02-13 |
-| 25. Cost Control Infrastructure | v1.3 | 0/TBD | Not started | - |
+| 25. Cost Control Infrastructure | v1.3 | 3/3 | Complete | 2026-02-13 |
 | 26. Claude API Client | v1.3 | 0/TBD | Not started | - |
 | 27. Goal Backlog | v1.3 | 0/TBD | Not started | - |
 | 28. Pipeline Dependencies | v1.3 | 0/TBD | Not started | - |

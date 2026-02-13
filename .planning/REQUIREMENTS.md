@@ -45,10 +45,10 @@ Requirements for v1.3 Hub FSM Loop of Self-Improvement. Each maps to roadmap pha
 
 ### Cost and Safety
 
-- [ ] **COST-01**: CostLedger GenServer tracks cumulative Claude Code CLI invocations per hour/day/session
-- [ ] **COST-02**: Per-state token budgets are configurable (Executing, Improving, Contemplating)
-- [ ] **COST-03**: Hub FSM checks budget before every API call; transitions to Resting if budget exhausted
-- [ ] **COST-04**: Cost telemetry emitted via :telemetry and wired to existing Alerter
+- [x] **COST-01**: CostLedger GenServer tracks cumulative Claude Code CLI invocations per hour/day/session
+- [x] **COST-02**: Per-state token budgets are configurable (Executing, Improving, Contemplating)
+- [x] **COST-03**: Hub FSM checks budget before every API call; transitions to Resting if budget exhausted
+- [x] **COST-04**: Cost telemetry emitted via :telemetry and wired to existing Alerter
 
 ### Tiered Autonomy
 
@@ -131,10 +131,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | FORMAT-01 | Phase 24 | Done |
 | FORMAT-02 | Phase 24 | Descoped |
-| COST-01 | Phase 25 | Pending |
-| COST-02 | Phase 25 | Pending |
-| COST-03 | Phase 25 | Pending |
-| COST-04 | Phase 25 | Pending |
+| COST-01 | Phase 25 | Done |
+| COST-02 | Phase 25 | Done |
+| COST-03 | Phase 25 | Done |
+| COST-04 | Phase 25 | Done |
 | CLIENT-01 | Phase 26 | Pending |
 | CLIENT-02 | Phase 26 | Pending |
 | GOAL-01 | Phase 27 | Pending |
