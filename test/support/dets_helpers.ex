@@ -23,7 +23,7 @@ defmodule AgentCom.TestHelpers.DetsHelpers do
     tmp_dir = Path.join(System.tmp_dir!(), "agentcom_test_#{:erlang.unique_integer([:positive])}")
     File.mkdir_p!(tmp_dir)
 
-    # Override all 7 DETS path configs to use subdirectories of the temp dir
+    # Override all 8 DETS path configs to use subdirectories of the temp dir
     Application.put_env(:agent_com, :task_queue_path, Path.join(tmp_dir, "task_queue"))
     Application.put_env(:agent_com, :tokens_path, Path.join(tmp_dir, "tokens.json"))
     Application.put_env(:agent_com, :mailbox_path, Path.join(tmp_dir, "mailbox.dets"))
@@ -33,6 +33,7 @@ defmodule AgentCom.TestHelpers.DetsHelpers do
     Application.put_env(:agent_com, :threads_data_dir, Path.join(tmp_dir, "threads"))
     Application.put_env(:agent_com, :llm_registry_data_dir, Path.join(tmp_dir, "llm_registry"))
     Application.put_env(:agent_com, :repo_registry_data_dir, Path.join(tmp_dir, "repo_registry"))
+    Application.put_env(:agent_com, :cost_ledger_data_dir, Path.join(tmp_dir, "cost_ledger"))
     Application.put_env(:agent_com, :backup_dir, Path.join(tmp_dir, "backups"))
 
     # Ensure subdirectories exist
@@ -42,6 +43,7 @@ defmodule AgentCom.TestHelpers.DetsHelpers do
     File.mkdir_p!(Path.join(tmp_dir, "threads"))
     File.mkdir_p!(Path.join(tmp_dir, "llm_registry"))
     File.mkdir_p!(Path.join(tmp_dir, "repo_registry"))
+    File.mkdir_p!(Path.join(tmp_dir, "cost_ledger"))
     File.mkdir_p!(Path.join(tmp_dir, "backups"))
 
     tmp_dir
@@ -59,6 +61,7 @@ defmodule AgentCom.TestHelpers.DetsHelpers do
     stop_order = [
       AgentCom.Scheduler,
       AgentCom.DetsBackup,
+      AgentCom.CostLedger,
       AgentCom.TaskQueue,
       AgentCom.MessageHistory,
       AgentCom.Mailbox,
@@ -86,7 +89,7 @@ defmodule AgentCom.TestHelpers.DetsHelpers do
     dets_tables = [
       :task_queue, :task_dead_letter, :agent_mailbox, :message_history,
       :agent_channels, :channel_history, :agentcom_config, :thread_messages,
-      :thread_replies, :repo_registry
+      :thread_replies, :repo_registry, :cost_ledger
     ]
 
     for table <- dets_tables do

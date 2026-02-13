@@ -2,7 +2,7 @@ defmodule AgentCom.Alerter do
   @moduledoc """
   Configurable alert rule evaluator with cooldown and acknowledgment state.
 
-  Periodically evaluates 6 alert rules against metrics from
+  Periodically evaluates 7 alert rules against metrics from
   `AgentCom.MetricsCollector.snapshot/0`, manages alert lifecycle
   (inactive -> active -> acknowledged -> cleared), and broadcasts
   state changes on PubSub "alerts" topic.
@@ -15,6 +15,7 @@ defmodule AgentCom.Alerter do
   4. **no_agents_online** (CRITICAL) -- All previously registered agents disconnected.
   5. **high_error_rate** (WARNING) -- Error count in window exceeds threshold.
   6. **tier_down** (WARNING) -- All Ollama endpoints unhealthy beyond configurable threshold.
+  7. **hub_invocation_rate** (WARNING) -- Hub Claude Code invocation rate exceeds threshold per hour.
 
   ## Cooldown Behavior
 
@@ -87,6 +88,7 @@ defmodule AgentCom.Alerter do
       failure_rate_pct: 50,
       stuck_task_ms: 300_000,
       error_count_hour: 10,
+      hub_invocations_per_hour_warn: 50,
       check_interval_ms: 30_000,
       cooldowns: %{
         queue_growing: 300_000,
@@ -94,7 +96,8 @@ defmodule AgentCom.Alerter do
         stuck_tasks: 0,
         no_agents_online: 0,
         high_error_rate: 300_000,
-        tier_down: 300_000
+        tier_down: 300_000,
+        hub_invocation_rate: 300_000
       }
     }
   end
@@ -211,7 +214,8 @@ defmodule AgentCom.Alerter do
       {:stuck_tasks, evaluate_stuck_tasks(thresholds)},
       {:no_agents_online, evaluate_no_agents_online(metrics)},
       {:high_error_rate, evaluate_high_error_rate(metrics, thresholds)},
-      {:tier_down, tier_down_result}
+      {:tier_down, tier_down_result},
+      {:hub_invocation_rate, evaluate_hub_invocation_rate(thresholds)}
     ]
 
     # Process each rule result, then update tier_down_since
@@ -488,6 +492,29 @@ defmodule AgentCom.Alerter do
           # Below threshold -- tracking but not yet triggered
           {:ok, since}
         end
+    end
+  end
+
+  # Rule 7: Hub invocation rate (Claude Code CLI calls per hour)
+  defp evaluate_hub_invocation_rate(thresholds) do
+    hourly_threshold = Map.get(thresholds, :hub_invocations_per_hour_warn, 50)
+
+    total_hourly =
+      try do
+        stats = AgentCom.CostLedger.stats()
+        get_in(stats, [:hourly, :total]) || 0
+      rescue
+        _ -> 0
+      catch
+        :exit, _ -> 0
+      end
+
+    if total_hourly > hourly_threshold do
+      {:triggered, :warning,
+       "Hub invocation rate high: #{total_hourly} calls this hour (threshold: #{hourly_threshold})",
+       %{hourly_invocations: total_hourly, threshold: hourly_threshold}}
+    else
+      :ok
     end
   end
 
