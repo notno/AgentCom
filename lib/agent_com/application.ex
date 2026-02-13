@@ -33,6 +33,7 @@ defmodule AgentCom.Application do
       {Phoenix.PubSub, name: AgentCom.PubSub},
       {Registry, keys: :unique, name: AgentCom.AgentRegistry},
       {AgentCom.Config, []},
+      {AgentCom.CostLedger, []},
       {AgentCom.Auth, []},
       {AgentCom.Mailbox, []},
       {AgentCom.Channels, []},
