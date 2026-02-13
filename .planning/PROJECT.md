@@ -52,7 +52,21 @@ Reliable autonomous work execution: ideas enter a queue and emerge as reviewed, 
 
 <!-- Current scope. Building toward these. -->
 
-(No active requirements — next milestone not yet defined)
+## Current Milestone: v1.3 Hub FSM Loop of Self-Improvement
+
+**Goal:** Make the hub an autonomous thinker that cycles through executing goals, improving codebases, contemplating future features, and resting — with Ralph-style inner loops and LLM-powered decomposition.
+
+**Target features:**
+- Hub FSM with 4 states (Executing, Improving, Contemplating, Resting) and queue-driven transitions
+- Centralized goal backlog with multiple input channels (API, CLI, file)
+- LLM-powered goal decomposition (Claude API) into enriched tasks for existing pipeline
+- Ralph-style inner loops with success criteria verification per goal
+- Autonomous codebase improvement scanning across repos in priority order
+- Tiered autonomy (small improvements auto-merge, larger ones create PRs)
+- Future feature contemplation and proposal writing
+- Pre-publication repo cleanup (token scrubbing, IP removal, workspace files, personal refs)
+- Scalability analysis (bottlenecks, machine vs agent scaling tradeoffs)
+- Pipeline pipelining (front-loading discussion/research for parallel execution)
 
 ### Out of Scope
 
@@ -130,4 +144,4 @@ Shipped v1.2 on 2026-02-12 (7 phases, 25 plans, 136 commits, +26,075 LOC across 
 | Single DETS key for repo ordering | Atomic reordering without multi-key consistency issues | ✓ Good — ordered list under :repos key, priority preserved |
 
 ---
-*Last updated: 2026-02-12 after v1.2 milestone*
+*Last updated: 2026-02-12 after v1.3 milestone start*

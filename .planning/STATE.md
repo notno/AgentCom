@@ -5,16 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Planning next milestone
+**Current focus:** v1.3 Hub FSM Loop of Self-Improvement
 
 ## Current Position
 
-Phase: None (between milestones)
-Plan: N/A
-Status: v1.2 shipped, next milestone not yet defined
-Last activity: 2026-02-13 -- Completed quick task 2: Fix DETS backup test enoent failure
-
-Progress: All milestones complete
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-12 — Milestone v1.3 started
 
 ## Performance Metrics
 
