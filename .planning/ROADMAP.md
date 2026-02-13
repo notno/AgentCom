@@ -133,7 +133,9 @@ Plans:
   2. Goals can be submitted via HTTP API endpoint and CLI tool, each receiving a unique goal ID
   3. Each goal carries success criteria defined at submission time and progresses through lifecycle states (submitted, decomposing, executing, verifying, complete, failed)
   4. GoalBacklog publishes PubSub events on goal state changes for downstream consumers
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 27-01-PLAN.md — GoalBacklog GenServer with DETS persistence, lifecycle state machine, priority index, PubSub, DetsBackup registration
+- [ ] 27-02-PLAN.md — HTTP API routes, validation schemas, CLI sidecar tool (agentcom-submit-goal.js)
 
 ### Phase 28: Pipeline Dependencies
 **Goal**: Tasks can declare dependency ordering so the scheduler executes them in correct sequence
