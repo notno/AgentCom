@@ -153,10 +153,12 @@ Plans:
   1. When verification fails after task completion, the agent feeds failure details back to the LLM and retries the fix (build-verify-fix loop)
   2. The retry loop terminates after a configurable maximum number of attempts, submitting with a partial-pass report if budget exhausted
   3. Each verification retry iteration is visible in the task result (attempt count, which checks passed/failed per iteration)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 22-01: TBD
+- [ ] 22-01-PLAN.md -- Core verification loop module and runVerification parameterization
+- [ ] 22-02-PLAN.md -- Pipeline wiring (sidecar index.js integration, hub schema/task_queue/socket)
+- [ ] 22-03-PLAN.md -- Dashboard verification retry history display
 
 ## Progress
 
@@ -172,4 +174,4 @@ Phases execute in numeric order: 17 -> 17.1 -> 17.2 -> 18 -> ... -> 22
 | 19. Model-Aware Scheduler | v1.2 | 4/4 | Complete | 2026-02-12 |
 | 20. Sidecar Execution | v1.2 | 0/TBD | Not started | - |
 | 21. Verification Infrastructure | v1.2 | 4/4 | Complete | 2026-02-12 |
-| 22. Self-Verification Loop | v1.2 | 0/TBD | Not started | - |
+| 22. Self-Verification Loop | v1.2 | 0/3 | Not started | - |
