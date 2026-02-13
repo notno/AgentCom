@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.3 Hub FSM Loop of Self-Improvement -- Phase 25 in progress
+**Current focus:** v1.3 Hub FSM Loop of Self-Improvement -- Phase 35 in progress
 
 ## Current Position
 
-Phase: 25 of 36 (Cost Control Infrastructure)
-Plan: 3/3 complete
-Status: Phase Complete
-Last activity: 2026-02-13 -- Plan 25-03 CostLedger TDD test suite (36 tests, all passing)
+Phase: 35 of 36 (Pre-Publication Cleanup)
+Plan: 1/2 complete
+Status: In Progress
+Last activity: 2026-02-13 -- Plan 35-01 RepoScanner core (4 modules, all categories scanning)
 
-Progress: [█████████████] 100% (3/3 plans)
+Progress: [██████▌       ] 50% (1/2 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 81 (19 v1.0 + 32 v1.1 + 25 v1.2 + 5 v1.3)
+- Total plans completed: 82 (19 v1.0 + 32 v1.1 + 25 v1.2 + 6 v1.3)
 - Average duration: 4 min
 - Total execution time: ~5.5 hours
 
@@ -51,6 +51,9 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - try/rescue around budget_exhausted telemetry so telemetry failure never blocks budget checking
 - catch :exit in Alerter evaluate_hub_invocation_rate for CostLedger not-yet-started safety
 - All 36 CostLedger tests passed on first run -- 25-01/02 implementation was complete, no source fixes needed in TDD phase
+- RepoScanner as library module (not GenServer) -- stateless scanning, no supervision overhead
+- Module attribute patterns with compile-time regex -- zero runtime compilation cost
+- Elixir maps for scan reports (not XML) -- JSON-serializable for API consumption
 
 ### Research Findings (v1.3)
 
@@ -78,5 +81,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 25-03-PLAN.md -- CostLedger TDD test suite (36 tests), Phase 25 complete
+Stopped at: Completed 35-01-PLAN.md -- RepoScanner core (Patterns, FileWalker, Finding, scan_repo, scan_all)
 Resume file: None
