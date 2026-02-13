@@ -912,7 +912,10 @@ defmodule AgentCom.Endpoint do
                   file_hints: params["file_hints"] || [],
                   success_criteria: params["success_criteria"] || [],
                   verification_steps: params["verification_steps"] || [],
-                  complexity_tier: params["complexity_tier"]
+                  complexity_tier: params["complexity_tier"],
+                  max_verification_retries: params["max_verification_retries"],
+                  skip_verification: params["skip_verification"],
+                  verification_timeout_ms: params["verification_timeout_ms"]
                 }
 
                 case AgentCom.TaskQueue.submit(task_params) do
