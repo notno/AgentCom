@@ -86,3 +86,47 @@
 
 ---
 
+
+## v1.2 — Smart Agent Pipeline (Complete)
+
+**Completed:** 2026-02-12
+**Phases:** 17-23 (25 plans, 1.5 hours total)
+**Last phase number:** 23
+
+### What Shipped
+
+| Phase | Name | What It Delivered |
+|-------|------|-------------------|
+| 17 | Enriched Task Format | Structured context, success criteria, verification steps, complexity classification with heuristic inference |
+| 18 | LLM Registry + Host Resources | Ollama endpoint registry with health checks, model discovery, host CPU/RAM/VRAM reporting |
+| 19 | Model-Aware Scheduler | Complexity-based tier routing (trivial/standard/complex), load-balanced endpoint scoring, fallback chains |
+| 20 | Sidecar Execution | Three executors (Ollama, Claude, Shell) with cost tracking, streaming progress, per-model cost estimation |
+| 21 | Verification Infrastructure | Deterministic mechanical checks (file_exists, test_passes, git_clean, command_succeeds) with structured reports |
+| 22 | Self-Verification Loop | Build-verify-fix pattern with corrective prompts, configurable retry budget, cumulative cost tracking |
+| 23 | Multi-Repo Registry + Workspace Switching | Priority-ordered repo list, scheduler filtering, nil-repo inheritance, sidecar workspace isolation |
+
+### Key Accomplishments
+
+- Enriched task format with complexity heuristic engine, structured context fields, and full pipeline propagation
+- LLM endpoint registry with health-checked Ollama discovery, host resource metrics, and dashboard fleet view
+- Model-aware scheduler routing tasks by complexity tier to the best available LLM backend with load balancing
+- Three-backend sidecar execution (Ollama, Claude API, shell) with per-task cost tracking and streaming progress
+- Self-verification loop with deterministic mechanical checks and configurable build-verify-fix retry pattern
+- Multi-repo workspace management with priority ordering, pause/resume, scheduler filtering, and nil-repo inheritance
+
+### Stats
+
+- 136 commits, 147 files changed, +26,075 / -1,970 lines
+- Timeline: 1 day (2026-02-12)
+- Git range: v1.1..v1.2
+
+### Deferred
+
+- REG-03: Warm/cold model distinction deferred (binary availability used instead per locked design decision)
+- Elixir version bump (1.14 to 1.17+) for :gen_statem logger fix
+- Sidecar queue.json atomicity (fs.writeFileSync partial-write-on-crash risk)
+- VAPID keys ephemeral (push subscriptions lost on hub restart)
+- Analytics and Threads modules orphaned (not exposed via API)
+
+---
+

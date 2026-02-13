@@ -2,23 +2,11 @@
 
 ## What This Is
 
-A distributed agent coordination system where AI "Minds" (LLM sessions) receive work assignments from a central scheduler, execute autonomously, and submit results as PRs. Built on an Elixir/BEAM hub with Node.js sidecars, using a GPU scheduler-style push architecture for task assignment. Hardened with comprehensive tests, DETS resilience, input validation, structured observability, rate limiting, and operations documentation.
+A distributed agent coordination system where AI "Minds" (LLM sessions) receive work assignments from a central scheduler, execute autonomously using the right LLM backend for each task's complexity, self-verify their work against structured criteria, and submit results as PRs. Built on an Elixir/BEAM hub with Node.js sidecars, using a GPU scheduler-style push architecture with model-aware routing across a distributed LLM mesh.
 
 ## Core Value
 
 Reliable autonomous work execution: ideas enter a queue and emerge as reviewed, merged PRs — without human hand-holding for safe changes.
-
-## Current Milestone: v1.2 Smart Agent Pipeline
-
-**Goal:** Transform agents from blind task executors into context-aware, self-verifying workers with cost-efficient model routing across a distributed LLM mesh.
-
-**Target features:**
-- LLM endpoint registry — hub tracks Ollama instances across Tailscale mesh (multiple hosts, multiple models, health-checked)
-- Enriched task format — tasks carry context, success criteria, and verification steps
-- Model-aware scheduler routing — trivial tasks to cheapest local LLM, complex tasks to Claude
-- Sidecar model routing — calls correct LLM endpoint (local Ollama or cloud API) based on task assignment
-- Sidecar trivial execution — zero-LLM-token mechanical ops (git, file I/O, status)
-- Self-verification — agents run verification steps after execution, only submit when criteria pass
 
 ## Requirements
 
@@ -52,19 +40,19 @@ Reliable autonomous work execution: ideas enter a queue and emerge as reviewed, 
 - ✓ Configurable alerter with 5 rules, cooldowns, dashboard integration — v1.1
 - ✓ Token bucket rate limiting with per-action granularity and progressive backoff — v1.1
 - ✓ Operations documentation (setup, monitoring, troubleshooting) with ExDoc — v1.1
+- ✓ LLM endpoint registry with health checking across Tailscale mesh — v1.2
+- ✓ Enriched task format with context, success criteria, and verification steps — v1.2
+- ✓ Model-aware scheduler routing (complexity-based local vs cloud) — v1.2
+- ✓ Sidecar model routing to correct LLM endpoint per task assignment — v1.2
+- ✓ Sidecar trivial execution for zero-LLM-token mechanical ops — v1.2
+- ✓ Agent self-verification against task criteria before submission — v1.2
+- ✓ Multi-repo registry with workspace switching and scheduler filtering — v1.2
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-#### v1.2 Smart Agent Pipeline
-
-- [ ] LLM endpoint registry with health checking across Tailscale mesh
-- [ ] Enriched task format with context, success criteria, and verification steps
-- [ ] Model-aware scheduler routing (complexity-based local vs cloud)
-- [ ] Sidecar model routing to correct LLM endpoint per task assignment
-- [ ] Sidecar trivial execution for zero-LLM-token mechanical ops
-- [ ] Agent self-verification against task criteria before submission
+(No active requirements — next milestone not yet defined)
 
 ### Out of Scope
 
@@ -79,24 +67,31 @@ Reliable autonomous work execution: ideas enter a queue and emerge as reviewed, 
 - Database migration (DETS to SQLite/Postgres) — DETS works at current scale, migration rewrites 6 GenServers
 - Full Prometheus/Grafana stack — overkill for 5-agent system, built-in metrics sufficient
 - Distributed rate limiting (Redis/Mnesia) — single BEAM node, no benefit
+- LiteLLM/OpenAI gateway proxy — AgentCom routes tasks, not tokens
+- LLM-based complexity classifier — burns tokens to save tokens, needs production data first
+- Dynamic model loading/unloading — operational complexity, models should be pre-loaded by operator
+- Streaming LLM output through hub — adds latency for zero coordination value
+- Agent-to-agent delegation — bypasses central scheduler
+- Warm/cold model VRAM distinction — binary availability sufficient for routing (REG-03 accepted tech debt)
 
 ## Context
 
 Shipped v1.0 on 2026-02-11 (8 phases, 19 plans, 48 commits, +12,858 LOC across 65 files in 2 days).
 Shipped v1.1 on 2026-02-12 (8 phases, 32 plans, 153 commits, +35,732 LOC across 195 files in 4 days).
+Shipped v1.2 on 2026-02-12 (7 phases, 25 plans, 136 commits, +26,075 LOC across 147 files in 1 day).
 
-**Tech stack:** Elixir/BEAM hub (~18,500 LOC), Node.js sidecars (~2,800 LOC), HTML/CSS/JS dashboard, ExDoc documentation.
+**Tech stack:** Elixir/BEAM hub (~22,000 LOC), Node.js sidecars (~4,500 LOC), HTML/CSS/JS dashboard, ExDoc documentation.
 
-**Architecture:** Push-based scheduler drives work to always-on sidecars via persistent WebSocket. DETS persistence for task queue, agent state, and config with automated backup/compaction/recovery. ETS-backed metrics, rate limiting, and validation tracking. PubSub for internal event distribution. pm2 for sidecar process management. LoggerJSON for structured observability.
+**Architecture:** Push-based scheduler with model-aware routing drives work to always-on sidecars via persistent WebSocket. Tasks carry structured context, success criteria, and complexity classification. Scheduler routes by complexity tier: trivial to local shell, standard to Ollama endpoints, complex to Claude API. Sidecars execute via three backends and self-verify against mechanical checks before submission. DETS persistence for task queue, agent state, LLM registry, repo registry, and config with automated backup/compaction/recovery. ETS-backed metrics, rate limiting, and validation tracking. PubSub for internal event distribution. pm2 for sidecar process management. LoggerJSON for structured observability.
 
-**Current state:** All v1.0 and v1.1 features shipped. System hardened with tests, validation, observability, rate limiting, and ops docs. Operational with 5 AI agents on Tailscale mesh.
+**Current state:** All v1.0, v1.1, and v1.2 features shipped. System delivers a complete smart agent pipeline from task submission through complexity-routed execution to self-verified completion. Operational with 5 AI agents on Tailscale mesh.
 
 **Known tech debt:**
+- REG-03: Warm/cold model distinction deferred (binary availability used instead)
 - queue.json atomicity (fs.writeFileSync partial-write risk on crash)
 - VAPID keys ephemeral (push subscriptions lost on hub restart)
 - Elixir version bump recommended (1.14 to 1.17+ for :gen_statem logger fix)
 - Analytics and Threads modules orphaned (not exposed via API)
-- 2 test failures in mix test suite (pre-existing)
 
 **Deferred:** PR review gatekeeper (Flere-Imsaho role) needs 50+ tasks of production data to calibrate merge/escalation heuristics.
 
@@ -128,6 +123,11 @@ Shipped v1.1 on 2026-02-12 (8 phases, 32 plans, 153 commits, +35,732 LOC across 
 | LoggerJSON with dual output | Structured JSON for machines, readable for humans | ✓ Good — stdout + rotating file, token redaction built in |
 | Lazy token bucket rate limiting | Zero background cost per agent, compute on access | ✓ Good — integer precision, monotonic time, progressive backoff |
 | ExDoc for operations docs | Built-in Elixir tooling, Mermaid support via CDN | ✓ Good — zero build step, cross-references to module docs |
+| Binary model availability (not warm/cold) | Warm/cold VRAM tracking adds complexity without routing benefit at current scale | ✓ Good — scheduler routes successfully on binary availability |
+| Complexity heuristic with keyword override | Short commands like "refactor auth" must route to complex tier | ✓ Good — keyword signals override word-count majority voting |
+| Three-executor sidecar architecture | Clean separation: OllamaExecutor, ClaudeExecutor, ShellExecutor | ✓ Good — dispatcher selects per routing_decision, cost calc centralized |
+| Build-verify-fix retry pattern | Safe default: 0 retries, opt-in with max 5 cap | ✓ Good — corrective prompts include pass+fail checks to prevent regression |
+| Single DETS key for repo ordering | Atomic reordering without multi-key consistency issues | ✓ Good — ordered list under :repos key, priority preserved |
 
 ---
-*Last updated: 2026-02-12 after v1.1 milestone*
+*Last updated: 2026-02-12 after v1.2 milestone*

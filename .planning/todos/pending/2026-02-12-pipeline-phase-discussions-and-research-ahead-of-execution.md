@@ -33,3 +33,30 @@ Investigate workflow changes to enable pipelining:
 5. **Dependency-aware scheduling**: The workflow could automatically suggest "Phase 19 discussion can start now" when phases 17+18 begin executing, rather than waiting for human to remember.
 
 Key question: How much of this is GSD framework changes vs just user discipline about when to invoke commands?
+
+## Brainstorm Notes (2026-02-12)
+
+### Agent delegation angle
+GSD skills are just markdown files loaded into Claude Code. The sidecar wake command runs openclaw (Claude Code) with a task message. If openclaw has GSD installed, it already has the skills — a task description like "run /gsd:research-phase 19" might just work.
+
+The hub would need DAG-aware scheduling (depends_on fields, release-on-completion) to orchestrate the pipeline automatically. But the simplest version is just manually submitting discussion/research tasks via `agentcom-submit.js`.
+
+### Key blockers identified
+1. **Discussion should stay human-in-the-loop** — that's where architectural decisions happen, not something to automate away
+2. **openclaw + GSD is untested** — we haven't verified that an agent can invoke GSD skills via task message. This is the prerequisite experiment before any pipeline tooling.
+3. **No framework changes needed for manual pipelining** — just run `/gsd:discuss-phase 19` in a separate conversation while Phase 18 executes
+
+### Prerequisite experiment
+Before building any pipeline tooling, test the basics:
+1. Submit a simple task: "Create a file called test.md with 'hello world'"
+2. Verify openclaw picks it up and executes
+3. Then try a GSD skill as the task description
+4. Observe what happens
+
+### Front door reminder
+```bash
+node sidecar/agentcom-submit.js \
+  --description "..." \
+  --hub http://<hub-ip>:4000 \
+  --token <token>
+```
