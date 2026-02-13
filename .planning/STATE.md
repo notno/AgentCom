@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.2 Smart Agent Pipeline -- Phase 20 Complete, Phase 21 Complete
+**Current focus:** v1.2 Smart Agent Pipeline -- Phase 20 Complete, Phase 21 Complete, Phase 22 Complete
 
 ## Current Position
 
 Phase: 22 of 22 (Self-Verification Loop)
-Plan: 1 of 3
-Status: Executing Phase 22
-Last activity: 2026-02-12 -- Completed 22-01 Verification Loop
+Plan: 3 of 3
+Status: Phase 22 Complete
+Last activity: 2026-02-12 -- Completed 22-03 Dashboard Retry History
 
-Progress: [█████░░░░░] 50%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Progress: [█████░░░░░] 50%
 | Phase 21 P04 | 2min | 2 tasks (gap closure) | 2 files |
 | Phase 20 P04 | 3min | 3 tasks | 3 files |
 | Phase 22 P01 | 2min | 2 tasks | 2 files |
+| Phase 22 P03 | 1min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -147,6 +148,8 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - [Phase 22]: Default max_verification_retries is 0 (single attempt, no retries) -- safe default, opt-in retries
 - [Phase 22]: Corrective prompt includes both failed AND passed checks to prevent regression during fixes
 - [Phase 22]: Cumulative cost tracked across all iterations to provide accurate total cost reporting
+- [Phase 22]: Retry history uses same details/summary HTML pattern as check results for UI consistency
+- [Phase 22]: renderVerifyBadge extended with optional task param (backward-compatible, undefined/null safe)
 
 ### Pending Todos
 
@@ -173,5 +176,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 22-01-PLAN.md (Verification Loop)
+Stopped at: Completed 22-03-PLAN.md (Dashboard Retry History) -- Phase 22 Complete
 Resume file: None
