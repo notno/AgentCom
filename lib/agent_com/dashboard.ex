@@ -1122,7 +1122,7 @@ defmodule AgentCom.Dashboard do
           return str.length > len ? str.substring(0, len) + '...' : str;
         }
 
-        function renderVerifyBadge(report) {
+        function renderVerifyBadge(report, task) {
           if (!report) return '<span style="color:#555">---</span>';
           var status = report.status || 'unknown';
           var cls = 'vskip';
@@ -1137,6 +1137,13 @@ defmodule AgentCom.Dashboard do
           var summary = report.summary || {};
           var checks = report.checks || [];
           var html = '<span class="vbadge ' + cls + '">' + escapeHtml(label) + '</span>';
+
+          // Show attempt count badge if multiple attempts
+          var attempts = (task && task.verification_attempts) || 0;
+          var history = (task && task.verification_history) || [];
+          if (attempts > 1) {
+            html += '<span class="v-attempts">' + attempts + ' attempts</span>';
+          }
 
           if (checks.length > 0) {
             var sumText = (summary.passed || 0) + '/' + (summary.total || checks.length) + ' passed';
@@ -1154,6 +1161,26 @@ defmodule AgentCom.Dashboard do
             });
             html += '</details>';
           }
+
+          // Retry history section for multi-iteration tasks
+          if (history.length > 1) {
+            html += '<details class="verify-details"><summary>Retry history (' + history.length + ' runs)</summary>';
+            html += '<div class="v-retry-history">';
+            history.forEach(function(run, idx) {
+              var runSummary = run.summary || {};
+              var passed = runSummary.passed || 0;
+              var total = runSummary.total || 0;
+              var statusCls = run.status === 'pass' ? 'v-retry-pass' : 'v-retry-fail';
+              html += '<div class="v-retry-row">';
+              html += '<span class="v-attempt-num">Run ' + (idx + 1) + ':</span>';
+              html += '<span class="' + statusCls + '">' + escapeHtml(run.status || 'unknown') + '</span>';
+              html += ' (' + passed + '/' + total + ' passed)';
+              if (run.duration_ms) html += ' ' + formatDuration(run.duration_ms);
+              html += '</div>';
+            });
+            html += '</div></details>';
+          }
+
           return html;
         }
 
@@ -1851,7 +1878,7 @@ defmodule AgentCom.Dashboard do
               '<td data-sort="' + (c.duration_ms || 0) + '">' + formatDuration(c.duration_ms) + '</td>' +
               '<td>' + (c.tokens_used || 0) + '</td>' +
               '<td>' + renderCostCell(c.execution_meta) + '</td>' +
-              '<td>' + renderVerifyBadge(c.verification_report) + '</td>' +
+              '<td>' + renderVerifyBadge(c.verification_report, c) + '</td>' +
               '<td data-sort="' + (c.completed_at || 0) + '">' + timeAgo(c.completed_at) + '</td>' +
               '</tr>';
           }).join('');
