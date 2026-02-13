@@ -219,6 +219,12 @@ defmodule AgentCom.Dashboard do
         .verify-output { font-family: monospace; font-size: 0.75em; color: #999; background: #111118;
           padding: 4px 6px; border-radius: 4px; margin: 2px 0 4px 20px; max-height: 80px;
           overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+        .v-attempts { font-size: 0.75em; color: #aaa; margin-left: 4px; }
+        .v-retry-history { margin-top: 4px; padding-left: 8px; border-left: 2px solid #333; }
+        .v-retry-row { font-size: 0.8em; color: #bbb; padding: 2px 0; }
+        .v-retry-row .v-attempt-num { color: #888; font-weight: bold; margin-right: 4px; }
+        .v-retry-pass { color: #4ade80; }
+        .v-retry-fail { color: #f87171; }
 
         /* === Queue Cards === */
         .queue-cards { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
@@ -586,6 +592,35 @@ defmodule AgentCom.Dashboard do
         }
         .task-prompt-feedback.success { color: #4ade80; }
         .task-prompt-feedback.error { color: #ef4444; }
+        .task-tracker {
+          display: none; background: #141420; border: 1px solid #2a2a3a; border-radius: 8px;
+          padding: 10px 16px; margin-bottom: 12px; font-size: 0.82em;
+        }
+        .task-tracker.visible { display: block; }
+        .task-tracker-header {
+          display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;
+        }
+        .task-tracker-title { color: #7eb8da; font-weight: 600; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.5px; }
+        .task-tracker-dismiss { background: none; border: none; color: #555; cursor: pointer; font-size: 0.9em; padding: 2px 6px; }
+        .task-tracker-dismiss:hover { color: #aaa; }
+        .task-tracker-desc { color: #aaa; margin-bottom: 8px; font-style: italic; }
+        .task-tracker-steps {
+          display: flex; align-items: center; gap: 0;
+        }
+        .tt-step {
+          display: flex; align-items: center; gap: 6px; padding: 4px 10px;
+          border-radius: 4px; color: #555; transition: all 0.3s;
+        }
+        .tt-step.active { color: #fbbf24; }
+        .tt-step.done { color: #4ade80; }
+        .tt-step .tt-dot {
+          width: 8px; height: 8px; border-radius: 50%; background: #333;
+          transition: background 0.3s;
+        }
+        .tt-step.active .tt-dot { background: #fbbf24; animation: pulse 1.5s infinite; }
+        .tt-step.done .tt-dot { background: #4ade80; }
+        .tt-arrow { color: #333; margin: 0 2px; }
+        .tt-detail { color: #888; font-size: 0.9em; margin-left: 4px; }
       </style>
     </head>
     <body>
@@ -660,6 +695,24 @@ defmodule AgentCom.Dashboard do
         <button class="task-prompt-token-btn" id="task-token-btn" onclick="promptForToken()">Token</button>
       </div>
       <div class="task-prompt-feedback" id="task-feedback"></div>
+
+      <!-- Task Tracker -->
+      <div class="task-tracker" id="task-tracker">
+        <div class="task-tracker-header">
+          <span class="task-tracker-title">Tracking Task</span>
+          <button class="task-tracker-dismiss" onclick="dismissTracker()">&times;</button>
+        </div>
+        <div class="task-tracker-desc" id="tt-desc"></div>
+        <div class="task-tracker-steps">
+          <div class="tt-step" id="tt-queued"><span class="tt-dot"></span>Queued</div>
+          <span class="tt-arrow">&rarr;</span>
+          <div class="tt-step" id="tt-classified"><span class="tt-dot"></span>Classified<span class="tt-detail" id="tt-tier"></span></div>
+          <span class="tt-arrow">&rarr;</span>
+          <div class="tt-step" id="tt-assigned"><span class="tt-dot"></span>Assigned<span class="tt-detail" id="tt-agent"></span></div>
+          <span class="tt-arrow">&rarr;</span>
+          <div class="tt-step" id="tt-completed"><span class="tt-dot"></span>Done<span class="tt-detail" id="tt-result"></span></div>
+        </div>
+      </div>
 
       <!-- Connection Bar -->
       <div class="conn-bar">
@@ -1575,6 +1628,9 @@ defmodule AgentCom.Dashboard do
 
           // -- Routing stats --
           renderRoutingStats(data.routing_stats || null);
+
+          // -- Task tracker --
+          updateTracker();
 
           updateLastUpdate();
         }
@@ -2683,8 +2739,98 @@ defmodule AgentCom.Dashboard do
           }
         }, 30000);
         // =====================================================================
+        // Task Tracking
+        // =====================================================================
+        var trackedTaskId = null;
+        var trackedTaskDesc = null;
+
+        function startTracking(taskId, desc) {
+          trackedTaskId = taskId;
+          trackedTaskDesc = desc;
+          var tracker = document.getElementById('task-tracker');
+          document.getElementById('tt-desc').textContent = '"' + truncate(desc, 60) + '"';
+          // Reset all steps
+          ['tt-queued', 'tt-classified', 'tt-assigned', 'tt-completed'].forEach(function(id) {
+            var el = document.getElementById(id);
+            el.classList.remove('active', 'done');
+          });
+          document.getElementById('tt-tier').textContent = '';
+          document.getElementById('tt-agent').textContent = '';
+          document.getElementById('tt-result').textContent = '';
+          // Set queued as active
+          document.getElementById('tt-queued').classList.add('active');
+          tracker.classList.add('visible');
+        }
+
+        function updateTracker() {
+          if (!trackedTaskId || !dashState) return;
+
+          var queued = (dashState.queued_tasks || []).find(function(t) {
+            return t.id === trackedTaskId || t.task_id === trackedTaskId;
+          });
+          var assignedAgent = null;
+          (dashState.agents || []).forEach(function(a) {
+            if (a.current_task_id === trackedTaskId) assignedAgent = a;
+          });
+          var completed = (dashState.recent_completions || []).find(function(c) {
+            return c.task_id === trackedTaskId;
+          });
+
+          var stepQueued = document.getElementById('tt-queued');
+          var stepClassified = document.getElementById('tt-classified');
+          var stepAssigned = document.getElementById('tt-assigned');
+          var stepCompleted = document.getElementById('tt-completed');
+
+          if (completed) {
+            // Task completed
+            stepQueued.classList.remove('active'); stepQueued.classList.add('done');
+            stepClassified.classList.remove('active'); stepClassified.classList.add('done');
+            stepAssigned.classList.remove('active'); stepAssigned.classList.add('done');
+            stepCompleted.classList.remove('active'); stepCompleted.classList.add('done');
+            document.getElementById('tt-agent').textContent = completed.agent_id ? ' \u2192 ' + completed.agent_id : '';
+            var rd = completed.routing_decision;
+            if (rd && rd.effective_tier) {
+              document.getElementById('tt-tier').textContent = ' \u2192 ' + rd.effective_tier;
+            }
+            document.getElementById('tt-result').textContent = ' \u2192 ' + formatDuration(completed.duration_ms);
+            // Auto-dismiss after 15s
+            setTimeout(function() {
+              if (trackedTaskId === completed.task_id) dismissTracker();
+            }, 15000);
+          } else if (assignedAgent) {
+            // Task assigned to an agent
+            stepQueued.classList.remove('active'); stepQueued.classList.add('done');
+            stepClassified.classList.remove('active'); stepClassified.classList.add('done');
+            stepAssigned.classList.remove('done'); stepAssigned.classList.add('active');
+            stepCompleted.classList.remove('active', 'done');
+            var agentName = assignedAgent.name || assignedAgent.agent_id;
+            document.getElementById('tt-agent').textContent = ' \u2192 ' + agentName;
+          } else if (queued) {
+            // Task in queue
+            stepQueued.classList.remove('done'); stepQueued.classList.add('done');
+            stepCompleted.classList.remove('active', 'done');
+            if (queued.complexity_tier) {
+              stepClassified.classList.remove('active'); stepClassified.classList.add('done');
+              document.getElementById('tt-tier').textContent = ' \u2192 ' + queued.complexity_tier;
+              stepAssigned.classList.remove('done'); stepAssigned.classList.add('active');
+            } else {
+              stepClassified.classList.remove('done'); stepClassified.classList.add('active');
+              stepAssigned.classList.remove('active', 'done');
+            }
+          }
+          // If not found anywhere, it might be in transition — keep current state
+        }
+
+        function dismissTracker() {
+          trackedTaskId = null;
+          trackedTaskDesc = null;
+          document.getElementById('task-tracker').classList.remove('visible');
+        }
+
+        // =====================================================================
         // Task Submission
         // =====================================================================
+
         (function initTaskPrompt() {
           var token = localStorage.getItem('agentcom_token');
           var btn = document.getElementById('task-token-btn');
@@ -2750,10 +2896,12 @@ defmodule AgentCom.Dashboard do
             btn.disabled = false;
             btn.textContent = 'Submit';
             if (result.status === 201) {
+              var taskDesc = description;
               input.value = '';
               feedback.className = 'task-prompt-feedback success';
               feedback.textContent = 'Queued: ' + result.data.task_id + (priority !== 'normal' ? ' (' + priority + ')' : '');
-              setTimeout(function() { feedback.textContent = ''; }, 5000);
+              setTimeout(function() { feedback.textContent = ''; }, 3000);
+              startTracking(result.data.task_id, taskDesc);
             } else if (result.status === 401) {
               feedback.className = 'task-prompt-feedback error';
               feedback.textContent = 'Invalid token. Click Token to update.';
