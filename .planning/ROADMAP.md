@@ -219,7 +219,10 @@ Plans:
   2. Scanning detects hardcoded IPs and hostnames and recommends placeholder replacements
   3. Workspace files (SOUL.md, USER.md, etc.) are identified for removal from git and addition to .gitignore
   4. Personal references (names, local paths) are identified with recommended replacements
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 35-01-PLAN.md -- Core scanner library: Patterns, FileWalker, Finding struct, RepoScanner API
+- [ ] 35-02-PLAN.md -- API endpoint and comprehensive test suite
 
 ### Phase 36: Dashboard and Observability
 **Goal**: The autonomous hub's behavior is fully visible through the dashboard for human oversight
@@ -251,5 +254,5 @@ Phases execute in numeric order: 24, 25, 26... Decimal phases (if inserted) exec
 | 32. Improvement Scanning | v1.3 | 0/TBD | Not started | - |
 | 33. Contemplation and Scalability | v1.3 | 0/TBD | Not started | - |
 | 34. Tiered Autonomy | v1.3 | 0/TBD | Not started | - |
-| 35. Pre-Publication Cleanup | v1.3 | 0/TBD | Not started | - |
+| 35. Pre-Publication Cleanup | v1.3 | 0/2 | Not started | - |
 | 36. Dashboard and Observability | v1.3 | 0/TBD | Not started | - |
