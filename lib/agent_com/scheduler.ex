@@ -276,9 +276,32 @@ defmodule AgentCom.Scheduler do
       agents ->
         queued_tasks = AgentCom.TaskQueue.list(status: :queued)
 
+        # Phase 23: Filter out tasks for paused repos
+        schedulable_tasks =
+          try do
+            active_repo_urls = AgentCom.RepoRegistry.active_repo_ids()
+            all_repo_urls = AgentCom.RepoRegistry.list_repos() |> Enum.map(& &1.url)
+
+            Enum.filter(queued_tasks, fn task ->
+              repo = Map.get(task, :repo)
+              cond do
+                # nil repo = always schedulable (backward compat)
+                is_nil(repo) -> true
+                # Repo is active in registry = schedulable
+                repo in active_repo_urls -> true
+                # Repo is in registry but NOT active (paused) = skip
+                repo in all_repo_urls -> false
+                # Repo not in registry at all = schedulable (ad-hoc task)
+                true -> true
+              end
+            end)
+          rescue
+            _ -> queued_tasks
+          end
+
         :telemetry.execute(
           [:agent_com, :scheduler, :attempt],
-          %{idle_agents: length(agents), queued_tasks: length(queued_tasks)},
+          %{idle_agents: length(agents), queued_tasks: length(schedulable_tasks)},
           %{trigger: trigger}
         )
 
@@ -286,7 +309,7 @@ defmodule AgentCom.Scheduler do
         endpoints = AgentCom.LlmRegistry.list_endpoints()
         endpoint_resources = gather_endpoint_resources(endpoints)
 
-        do_match_loop(queued_tasks, agents, endpoints, endpoint_resources, state)
+        do_match_loop(schedulable_tasks, agents, endpoints, endpoint_resources, state)
     end
   end
 

@@ -217,6 +217,23 @@ defmodule AgentCom.TaskQueue do
 
     submitted_by = Map.get(params, :submitted_by, Map.get(params, "submitted_by", "unknown"))
 
+    # Phase 23: Inherit top-priority active repo when no explicit repo given
+    raw_repo = Map.get(params, :repo, Map.get(params, "repo", nil))
+
+    repo =
+      if is_nil(raw_repo) or raw_repo == "" do
+        try do
+          case AgentCom.RepoRegistry.top_active_repo() do
+            {:ok, top_repo} -> top_repo.url
+            :none -> nil
+          end
+        rescue
+          _ -> nil
+        end
+      else
+        normalize_repo_url(raw_repo)
+      end
+
     task = %{
       id: task_id,
       description: Map.get(params, :description, Map.get(params, "description", "")),
@@ -241,7 +258,7 @@ defmodule AgentCom.TaskQueue do
       updated_at: now,
       history: [{:queued, now, "submitted"}],
       # Enrichment fields (Phase 17)
-      repo: Map.get(params, :repo, Map.get(params, "repo", nil)),
+      repo: repo,
       branch: Map.get(params, :branch, Map.get(params, "branch", nil)),
       file_hints: Map.get(params, :file_hints, Map.get(params, "file_hints", [])),
       success_criteria: Map.get(params, :success_criteria, Map.get(params, "success_criteria", [])),
@@ -942,4 +959,12 @@ defmodule AgentCom.TaskQueue do
     dir = Application.get_env(:agent_com, :task_queue_path, "priv")
     Path.join(dir, filename)
   end
+
+  defp normalize_repo_url(url) when is_binary(url) do
+    url
+    |> String.trim()
+    |> String.trim_trailing("/")
+    |> String.trim_trailing(".git")
+  end
+  defp normalize_repo_url(url), do: url
 end
