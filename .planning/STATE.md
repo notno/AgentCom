@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.3 Hub FSM Loop of Self-Improvement -- Phase 24 complete, ready for Phase 25
+**Current focus:** v1.3 Hub FSM Loop of Self-Improvement -- Phase 25 in progress
 
 ## Current Position
 
-Phase: 24 of 36 (Document Format Conversion) -- COMPLETE
-Plan: 2/2 complete
-Status: Phase Complete
-Last activity: 2026-02-13 -- Plan 24-02 XML test suite complete (77 tests, round-trip correctness proven)
+Phase: 25 of 36 (Cost Control Infrastructure)
+Plan: 1/3 complete
+Status: Executing
+Last activity: 2026-02-13 -- Plan 25-01 CostLedger GenServer with dual-layer DETS+ETS budget enforcement
 
-Progress: [█████████████] 100% (2/2 plans)
+Progress: [████_________] 33% (1/3 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 78 (19 v1.0 + 32 v1.1 + 25 v1.2 + 2 v1.3)
+- Total plans completed: 79 (19 v1.0 + 32 v1.1 + 25 v1.2 + 3 v1.3)
 - Average duration: 4 min
 - Total execution time: ~5.5 hours
 
@@ -46,6 +46,8 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - Custom Saxy.Builder protocol implementations for list fields -- @derive doesn't handle nested lists
 - SimpleForm-based parsing with shared Parser helpers -- simpler than raw SAX for small flat docs
 - All 77 XML tests passed on first run -- Plan 01 implementation was correct, no source fixes needed in TDD phase
+- CostLedger fail-open on ETS/Config unavailability -- safety during startup outweighs cost risk
+- Dual-layer DETS+ETS for CostLedger: DETS durability + ETS hot-path O(1) budget checks without GenServer.call
 
 ### Research Findings (v1.3)
 
@@ -73,5 +75,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 24-02-PLAN.md -- Phase 24 complete, ready for Phase 25
+Stopped at: Completed 25-01-PLAN.md -- CostLedger GenServer operational, ready for Plan 25-02
 Resume file: None
