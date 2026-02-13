@@ -94,7 +94,10 @@
   1. All new machine-consumed documents (goal definitions, task context, scan results, FSM state snapshots) are authored in XML format
   2. Existing .planning/ artifacts that are machine-consumed are converted from markdown to XML with equivalent information
   3. Human-facing documents (README, changelogs) remain in markdown
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 24-01-PLAN.md -- XML infrastructure: Saxy dep, encode/decode API, SAX parser, 5 schema structs
+- [ ] 24-02-PLAN.md -- TDD: encode/decode round-trip tests for all schema types
 
 ### Phase 25: Cost Control Infrastructure
 **Goal**: The hub tracks and enforces API spending limits before any autonomous LLM call is made
@@ -233,7 +236,7 @@ Phases execute in numeric order: 24, 25, 26... Decimal phases (if inserted) exec
 | 1-8 | v1.0 | 19/19 | Complete | 2026-02-11 |
 | 9-16 | v1.1 | 32/32 | Complete | 2026-02-12 |
 | 17-23 | v1.2 | 25/25 | Complete | 2026-02-12 |
-| 24. Document Format Conversion | v1.3 | 0/TBD | Not started | - |
+| 24. Document Format Conversion | v1.3 | 0/2 | Planned | - |
 | 25. Cost Control Infrastructure | v1.3 | 0/TBD | Not started | - |
 | 26. Claude API Client | v1.3 | 0/TBD | Not started | - |
 | 27. Goal Backlog | v1.3 | 0/TBD | Not started | - |
