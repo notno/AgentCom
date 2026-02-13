@@ -33,11 +33,6 @@ defmodule AgentCom.XML.Schemas.Improvement do
   @valid_types ~w(test doc refactor dependency cleanup)
   @valid_statuses ~w(identified in_progress completed skipped)
 
-  @derive {Saxy.Builder,
-    name: "improvement",
-    attributes: [:id, :repo, :improvement_type, :status, :scan_result_id, :attempted_at, :completed_at],
-    children: [:file_path, :description, :metadata]}
-
   defstruct [
     :id,
     :repo,
@@ -91,13 +86,13 @@ defmodule AgentCom.XML.Schemas.Improvement do
     improvement = %__MODULE__{
       id: Parser.find_attr(attrs, "id"),
       repo: Parser.find_attr(attrs, "repo"),
-      file_path: Parser.find_child_text(children, "file_path"),
-      improvement_type: Parser.find_attr(attrs, "improvement_type"),
+      file_path: Parser.find_child_text(children, "file-path"),
+      improvement_type: Parser.find_attr(attrs, "improvement-type"),
       description: Parser.find_child_text(children, "description"),
       status: Parser.find_attr(attrs, "status") || "identified",
-      scan_result_id: Parser.find_attr(attrs, "scan_result_id"),
-      attempted_at: Parser.find_attr(attrs, "attempted_at"),
-      completed_at: Parser.find_attr(attrs, "completed_at"),
+      scan_result_id: Parser.find_attr(attrs, "scan-result-id"),
+      attempted_at: Parser.find_attr(attrs, "attempted-at"),
+      completed_at: Parser.find_attr(attrs, "completed-at"),
       metadata: Parser.find_child_text(children, "metadata")
     }
 
@@ -120,4 +115,34 @@ defmodule AgentCom.XML.Schemas.Improvement do
     completed_at: String.t() | nil,
     metadata: String.t() | nil
   }
+end
+
+defimpl Saxy.Builder, for: AgentCom.XML.Schemas.Improvement do
+  import Saxy.XML
+
+  def build(improvement) do
+    attrs =
+      [
+        {"id", improvement.id},
+        {"repo", improvement.repo},
+        {"improvement-type", improvement.improvement_type},
+        {"status", improvement.status},
+        {"scan-result-id", improvement.scan_result_id},
+        {"attempted-at", improvement.attempted_at},
+        {"completed-at", improvement.completed_at}
+      ]
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+
+    children =
+      []
+      |> maybe_add_element("file-path", improvement.file_path)
+      |> maybe_add_element("description", improvement.description)
+      |> maybe_add_element("metadata", improvement.metadata)
+      |> Enum.reverse()
+
+    element("improvement", attrs, children)
+  end
+
+  defp maybe_add_element(acc, _name, nil), do: acc
+  defp maybe_add_element(acc, name, value), do: [element(name, [], value) | acc]
 end

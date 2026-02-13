@@ -33,23 +33,10 @@ defmodule AgentCom.XML.Schemas.Proposal do
   - `metadata` - Freeform text metadata
   """
 
-  import Saxy.XML
-
   alias AgentCom.XML.Parser
 
   @valid_impacts ~w(low medium high)
   @valid_efforts ~w(small medium large)
-
-  @derive {Saxy.Builder,
-    name: "proposal",
-    attributes: [:id, :impact, :effort, :repo, :proposed_at],
-    children: [
-      :title,
-      :description,
-      :rationale,
-      :metadata,
-      related_files: &__MODULE__.build_related_files/1
-    ]}
 
   defstruct [
     :id,
@@ -97,16 +84,6 @@ defmodule AgentCom.XML.Schemas.Proposal do
   end
 
   @doc """
-  Builds the related-files XML element from a list of file path strings.
-  """
-  def build_related_files(files) when is_list(files) do
-    children = Enum.map(files, &element("file", [], &1))
-    element("related-files", [], children)
-  end
-
-  def build_related_files(_), do: element("related-files", [], [])
-
-  @doc """
   Parses a SimpleForm tuple into a Proposal struct.
   """
   @spec from_simple_form(Saxy.SimpleForm.t()) :: {:ok, t()} | {:error, String.t()}
@@ -143,4 +120,41 @@ defmodule AgentCom.XML.Schemas.Proposal do
     proposed_at: String.t() | nil,
     metadata: String.t() | nil
   }
+end
+
+defimpl Saxy.Builder, for: AgentCom.XML.Schemas.Proposal do
+  import Saxy.XML
+
+  def build(proposal) do
+    attrs =
+      [
+        {"id", proposal.id},
+        {"impact", proposal.impact},
+        {"effort", proposal.effort},
+        {"repo", proposal.repo},
+        {"proposed-at", proposal.proposed_at}
+      ]
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+
+    children =
+      []
+      |> maybe_add_element("title", proposal.title)
+      |> maybe_add_element("description", proposal.description)
+      |> maybe_add_element("rationale", proposal.rationale)
+      |> maybe_add_element("metadata", proposal.metadata)
+      |> maybe_add_files(proposal.related_files)
+      |> Enum.reverse()
+
+    element("proposal", attrs, children)
+  end
+
+  defp maybe_add_element(acc, _name, nil), do: acc
+  defp maybe_add_element(acc, name, value), do: [element(name, [], value) | acc]
+
+  defp maybe_add_files(acc, []), do: acc
+
+  defp maybe_add_files(acc, files) do
+    items = Enum.map(files, &element("file", [], &1))
+    [element("related-files", [], items) | acc]
+  end
 end

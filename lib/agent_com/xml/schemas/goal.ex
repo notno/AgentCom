@@ -31,22 +31,10 @@ defmodule AgentCom.XML.Schemas.Goal do
   - `metadata` - Freeform text metadata
   """
 
-  import Saxy.XML
-
   alias AgentCom.XML.Parser
 
   @valid_priorities ~w(urgent high normal low)
   @valid_sources ~w(api cli file scan)
-
-  @derive {Saxy.Builder,
-    name: "goal",
-    attributes: [:id, :priority, :source, :repo, :created_at],
-    children: [
-      :title,
-      :description,
-      :metadata,
-      success_criteria: &__MODULE__.build_success_criteria/1
-    ]}
 
   defstruct [
     :id,
@@ -90,16 +78,6 @@ defmodule AgentCom.XML.Schemas.Goal do
   end
 
   @doc """
-  Builds the success-criteria XML element from a list of criterion strings.
-  """
-  def build_success_criteria(criteria) when is_list(criteria) do
-    children = Enum.map(criteria, &element("criterion", [], &1))
-    element("success-criteria", [], children)
-  end
-
-  def build_success_criteria(_), do: element("success-criteria", [], [])
-
-  @doc """
   Parses a SimpleForm tuple into a Goal struct.
   """
   @spec from_simple_form(Saxy.SimpleForm.t()) :: {:ok, t()} | {:error, String.t()}
@@ -134,4 +112,40 @@ defmodule AgentCom.XML.Schemas.Goal do
     created_at: String.t() | nil,
     metadata: String.t() | nil
   }
+end
+
+defimpl Saxy.Builder, for: AgentCom.XML.Schemas.Goal do
+  import Saxy.XML
+
+  def build(goal) do
+    attrs =
+      [
+        {"id", goal.id},
+        {"priority", goal.priority},
+        {"source", goal.source},
+        {"repo", goal.repo},
+        {"created-at", goal.created_at}
+      ]
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+
+    children =
+      []
+      |> maybe_add_element("title", goal.title)
+      |> maybe_add_element("description", goal.description)
+      |> maybe_add_element("metadata", goal.metadata)
+      |> maybe_add_criteria(goal.success_criteria)
+      |> Enum.reverse()
+
+    element("goal", attrs, children)
+  end
+
+  defp maybe_add_element(acc, _name, nil), do: acc
+  defp maybe_add_element(acc, name, value), do: [element(name, [], value) | acc]
+
+  defp maybe_add_criteria(acc, []), do: acc
+
+  defp maybe_add_criteria(acc, criteria) do
+    items = Enum.map(criteria, &element("criterion", [], &1))
+    [element("success-criteria", [], items) | acc]
+  end
 end

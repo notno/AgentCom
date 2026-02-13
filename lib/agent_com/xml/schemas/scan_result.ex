@@ -33,11 +33,6 @@ defmodule AgentCom.XML.Schemas.ScanResult do
   @valid_scan_types ~w(test_gap doc_gap dead_dep refactor simplification)
   @valid_severities ~w(low medium high)
 
-  @derive {Saxy.Builder,
-    name: "scan-result",
-    attributes: [:id, :repo, :scan_type, :severity, :scanned_at],
-    children: [:file_path, :description, :suggested_action, :metadata]}
-
   defstruct [
     :id,
     :repo,
@@ -90,12 +85,12 @@ defmodule AgentCom.XML.Schemas.ScanResult do
     result = %__MODULE__{
       id: Parser.find_attr(attrs, "id"),
       repo: Parser.find_attr(attrs, "repo"),
-      scan_type: Parser.find_attr(attrs, "scan_type"),
-      file_path: Parser.find_child_text(children, "file_path"),
+      scan_type: Parser.find_attr(attrs, "scan-type"),
+      file_path: Parser.find_child_text(children, "file-path"),
       description: Parser.find_child_text(children, "description"),
       severity: Parser.find_attr(attrs, "severity") || "medium",
-      suggested_action: Parser.find_child_text(children, "suggested_action"),
-      scanned_at: Parser.find_attr(attrs, "scanned_at"),
+      suggested_action: Parser.find_child_text(children, "suggested-action"),
+      scanned_at: Parser.find_attr(attrs, "scanned-at"),
       metadata: Parser.find_child_text(children, "metadata")
     }
 
@@ -117,4 +112,33 @@ defmodule AgentCom.XML.Schemas.ScanResult do
     scanned_at: String.t() | nil,
     metadata: String.t() | nil
   }
+end
+
+defimpl Saxy.Builder, for: AgentCom.XML.Schemas.ScanResult do
+  import Saxy.XML
+
+  def build(result) do
+    attrs =
+      [
+        {"id", result.id},
+        {"repo", result.repo},
+        {"scan-type", result.scan_type},
+        {"severity", result.severity},
+        {"scanned-at", result.scanned_at}
+      ]
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+
+    children =
+      []
+      |> maybe_add_element("file-path", result.file_path)
+      |> maybe_add_element("description", result.description)
+      |> maybe_add_element("suggested-action", result.suggested_action)
+      |> maybe_add_element("metadata", result.metadata)
+      |> Enum.reverse()
+
+    element("scan-result", attrs, children)
+  end
+
+  defp maybe_add_element(acc, _name, nil), do: acc
+  defp maybe_add_element(acc, name, value), do: [element(name, [], value) | acc]
 end

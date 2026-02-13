@@ -28,20 +28,9 @@ defmodule AgentCom.XML.Schemas.FsmSnapshot do
   - `snapshot_at` - ISO 8601 timestamp of when snapshot was taken (required)
   """
 
-  import Saxy.XML
-
   alias AgentCom.XML.Parser
 
   @valid_states ~w(executing improving contemplating resting)
-
-  @derive {Saxy.Builder,
-    name: "fsm-snapshot",
-    attributes: [:state, :since, :cycle_count, :queue_depth, :budget_remaining, :snapshot_at],
-    children: [
-      :current_goal_id,
-      transition_history: &__MODULE__.build_transition_history/1
-    ]
-  }
 
   defstruct [
     :state,
@@ -84,24 +73,6 @@ defmodule AgentCom.XML.Schemas.FsmSnapshot do
   end
 
   @doc """
-  Builds the transition-history XML element from a list of transition maps.
-  """
-  def build_transition_history(transitions) when is_list(transitions) do
-    children =
-      Enum.map(transitions, fn transition ->
-        attrs =
-          transition
-          |> Enum.map(fn {k, v} -> {to_string(k), to_string(v)} end)
-
-        element("transition", attrs, [])
-      end)
-
-    element("transition-history", [], children)
-  end
-
-  def build_transition_history(_), do: element("transition-history", [], [])
-
-  @doc """
   Parses a SimpleForm tuple into an FsmSnapshot struct.
   """
   @spec from_simple_form(Saxy.SimpleForm.t()) :: {:ok, t()} | {:error, String.t()}
@@ -109,12 +80,12 @@ defmodule AgentCom.XML.Schemas.FsmSnapshot do
     snapshot = %__MODULE__{
       state: Parser.find_attr(attrs, "state"),
       since: Parser.find_attr(attrs, "since"),
-      cycle_count: Parser.find_attr(attrs, "cycle_count"),
-      current_goal_id: Parser.find_child_text(children, "current_goal_id"),
-      queue_depth: Parser.find_attr(attrs, "queue_depth"),
-      budget_remaining: Parser.find_attr(attrs, "budget_remaining"),
+      cycle_count: Parser.find_attr(attrs, "cycle-count"),
+      current_goal_id: Parser.find_child_text(children, "current-goal-id"),
+      queue_depth: Parser.find_attr(attrs, "queue-depth"),
+      budget_remaining: Parser.find_attr(attrs, "budget-remaining"),
       transition_history: Parser.find_child_map_list(children, "transition-history", "transition"),
-      snapshot_at: Parser.find_attr(attrs, "snapshot_at")
+      snapshot_at: Parser.find_attr(attrs, "snapshot-at")
     }
 
     {:ok, snapshot}
@@ -134,4 +105,47 @@ defmodule AgentCom.XML.Schemas.FsmSnapshot do
     transition_history: [map()],
     snapshot_at: String.t() | nil
   }
+end
+
+defimpl Saxy.Builder, for: AgentCom.XML.Schemas.FsmSnapshot do
+  import Saxy.XML
+
+  def build(snapshot) do
+    attrs =
+      [
+        {"state", snapshot.state},
+        {"since", snapshot.since},
+        {"cycle-count", snapshot.cycle_count},
+        {"queue-depth", snapshot.queue_depth},
+        {"budget-remaining", snapshot.budget_remaining},
+        {"snapshot-at", snapshot.snapshot_at}
+      ]
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+
+    children =
+      []
+      |> maybe_add_element("current-goal-id", snapshot.current_goal_id)
+      |> maybe_add_transitions(snapshot.transition_history)
+      |> Enum.reverse()
+
+    element("fsm-snapshot", attrs, children)
+  end
+
+  defp maybe_add_element(acc, _name, nil), do: acc
+  defp maybe_add_element(acc, name, value), do: [element(name, [], value) | acc]
+
+  defp maybe_add_transitions(acc, []), do: acc
+
+  defp maybe_add_transitions(acc, transitions) do
+    items =
+      Enum.map(transitions, fn transition ->
+        attrs =
+          transition
+          |> Enum.map(fn {k, v} -> {to_string(k), to_string(v)} end)
+
+        element("transition", attrs, [])
+      end)
+
+    [element("transition-history", [], items) | acc]
+  end
 end
