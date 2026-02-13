@@ -248,7 +248,13 @@ defmodule AgentCom.TaskQueue do
       verification_steps: Map.get(params, :verification_steps, Map.get(params, "verification_steps", [])),
       complexity: AgentCom.Complexity.build(params),
       routing_decision: nil,
-      verification_report: nil
+      verification_report: nil,
+      max_verification_retries:
+        min(
+          Map.get(params, :max_verification_retries,
+            Map.get(params, "max_verification_retries", 0)),
+          5
+        )
     }
 
     complexity = task.complexity
@@ -415,6 +421,10 @@ defmodule AgentCom.TaskQueue do
         result = Map.get(result_params, :result, Map.get(result_params, "result"))
         verification_report = Map.get(result_params, :verification_report, Map.get(result_params, "verification_report"))
 
+        verification_history_raw = Map.get(result_params, :verification_history,
+          Map.get(result_params, "verification_history", []))
+        verification_history = if is_list(verification_history_raw), do: verification_history_raw, else: []
+
         updated =
           %{task |
             status: :completed,
@@ -425,6 +435,7 @@ defmodule AgentCom.TaskQueue do
             history:
               cap_history([{:completed, now, %{tokens_used: tokens_used}} | task.history])
           }
+          |> Map.put(:verification_history, verification_history)
 
         persist_task(updated, @tasks_table)
 
@@ -446,6 +457,13 @@ defmodule AgentCom.TaskQueue do
               total_checks: Map.get(summary, "total", 0)
             }
           )
+        end
+
+        # Persist verification history (Phase 22: multi-run reports)
+        if length(verification_history) > 0 do
+          for report <- verification_history do
+            AgentCom.Verification.Store.save(task_id, report)
+          end
         end
 
         broadcast_task_event(:task_completed, updated)

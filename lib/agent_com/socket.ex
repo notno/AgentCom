@@ -183,7 +183,11 @@ defmodule AgentCom.Socket do
       "verification_steps" => task["verification_steps"] || task[:verification_steps] || [],
       "complexity" => format_complexity_for_ws(task["complexity"] || task[:complexity]),
       # Routing decision (Phase 19/20) -- forwarded from Scheduler
-      "routing_decision" => format_routing_decision_for_ws(task["routing_decision"] || task[:routing_decision])
+      "routing_decision" => format_routing_decision_for_ws(task["routing_decision"] || task[:routing_decision]),
+      # Verification control (Phase 21/22)
+      "skip_verification" => task["skip_verification"] || task[:skip_verification] || false,
+      "verification_timeout_ms" => task["verification_timeout_ms"] || task[:verification_timeout_ms],
+      "max_verification_retries" => task["max_verification_retries"] || task[:max_verification_retries] || 0
     }
 
     # Notify FSM about task assignment
@@ -421,10 +425,13 @@ defmodule AgentCom.Socket do
     tokens_used = msg["tokens_used"] || result["tokens_used"]
     verification_report = msg["verification_report"]
 
+    verification_history = msg["verification_history"]
+
     case AgentCom.TaskQueue.complete_task(task_id, generation, %{
       result: result,
       tokens_used: tokens_used,
-      verification_report: verification_report
+      verification_report: verification_report,
+      verification_history: verification_history
     }) do
       {:ok, _task} ->
         AgentCom.AgentFSM.task_completed(state.agent_id)

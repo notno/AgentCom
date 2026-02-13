@@ -150,7 +150,8 @@ defmodule AgentCom.Validation.Schemas do
       optional: %{
         "result" => :map,
         "tokens_used" => :integer,
-        "verification_report" => :map
+        "verification_report" => :map,
+        "verification_history" => {:list, :map}
       },
       description: "Sidecar reports task completion with result."
     },
@@ -283,7 +284,10 @@ defmodule AgentCom.Validation.Schemas do
         "file_hints" => {:list, :map},
         "success_criteria" => {:list, :string},
         "verification_steps" => {:list, :map},
-        "complexity_tier" => :string
+        "complexity_tier" => :string,
+        "max_verification_retries" => :integer,
+        "skip_verification" => :boolean,
+        "verification_timeout_ms" => :integer
       },
       description: "Submit a task to the queue."
     },
