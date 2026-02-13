@@ -32,6 +32,7 @@ defmodule AgentCom.TestHelpers.DetsHelpers do
     Application.put_env(:agent_com, :config_data_dir, Path.join(tmp_dir, "config"))
     Application.put_env(:agent_com, :threads_data_dir, Path.join(tmp_dir, "threads"))
     Application.put_env(:agent_com, :llm_registry_data_dir, Path.join(tmp_dir, "llm_registry"))
+    Application.put_env(:agent_com, :repo_registry_data_dir, Path.join(tmp_dir, "repo_registry"))
     Application.put_env(:agent_com, :backup_dir, Path.join(tmp_dir, "backups"))
 
     # Ensure subdirectories exist
@@ -40,6 +41,7 @@ defmodule AgentCom.TestHelpers.DetsHelpers do
     File.mkdir_p!(Path.join(tmp_dir, "config"))
     File.mkdir_p!(Path.join(tmp_dir, "threads"))
     File.mkdir_p!(Path.join(tmp_dir, "llm_registry"))
+    File.mkdir_p!(Path.join(tmp_dir, "repo_registry"))
     File.mkdir_p!(Path.join(tmp_dir, "backups"))
 
     tmp_dir
@@ -64,7 +66,8 @@ defmodule AgentCom.TestHelpers.DetsHelpers do
       AgentCom.Threads,
       AgentCom.Config,
       AgentCom.Auth,
-      AgentCom.LlmRegistry
+      AgentCom.LlmRegistry,
+      AgentCom.RepoRegistry
     ]
 
     for child <- stop_order do

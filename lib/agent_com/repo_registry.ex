@@ -224,6 +224,21 @@ defmodule AgentCom.RepoRegistry do
   end
 
   @impl true
+  def handle_call(:compact, _from, state) do
+    path = :dets.info(@dets_table, :filename)
+    :ok = :dets.close(@dets_table)
+
+    case :dets.open_file(@dets_table, file: path, type: :set, repair: :force) do
+      {:ok, @dets_table} ->
+        {:reply, :ok, state}
+
+      {:error, reason} ->
+        Logger.error("repo_registry_compaction_failed", reason: inspect(reason))
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  @impl true
   def terminate(_reason, _state) do
     :dets.close(@dets_table)
     :ok

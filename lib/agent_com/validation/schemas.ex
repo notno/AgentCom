@@ -321,6 +321,15 @@ defmodule AgentCom.Validation.Schemas do
         "name" => :string
       },
       description: "Register an Ollama endpoint. Port defaults to 11434."
+    },
+    post_repo: %{
+      required: %{
+        "url" => :string
+      },
+      optional: %{
+        "name" => :string
+      },
+      description: "Register a new repository in the repo registry."
     }
   }
 

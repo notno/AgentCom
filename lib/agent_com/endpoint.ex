@@ -62,6 +62,13 @@ defmodule AgentCom.Endpoint do
   - GET    /api/admin/llm-registry/:id     — Get single LLM endpoint (auth required)
   - POST   /api/admin/llm-registry         — Register an Ollama endpoint (auth required)
   - DELETE /api/admin/llm-registry/:id     — Remove an LLM endpoint (auth required)
+  - GET    /api/admin/repo-registry           — List all registered repos (auth required)
+  - POST   /api/admin/repo-registry           — Register a new repo (auth required)
+  - DELETE /api/admin/repo-registry/:repo_id  — Remove a repo (auth required)
+  - PUT    /api/admin/repo-registry/:repo_id/move-up   — Move repo up in priority (auth required)
+  - PUT    /api/admin/repo-registry/:repo_id/move-down — Move repo down in priority (auth required)
+  - PUT    /api/admin/repo-registry/:repo_id/pause     — Pause a repo (auth required)
+  - PUT    /api/admin/repo-registry/:repo_id/unpause   — Unpause a repo (auth required)
   - GET    /api/schemas           — Schema discovery (no auth)
   - WS     /ws                   — WebSocket for agent connections
   """
@@ -790,7 +797,8 @@ defmodule AgentCom.Endpoint do
     "channel_history" => :channel_history,
     "agentcom_config" => :agentcom_config,
     "thread_messages" => :thread_messages,
-    "thread_replies" => :thread_replies
+    "thread_replies" => :thread_replies,
+    "repo_registry" => :repo_registry
   }
 
   post "/api/admin/compact" do
@@ -1254,6 +1262,93 @@ defmodule AgentCom.Endpoint do
         :ok -> send_json(conn, 200, %{status: "removed", id: id})
         {:error, :not_found} -> send_json(conn, 404, %{error: "endpoint_not_found"})
       end
+    end
+  end
+
+  # --- Admin: Repo Registry routes (auth required) ---
+
+  get "/api/admin/repo-registry" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      repos = AgentCom.RepoRegistry.list_repos()
+      send_json(conn, 200, %{"repos" => repos})
+    end
+  end
+
+  post "/api/admin/repo-registry" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case Validation.validate_http(:post_repo, conn.body_params) do
+        {:ok, _} ->
+          params = %{
+            url: conn.body_params["url"],
+            name: conn.body_params["name"]
+          }
+
+          case AgentCom.RepoRegistry.add_repo(params) do
+            {:ok, repo} -> send_json(conn, 201, repo)
+            {:error, :already_exists} -> send_json(conn, 409, %{"error" => "repo_already_registered"})
+          end
+
+        {:error, errors} ->
+          send_validation_error(conn, errors)
+      end
+    end
+  end
+
+  delete "/api/admin/repo-registry/:repo_id" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case AgentCom.RepoRegistry.remove_repo(repo_id) do
+        :ok -> send_json(conn, 200, %{"status" => "removed"})
+        {:error, :not_found} -> send_json(conn, 404, %{"error" => "not_found"})
+      end
+    end
+  end
+
+  put "/api/admin/repo-registry/:repo_id/move-up" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      {:ok, repos} = AgentCom.RepoRegistry.move_up(repo_id)
+      send_json(conn, 200, %{"repos" => repos})
+    end
+  end
+
+  put "/api/admin/repo-registry/:repo_id/move-down" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      {:ok, repos} = AgentCom.RepoRegistry.move_down(repo_id)
+      send_json(conn, 200, %{"repos" => repos})
+    end
+  end
+
+  put "/api/admin/repo-registry/:repo_id/pause" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      AgentCom.RepoRegistry.set_status(repo_id, :paused)
+      send_json(conn, 200, %{"status" => "paused"})
+    end
+  end
+
+  put "/api/admin/repo-registry/:repo_id/unpause" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      AgentCom.RepoRegistry.set_status(repo_id, :active)
+      send_json(conn, 200, %{"status" => "active"})
     end
   end
 

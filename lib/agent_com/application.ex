@@ -50,6 +50,7 @@ defmodule AgentCom.Application do
       {AgentCom.Alerter, []},
       {AgentCom.RateLimiter.Sweeper, []},
       {AgentCom.LlmRegistry, []},
+      {AgentCom.RepoRegistry, []},
       {AgentCom.DashboardState, []},
       {AgentCom.DashboardNotifier, []},
       {AgentCom.DetsBackup, []},

@@ -4,12 +4,12 @@ defmodule AgentCom.DetsBackup do
   and compaction orchestration.
 
   Handles:
-  - Daily automatic backup of all 9 DETS tables via Process.send_after timer
+  - Daily automatic backup of all 10 DETS tables via Process.send_after timer
   - Manual backup trigger via backup_all/0 (synchronous, returns results)
   - Retention cleanup: keeps only last 3 backups per table
   - Health metrics: record count, file size, fragmentation ratio per table
   - PubSub broadcast on "backups" topic after each backup run
-  - Scheduled compaction of all 9 DETS tables every 6 hours (configurable)
+  - Scheduled compaction of all 10 DETS tables every 6 hours (configurable)
   - Fragmentation threshold skip (default 10%) to avoid unnecessary compaction
   - Retry-once on compaction failure, then wait for next scheduled run
   - Compaction history tracking (last 20 runs)
@@ -26,7 +26,8 @@ defmodule AgentCom.DetsBackup do
     :channel_history,
     :agentcom_config,
     :thread_messages,
-    :thread_replies
+    :thread_replies,
+    :repo_registry
   ]
 
   @daily_interval_ms 24 * 60 * 60 * 1000
@@ -52,7 +53,7 @@ defmodule AgentCom.DetsBackup do
   end
 
   @doc """
-  Return health metrics for all 9 DETS tables.
+  Return health metrics for all 10 DETS tables.
 
   Returns a map with:
   - `:tables` - list of per-table metric maps (record_count, file_size_bytes, fragmentation_ratio, status)
@@ -324,6 +325,7 @@ defmodule AgentCom.DetsBackup do
   defp table_owner(:agentcom_config), do: AgentCom.Config
   defp table_owner(:thread_messages), do: AgentCom.Threads
   defp table_owner(:thread_replies), do: AgentCom.Threads
+  defp table_owner(:repo_registry), do: AgentCom.RepoRegistry
   defp table_owner(:task_queue), do: AgentCom.TaskQueue
   defp table_owner(:task_dead_letter), do: AgentCom.TaskQueue
 
@@ -410,6 +412,11 @@ defmodule AgentCom.DetsBackup do
 
   defp get_table_path(table_atom) do
     case table_atom do
+      :repo_registry ->
+        dir = Application.get_env(:agent_com, :repo_registry_data_dir,
+          Path.join([System.get_env("HOME") || ".", ".agentcom", "data"]))
+        Path.join(dir, "repo_registry.dets")
+
       :agent_mailbox ->
         Application.get_env(:agent_com, :mailbox_path, "priv/mailbox.dets")
 
