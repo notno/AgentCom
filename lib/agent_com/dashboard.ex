@@ -479,6 +479,23 @@ defmodule AgentCom.Dashboard do
         .llm-remove-btn { background: none; border: none; color: #f44336; cursor: pointer; font-size: 0.85em; padding: 2px 6px; }
         .llm-remove-btn:hover { text-decoration: underline; }
 
+        /* === Repo Registry === */
+        .repo-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+        .repo-table th, .repo-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #222; }
+        .repo-table th { color: #888; font-weight: 500; font-size: 0.85em; text-transform: uppercase; }
+        .repo-status-active { color: #4ade80; }
+        .repo-status-paused { color: #fbbf24; }
+        .repo-add-form { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+        .repo-add-form input { background: #1a1a2e; border: 1px solid #333; border-radius: 4px; padding: 6px 10px; color: #e0e0e0; font-size: 0.9em; }
+        .repo-add-form input::placeholder { color: #666; }
+        .repo-add-btn { background: #2563eb; color: white; border: none; border-radius: 4px; padding: 6px 14px; cursor: pointer; font-size: 0.9em; }
+        .repo-add-btn:hover { background: #1d4ed8; }
+        .repo-action-btn { background: none; border: 1px solid #333; color: #e0e0e0; cursor: pointer; font-size: 0.85em; padding: 2px 8px; border-radius: 4px; margin: 0 2px; }
+        .repo-action-btn:hover { background: #1a1a2e; }
+        .repo-action-btn:disabled { opacity: 0.3; cursor: default; }
+        .repo-action-btn.remove { color: #f44336; border-color: rgba(244, 67, 54, 0.3); }
+        .repo-action-btn.remove:hover { background: rgba(244, 67, 54, 0.1); }
+
         /* === Routing Badges === */
         .tier-badge {
           display: inline-block; padding: 2px 7px; border-radius: 10px;
@@ -962,6 +979,33 @@ defmodule AgentCom.Dashboard do
             <button class="llm-add-btn" onclick="addLlmEndpoint()">Add Endpoint</button>
           </div>
           <div class="empty-state" id="llm-empty">No LLM endpoints registered</div>
+        </div>
+      </div>
+
+      <!-- Repo Registry -->
+      <div style="margin-top: 12px;">
+        <div class="panel" id="panel-repo-registry">
+          <div class="panel-title">Repo Registry <span class="panel-count" id="repo-count">0</span></div>
+          <div class="table-wrap">
+            <table class="repo-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Name</th>
+                  <th>URL</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="repo-registry-body"></tbody>
+            </table>
+          </div>
+          <div class="repo-add-form">
+            <input type="text" id="repo-url-input" placeholder="https://github.com/owner/repo" style="flex: 1;" />
+            <input type="text" id="repo-name-input" placeholder="Display name (optional)" />
+            <button class="repo-add-btn" onclick="addRepo()">Add Repo</button>
+          </div>
+          <div class="empty-state" id="repo-empty">No repositories registered</div>
         </div>
       </div>
 
@@ -1652,6 +1696,11 @@ defmodule AgentCom.Dashboard do
 
           // -- LLM Registry --
           renderLlmRegistry(data);
+
+          // -- Repo Registry --
+          if (data.repo_registry && data.repo_registry.repos) {
+            renderRepoRegistry(data.repo_registry.repos);
+          }
 
           // -- Routing stats --
           renderRoutingStats(data.routing_stats || null);
@@ -2480,6 +2529,93 @@ defmodule AgentCom.Dashboard do
         }
 
         // =====================================================================
+        // Repo Registry
+        // =====================================================================
+        function renderRepoRegistry(repos) {
+          var countEl = document.getElementById('repo-count');
+          var emptyEl = document.getElementById('repo-empty');
+          var tbody = document.getElementById('repo-registry-body');
+
+          if (countEl) countEl.textContent = repos.length;
+
+          if (repos.length === 0) {
+            if (tbody) tbody.innerHTML = '';
+            if (emptyEl) emptyEl.style.display = 'block';
+            return;
+          }
+          if (emptyEl) emptyEl.style.display = 'none';
+
+          if (tbody) {
+            tbody.innerHTML = repos.map(function(repo, idx) {
+              var statusClass = repo.status === 'active' ? 'repo-status-active' : 'repo-status-paused';
+              var statusLabel = repo.status || 'active';
+              var statusBadge = '<span class="badge ' + (statusLabel === 'active' ? 'completed' : 'assigned') + '">' + escapeHtml(String(statusLabel)) + '</span>';
+
+              var displayUrl = repo.url || '';
+              if (displayUrl.length > 50) displayUrl = displayUrl.substring(0, 47) + '...';
+
+              var upBtn = '<button class="repo-action-btn" onclick="moveRepoUp(\\'' + escapeHtml(repo.id) + '\\')"' + (idx === 0 ? ' disabled' : '') + '>&#9650;</button>';
+              var downBtn = '<button class="repo-action-btn" onclick="moveRepoDown(\\'' + escapeHtml(repo.id) + '\\')"' + (idx === repos.length - 1 ? ' disabled' : '') + '>&#9660;</button>';
+
+              var toggleBtn;
+              if (statusLabel === 'active') {
+                toggleBtn = '<button class="repo-action-btn" onclick="pauseRepo(\\'' + escapeHtml(repo.id) + '\\')">Pause</button>';
+              } else {
+                toggleBtn = '<button class="repo-action-btn" onclick="unpauseRepo(\\'' + escapeHtml(repo.id) + '\\')">Resume</button>';
+              }
+
+              var removeBtn = '<button class="repo-action-btn remove" onclick="removeRepo(\\'' + escapeHtml(repo.id) + '\\')">Remove</button>';
+
+              return '<tr>' +
+                '<td>' + (idx + 1) + '</td>' +
+                '<td>' + escapeHtml(repo.name || repo.id) + '</td>' +
+                '<td title="' + escapeHtml(repo.url || '') + '">' + escapeHtml(displayUrl) + '</td>' +
+                '<td>' + statusBadge + '</td>' +
+                '<td>' + upBtn + downBtn + toggleBtn + removeBtn + '</td>' +
+                '</tr>';
+            }).join('');
+          }
+        }
+
+        function addRepo() {
+          var url = document.getElementById('repo-url-input').value.trim();
+          var name = document.getElementById('repo-name-input').value.trim();
+          if (!url) { alert('Repository URL is required'); return; }
+          if (!dashConn || !dashConn.ws || dashConn.ws.readyState !== 1) return;
+          var msg = {type: 'add_repo', url: url};
+          if (name) msg.name = name;
+          dashConn.ws.send(JSON.stringify(msg));
+          document.getElementById('repo-url-input').value = '';
+          document.getElementById('repo-name-input').value = '';
+        }
+
+        function removeRepo(repoId) {
+          if (!confirm('Remove repository ' + repoId + '?')) return;
+          if (!dashConn || !dashConn.ws || dashConn.ws.readyState !== 1) return;
+          dashConn.ws.send(JSON.stringify({type: 'remove_repo', repo_id: repoId}));
+        }
+
+        function moveRepoUp(repoId) {
+          if (!dashConn || !dashConn.ws || dashConn.ws.readyState !== 1) return;
+          dashConn.ws.send(JSON.stringify({type: 'move_repo_up', repo_id: repoId}));
+        }
+
+        function moveRepoDown(repoId) {
+          if (!dashConn || !dashConn.ws || dashConn.ws.readyState !== 1) return;
+          dashConn.ws.send(JSON.stringify({type: 'move_repo_down', repo_id: repoId}));
+        }
+
+        function pauseRepo(repoId) {
+          if (!dashConn || !dashConn.ws || dashConn.ws.readyState !== 1) return;
+          dashConn.ws.send(JSON.stringify({type: 'pause_repo', repo_id: repoId}));
+        }
+
+        function unpauseRepo(repoId) {
+          if (!dashConn || !dashConn.ws || dashConn.ws.readyState !== 1) return;
+          dashConn.ws.send(JSON.stringify({type: 'unpause_repo', repo_id: repoId}));
+        }
+
+        // =====================================================================
         // Incremental event handlers
         // =====================================================================
         function handleEvents(events) {
@@ -2500,6 +2636,11 @@ defmodule AgentCom.Dashboard do
               case 'alert_cleared': removeAlert(ev.rule_id); updateAlertBanner(); break;
               case 'alert_acknowledged': markAlertAcknowledged(ev.rule_id); break;
               case 'llm_registry_update':
+                if (dashConn && dashConn.ws && dashConn.ws.readyState === 1) {
+                  dashConn.ws.send(JSON.stringify({type: 'request_snapshot'}));
+                }
+                break;
+              case 'repo_registry_update':
                 if (dashConn && dashConn.ws && dashConn.ws.readyState === 1) {
                   dashConn.ws.send(JSON.stringify({type: 'request_snapshot'}));
                 }
@@ -2758,6 +2899,9 @@ defmodule AgentCom.Dashboard do
             renderDetsHealth(dashState.dets_health || null);
             renderValidationHealth(dashState.validation || null);
             renderLlmRegistry(dashState);
+            if (dashState.repo_registry && dashState.repo_registry.repos) {
+              renderRepoRegistry(dashState.repo_registry.repos);
+            }
             // Update uptime
             if (dashState.uptime_ms) {
               dashState.uptime_ms += 30000;
