@@ -62,6 +62,7 @@ Progress: [██████████] 100%
 | Phase 20 P04 | 3min | 3 tasks | 3 files |
 | Phase 22 P01 | 2min | 2 tasks | 2 files |
 | Phase 22 P03 | 1min | 2 tasks | 1 files |
+| Phase 22 P02 | 3min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -150,13 +151,19 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - [Phase 22]: Cumulative cost tracked across all iterations to provide accurate total cost reporting
 - [Phase 22]: Retry history uses same details/summary HTML pattern as check results for UI consistency
 - [Phase 22]: renderVerifyBadge extended with optional task param (backward-compatible, undefined/null safe)
+- [Phase 22]: verification_history as top-level WS field alongside verification_report (consistent extraction pattern)
+- [Phase 22]: max_verification_retries capped at 5 via min() in task struct (hard safety cap)
+- [Phase 22]: Integration test uses require.cache stubbing for end-to-end pipeline verification (no live dependencies)
+
+### Roadmap Evolution
+
+- Phase 23 added: Multi-Repo Registry and Workspace Switching (from todo: multi-project fallback queue)
 
 ### Pending Todos
 
 1. Analyze scalability bottlenecks and machine vs agent scaling tradeoffs (area: architecture)
 2. Pipeline phase discussions and research ahead of execution (area: planning)
 3. Pre-publication repo cleanup synthesized from agent audits (area: general)
-4. Multi-project fallback queue for idle agent utilization (area: architecture)
 
 ### Blockers/Concerns
 
@@ -176,5 +183,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 22-03-PLAN.md (Dashboard Retry History) -- Phase 22 Complete
+Stopped at: Re-executed 22-02-PLAN.md (Pipeline Integration) -- Phase 22 Complete
 Resume file: None
