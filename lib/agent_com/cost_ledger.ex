@@ -62,6 +62,16 @@ defmodule AgentCom.CostLedger do
       daily_limit = limits.max_per_day
 
       if hourly_count >= hourly_limit or daily_count >= daily_limit do
+        try do
+          :telemetry.execute(
+            [:agent_com, :hub, :budget_exhausted],
+            %{},
+            %{hub_state: hub_state, hourly_count: hourly_count, daily_count: daily_count}
+          )
+        rescue
+          _ -> :ok
+        end
+
         :budget_exhausted
       else
         :ok
@@ -165,6 +175,13 @@ defmodule AgentCom.CostLedger do
     rescue
       ArgumentError -> :ok
     end
+
+    # Emit telemetry for Claude Code invocation
+    :telemetry.execute(
+      [:agent_com, :hub, :claude_call],
+      %{duration_ms: record.duration_ms, count: 1},
+      %{hub_state: hub_state, prompt_type: record.prompt_type}
+    )
 
     {:reply, :ok, state}
   end

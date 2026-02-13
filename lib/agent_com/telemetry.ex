@@ -94,6 +94,16 @@ defmodule AgentCom.Telemetry do
     measurements: `%{duration_ms: integer, checks_passed: integer, checks_failed: integer}`
     metadata: `%{task_id, status, total_checks}`
 
+  ### Hub Claude Code Invocations
+
+  - `[:agent_com, :hub, :claude_call]` - Claude Code CLI invocation completed
+    measurements: `%{duration_ms: integer, count: 1}`
+    metadata: `%{hub_state: atom, prompt_type: atom}`
+
+  - `[:agent_com, :hub, :budget_exhausted]` - Budget check returned exhausted
+    measurements: `%{}`
+    metadata: `%{hub_state: atom, hourly_count: integer, daily_count: integer}`
+
   ### DETS Operations (span events with :start/:stop/:exception)
 
   - `[:agent_com, :dets, :backup, :start/:stop/:exception]` - Backup operation
@@ -137,6 +147,9 @@ defmodule AgentCom.Telemetry do
       [:agent_com, :scheduler, :fallback],
       # Verification
       [:agent_com, :verification, :run],
+      # Hub Claude Code invocations
+      [:agent_com, :hub, :claude_call],
+      [:agent_com, :hub, :budget_exhausted],
       # DETS spans (start/stop/exception for each operation)
       [:agent_com, :dets, :backup, :start],
       [:agent_com, :dets, :backup, :stop],
