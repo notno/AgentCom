@@ -1,258 +1,234 @@
 # Project Research Summary
 
-**Project:** AgentCom v1.2 — Smart Agent Pipeline (Milestone 2)
-**Domain:** Distributed multi-model LLM inference routing with enriched task orchestration and agent self-verification
+**Project:** AgentCom v1.3 -- Hub FSM Loop of Self-Improvement
+**Domain:** Autonomous agent orchestration with goal-driven FSM brain
 **Researched:** 2026-02-12
 **Confidence:** HIGH
 
 ## Executive Summary
 
-AgentCom v1.2 transforms a proven task coordination system into a cost-efficient, model-aware orchestration platform. The core insight from research: most agent work (60-70%) doesn't need expensive cloud LLMs. By routing tasks through a three-tier complexity model (trivial/simple/complex) to appropriate execution backends (sidecar direct/local Ollama/cloud Claude), the system can achieve 85% cost reduction while maintaining quality through deterministic verification.
+The v1.3 milestone transforms the AgentCom hub from a reactive task processor into an autonomous thinker. The core pattern is Ralph-style continuous iteration: the hub cycles through four states (Executing, Improving, Contemplating, Resting), generating its own work through LLM-powered goal decomposition, monitoring execution through existing pipelines, and proactively scanning codebases for improvements. This builds on a proven v1.2 foundation (23 supervised GenServers, 10 DETS tables, PubSub event coordination) by adding three new GenServers (HubFSM, GoalBacklog, ClaudeClient) and one library module (SelfImprovement) without disrupting the existing task execution pipeline.
 
-The recommended approach builds on the battle-tested v1.1 architecture (22 supervision tree components, 9 DETS tables, proven scheduler) by adding four new components: an LLM endpoint registry (GenServer tracking Ollama instances across the Tailscale mesh), a complexity classifier (pure function module), enriched task format (additive schema evolution), and sidecar model routing (strategy dispatch). All changes are designed as additive extensions — existing v1.0/v1.1 tasks continue working unchanged while new tasks leverage enrichment fields.
+The recommended approach follows the Ralph Loop pattern: fresh context per iteration with state persisted in DETS (not LLM memory), bounded iterations (max 3 decomposition attempts per goal), and external mechanical verification (tests pass, files exist) as the ground truth with LLM verification as a semantic quality layer. Goal decomposition uses Claude API to transform high-level intent ("add rate limiting to API") into 3-8 enriched tasks following the existing v1.2 task format (complexity_tier, verification_steps, success_criteria). The hub submits decomposed tasks to the existing TaskQueue, and the existing Scheduler routes them to agents -- no changes to the core agent execution model.
 
-The primary risk is breaking the proven scheduler and task pipeline through invasive changes. Research identifies the critical mitigation strategy: keep the scheduler stateless and push routing complexity to the edges (pre-enrichment or sidecar-side). The second major risk — LLM self-assessment hallucinating success — is mitigated by prioritizing deterministic mechanical verification (tests pass, code compiles, files exist) over LLM judgment. Start conservative (default to strongest model) and demote to cheaper models only with explicit confidence.
+The critical risks are: (1) uncontrolled API spending from autonomous LLM calls, (2) infinite improvement loops (the Sisyphus pattern where the hub oscillates between contradictory changes), (3) auto-merge introducing regressions, and (4) hallucinated tasks referencing non-existent files or modules. Mitigation requires: a CostLedger GenServer enforcing per-state token budgets before the hub makes its first API call, improvement history tracking with cooldown/deduplication to prevent oscillation, starting with PR-only mode and deferring auto-merge until the pipeline proves reliable, and grounding goal decomposition in the actual file tree. With these controls, the hub becomes a value-multiplying autonomous brain; without them, it becomes a cost-burning chaos generator.
 
 ## Key Findings
 
 ### Recommended Stack
 
-**Core approach:** Minimal new dependencies. Two runtime additions (Req for hub-side Ollama HTTP calls, ollama npm for sidecar-side inference), plus four custom components built on existing BEAM/Node.js infrastructure.
+The v1.3 stack builds on v1.2 (Elixir 1.18.1, BEAM 27.2, Bandit, Phoenix.PubSub) with minimal additions. The only new dependency is `{:req, "~> 0.5"}` for Claude API HTTP client (Req brings Finch for connection pooling). No changes to the sidecar stack (Node.js, commander.js, socket.io-client) -- sidecars remain unaware of the hub's autonomous brain.
 
 **Core technologies:**
-- **Req ~> 0.5.0** (Elixir): Batteries-included HTTP client for Ollama API calls — streaming support, automatic JSON decode, retries, connection pooling via Finch. Community standard, likely becoming Phoenix default.
-- **ollama npm ^0.6.3** (Node.js): Official Ollama JavaScript library for sidecar model invocation — exposes chat(), generate(), list(), ps() methods with structured JSON output support.
-- **Ollama 0.15.x + Qwen3 8B** (Infrastructure): Local LLM inference on each Tailscale machine. Q4_K_M quantization fits in 12GB VRAM (~6-7GB actual). Handles tier 1-2 tasks (trivial and standard complexity).
-- **Custom OllamaPool** (Elixir GenServer ~250 lines): Multi-host endpoint registry with periodic health checks, model inventory tracking, VRAM status monitoring, circuit-breaker semantics.
-- **Custom ComplexityClassifier** (Elixir module ~80 lines): Task complexity classification (trivial/standard/complex) from metadata. Domain-specific logic for AgentCom's 3-tier model.
+- **Req HTTP client**: Claude API communication from hub-side -- structured JSON requests, built-in retry/error handling, connection pooling via Finch. Replaces spawning CLI from Elixir.
+- **GenServer-based FSM**: Hub FSM follows existing AgentFSM pattern (GenServer with explicit state tracking), not GenStateMachine. Rationale: existing codebase precedent, 4-state simplicity, better PubSub integration, avoids gen_statem logger compatibility issue.
+- **DETS for goal persistence**: GoalBacklog uses same patterns as TaskQueue/RepoRegistry. Single `:goal_backlog` table with namespaced keys minimizes DETS proliferation.
+- **PubSub for coordination**: Hub FSM subscribes to "tasks" and "presence" topics, publishes on new "hub_fsm" topic. No new transport protocols.
 
-**Critical stack decision:** Use Req directly rather than the ollama hex package (v0.9.0, last updated Sep 2025). The wrapper hasn't tracked Ollama's rapid evolution (server went 0.3.x → 0.15.6), and we need custom health-check polling and multi-host pool management beyond its single-client model. Direct Req usage gives full control over endpoints with zero risk of wrapper staleness.
-
-**What NOT to add:** ex_json_schema (extend existing validation instead), LangChain (framework overhead for simple prompt-response), vLLM/TGI (complex GPU infrastructure for 5-agent system), Redis (Phoenix.PubSub handles all event distribution at this scale).
+The stack decision is conservative: use existing patterns, minimize new dependencies, no architectural pivots. The v1.2 foundation is solid and requires only targeted extensions.
 
 ### Expected Features
 
-**Must have (table stakes):**
-- **LLM endpoint registry** — Cannot route to endpoints you don't know about. Track Ollama hosts across Tailscale mesh with health checking.
-- **Enriched task format** — Tasks need structured context (repo, branch, files), success criteria (testable conditions), and verification steps. Agents need to know what "done" means.
-- **Complexity classification** — Tag tasks as trivial/standard/complex to determine routing path. Explicit submitter tagging first, keyword heuristics later.
-- **Model-aware scheduler routing** — Core value proposition. Extend capability matching to include complexity tier: trivial → sidecar direct, standard → Ollama-backed agents, complex → Claude-backed agents.
-- **Sidecar LLM backend routing** — Sidecar calls correct LLM backend based on task assignment (local Ollama or Claude API). Currently all tasks wake OpenClaw uniformly.
-- **Sidecar trivial execution** — 60-70% of operations are mechanical (git status, file writes). Execute locally, report result, zero LLM tokens consumed.
-- **Task result with verification report** — Output complement to enriched tasks. Include what was verified and pass/fail per check.
+**Must have (table stakes for v1.3):**
+- Hub FSM with 4 states (Executing, Improving, Contemplating, Resting) -- the autonomous brain's top-level decision loop
+- Goal backlog with multi-source input (API, CLI, file-watched GOALS.md, self-generated improvements) -- centralized intake for high-level intent
+- LLM-powered goal decomposition (Claude API) -- bridges intent to machine-executable enriched tasks
+- Ralph-style inner loop per goal (observe-act-verify at goal level) -- tracks completion across all subtasks, verifies goal-level success criteria
+- Queue-driven state transitions (deterministic, testable predicates on GoalBacklog/TaskQueue state) -- not timer-only
 
 **Should have (competitive differentiators):**
-- **Agent self-verification loop** — After completing work, agent runs verification steps (tests, file checks, grep assertions) before submitting. Industry evidence (Vercel agent-browser, Anthropic evals guidance) shows this dramatically improves success rates. The "build-verify-fix" pattern.
-- **Complexity heuristic engine** — Infer complexity from task content instead of requiring manual tagging. Keyword-based (zero tokens, CPU only), applied as default when submitter doesn't specify.
-- **Multi-host load balancing** — When multiple Ollama hosts have the same model, distribute by current load. Prevents GPU saturation while others idle.
-- **Cost tracking per task** — Track which model handled each task, tokens consumed, estimated cost. Enables answering "how much did we save?"
+- Autonomous codebase improvement scanning (idle time -> value) -- scans repos for test gaps, duplication, doc gaps, dead code
+- Tiered autonomy (auto-merge vs PR based on risk) -- small safe changes auto-merge, larger changes need review
+- Goal completion verification (LLM judge) -- verifies goal's success criteria met, not just all tasks completed
+- Pre-publication repo cleanup (deterministic scanning for tokens, API keys, personal info, workspace files) -- block publication if secrets found
+- Pipeline pipelining (research-first decomposition) -- front-load research tasks, implementation tasks depend on research results
 
-**Defer to v2+:**
-- LLM-based complexity classifier (chicken-and-egg: burns tokens to save tokens)
-- Dynamic model loading/unloading (operational complexity, should be pre-loaded)
-- Cross-agent task dependencies (DAG scheduling — much larger system)
-- Streaming LLM output through hub (adds latency for zero coordination value)
+**Defer (v2+):**
+- Fully autonomous multi-agent orchestration (delegating work between agents) -- Ralph pattern is monolithic, single brain
+- Cross-repo goal dependencies (DAG scheduling across repos) -- start single-repo per goal
+- Autonomous deployment/release -- human must approve deployment even with auto-merge
+- Persistent LLM conversation memory -- Ralph pattern: fresh context per iteration
 
 ### Architecture Approach
 
-Build on proven v1.1 foundation through additive extensions, not rewrites. The enriched task format uses optional fields with nil/empty defaults (backward compatible with existing DETS data). The LLM registry is a new GenServer added to the supervision tree AFTER Config, BEFORE Scheduler. Model routing happens hub-side (scheduler enriches tasks with assigned_model and assigned_endpoint), and the sidecar executes those routing decisions (strategy dispatch pattern).
+The Hub FSM is a singleton GenServer orchestrator that generates goals, decomposes them via Claude API, submits tasks to the existing TaskQueue, and monitors completion via PubSub. It never executes tasks directly -- all work flows through the existing v1.2 pipeline (TaskQueue -> Scheduler -> AgentFSM -> sidecar). This preserves pipeline integrity and ensures hub-generated tasks get the same scheduling, capability matching, tier routing, and verification as human-submitted tasks.
 
 **Major components:**
+1. **AgentCom.HubFSM** (GenServer) -- The autonomous brain. Maintains FSM state (which mode), current goal tracking, timers, cycle count. Transitions driven by GoalBacklog/TaskQueue state predicates. Pauses on manual override (safety valve).
+2. **AgentCom.GoalBacklog** (GenServer) -- DETS-backed goal storage with lifecycle (pending -> decomposing -> ready -> executing -> completed/failed). Goals are 1:N parent of tasks. Tracks goal-to-task relationships, task completion aggregation.
+3. **AgentCom.ClaudeClient** (GenServer) -- Wraps Req for Claude Messages API. Rate limiting (RPM tracking), usage stats (input/output tokens), telemetry events. All hub-side LLM calls go through this client.
+4. **AgentCom.SelfImprovement** (Module) -- Library for git-diff-based codebase scanning. Deterministic checks (test gaps, doc gaps) and LLM-assisted checks (duplication, simplification). Returns structured findings consumed by HubFSM.
+5. **Pipeline DAG scheduling** (TaskQueue extension) -- Tasks gain optional `depends_on: [task_id]` field. Scheduler adds dependency filter: only schedule tasks whose dependencies are completed.
 
-1. **AgentCom.LlmRegistry** (NEW GenServer) — Tracks Ollama instances across Tailscale mesh. Periodic health checking (GET /api/ps for model state, not just GET / for process state). Model discovery. DETS persistence for registrations, ETS cache for health state. Broadcasts endpoint status changes via PubSub.
-
-2. **AgentCom.ComplexityClassifier** (NEW library module) — Pure function classification: :trivial | :simple | :complex | :explicit_model. Priority chain: explicit metadata > pattern match on description > safe default (complex). NOT an LLM classifier — heuristics are transparent, debuggable, and tunable via Config.
-
-3. **TaskQueue (MODIFIED)** — Extend task struct with 8 new optional fields: context, criteria, verification_steps, complexity, assigned_model, assigned_endpoint, model_override, verification_result. All additive with nil defaults. No DETS migration needed — Map.get(task, :context, nil) pattern handles missing fields gracefully.
-
-4. **Scheduler (MODIFIED)** — ComplexityClassifier.classify/1 call during task submission. LlmRegistry query for model endpoints during assignment. Extended do_assign payload includes model routing fields. Model-aware matching extends capability subset matching with complexity tier filtering.
-
-5. **Sidecar model-router.js (NEW)** — Strategy dispatch: routeTask() returns {strategy: 'trivial' | 'local_llm' | 'cloud_llm' | 'wake_default', config: {...}}. Hub decides routing, sidecar executes strategy.
-
-6. **Sidecar verification.js (NEW)** — Deterministic verification (shell commands with exit codes), not LLM self-assessment. Mechanical checks: file exists, tests pass, no syntax errors. Gate (pass/fail), not feedback loop — failures trigger hub's existing retry logic.
-
-**Critical architecture principle:** Hub decides, sidecar executes. All routing decisions happen in the hub (LlmRegistry state, ComplexityClassifier logic, model selection in Scheduler). The sidecar receives explicit instructions (assigned_model, assigned_endpoint) and executes them. This avoids split-brain scenarios and keeps the sidecar as a thin relay.
+**Integration:** HubFSM added to supervision tree after GoalBacklog, ClaudeClient, Scheduler (dependency order). New `:goal_backlog` DETS table registered with DetsBackup. Dashboard extends to show hub state, goal progress, API cost tracking. Existing TaskQueue/Scheduler/AgentFSM gain small extensions (2 fields, 15 lines of filtering) but no behavioral rewrites.
 
 ### Critical Pitfalls
 
-1. **Enriching task format breaks the entire existing pipeline** — Task map is untyped; every layer (TaskQueue, Scheduler, Socket, sidecar) destructures independently. Prevention: Define enrichment fields as OPTIONAL with sane defaults. Carry enrichment data INSIDE existing metadata map for sidecar transport (metadata.enrichment.*) to avoid new top-level WebSocket fields. Add task_version field. Write one-time migration for DETS backfill.
+1. **Token Cost Spiral from Autonomous Thinking** -- Hub makes unbounded Claude API calls during contemplation/improvement. Weekend operation could burn $1,440 unattended. Prevention: CostLedger GenServer with per-state budgets ($10/hour Executing, $3/hour Improving, $2/hour Contemplating), hard caps in code not prompts, tiered model usage (Haiku for triage, Sonnet for decomposition). Must exist before FSM makes first API call.
 
-2. **Complexity classification overfits to keyword heuristics** — "Rename" appears in both trivial and complex tasks. Research confirms this is the dominant LLM routing failure mode. Prevention: Start with WHITELIST approach (explicit trivial operations by type, not description parsing). Default to expensive but correct (Claude), demote to local only when explicitly flagged or whitelisted. Defer ML-based classification until 50+ completed tasks provide training data.
+2. **Infinite Improvement Loop (Sisyphus Pattern)** -- Hub scans, identifies improvement X, executes, next scan identifies "undo X" as improvement. Oscillates forever consuming resources. Prevention: improvement history with deduplication (DETS table tracking attempted improvements), per-file cooldown (24 hours after improving file X, don't scan X again), anti-oscillation detection (if consecutive improvements to same file have inverse diffs, block), improvement budget (max 3-5 per cycle).
 
-3. **Ollama model cold start makes health checks unreliable** — Health check says "green" but model unloaded (5-minute keep_alive default). First request triggers 10-120 second load. Prevention: Use GET /api/ps (currently loaded models) not GET /api/tags (downloaded models). Implement "warm" check (model loaded AND expiration > 60s away). Send periodic keep-alive to critical endpoints. Set OLLAMA_KEEP_ALIVE=-1 on dedicated inference hosts.
+3. **Hub FSM State Corruption from Concurrent Events** -- Hub is singleton receiving PubSub from entire system (high event volume). Timer-based transitions collide with event-driven transitions causing stuck states or dropped events. Prevention: consider `gen_statem` with state timeouts and postpone semantics, OR implement comprehensive timer cancellation + event queuing in GenServer. Watchdog timer to force-transition if stuck >2 hours in any state.
 
-4. **Self-verification is LLM judging its own work** — Model that confidently generated wrong code will confidently verify it as correct. Prevention: Ground truth verification FIRST (mechanical checks: compile, tests, file existence), LLM verification SECOND. Use DIFFERENT model for verification than generation when possible. Require structured JSON output with confidence levels. Log verification decisions for calibration feedback loop.
+4. **Auto-Merge Regression Introduction** -- Small improvements auto-merge without review. Passes tests but introduces subtle regressions (semantic changes, nil-handling bugs). Prevention: never auto-merge to main directly (use integration branch), conservative size gates (<10 lines, no new files, no signature changes), start PR-only mode and add auto-merge later, auto-revert mechanism (run tests 5 minutes post-merge, revert if fail).
 
-5. **Touching the scheduler breaks the battle-tested assignment loop** — Current scheduler is 100 lines of stateless, proven-correct capability matching. Adding model routing means external state dependencies (endpoint registry queries mid-loop). Prevention: Keep existing match loop UNTOUCHED. Add model routing as SEPARATE step that runs AFTER basic capability match. Wrap new logic in try/rescue with fallback to existing simple matching. Never let classification failure block assignment.
+5. **Goal Decomposition Hallucination (Phantom Tasks)** -- LLM generates tasks referencing non-existent files/modules based on "typical Elixir project" patterns, not this specific codebase. Prevention: ground decomposition in actual file tree (feed `ls lib/` output to LLM), post-decomposition validation (check `File.exists?` for all mentioned paths), include `.planning/codebase/ARCHITECTURE.md` in every decomposition prompt with "what this project does NOT use" section.
 
 ## Implications for Roadmap
 
-Based on research, a dependency-constrained 7-phase structure emerges:
+Based on research, suggested phase structure follows dependency chain and risk mitigation:
 
-### Phase 1: Enriched Task Format
-**Rationale:** Foundation for everything. Every other feature (routing, verification, model assignment) reads from enrichment fields. Must be first.
+### Phase 1: Cost Control Infrastructure
+**Rationale:** Must exist before any autonomous LLM calls. Building HubFSM without cost controls is unshippable.
+**Delivers:** CostLedger GenServer tracking cumulative API spend per hour/day/session. Budget enforcement before every Claude API call. Telemetry integration.
+**Addresses:** Pitfall 1 (cost spiral). Enables all downstream LLM-using components (decomposition, verification, scanning).
+**Avoids:** Runaway weekend spending. Enables safe autonomous operation.
 
-**Delivers:** Extended TaskQueue schema, endpoint validation, socket pass-through, validation schemas. ComplexityClassifier module (pure functions, independently testable).
+### Phase 2: ClaudeClient GenServer
+**Rationale:** Foundation for all hub-side LLM calls. HubFSM and SelfImprovement both depend on it.
+**Delivers:** Req-based HTTP client, rate limiting (RPM tracking), usage stats, structured JSON requests/responses.
+**Uses:** Req (new dep), Config GenServer, CostLedger (from Phase 1).
+**Implements:** Clean abstraction over Claude Messages API. `ask_json/2` for structured output.
 
-**Addresses:** Task format enrichment from FEATURES.md (table stakes), enables context/criteria/verification infrastructure.
+### Phase 3: GoalBacklog GenServer
+**Rationale:** HubFSM needs something to execute. Goal intake is the fuel for the FSM engine.
+**Delivers:** DETS-backed goal storage, CRUD operations, status lifecycle, priority ordering, HTTP API endpoints.
+**Addresses:** Table stakes: multi-source goal input. Enables manual goal submission before FSM automation.
+**Avoids:** DETS proliferation (single table), backup coverage gap (register with DetsBackup from day one).
 
-**Avoids:** Pitfall 1 (pipeline breakage) through optional fields with defaults, metadata transport pattern, task_version field.
+### Phase 4: HubFSM Core (2-state MVP)
+**Rationale:** The orchestrator that ties everything together. Start simple (2 states: Executing, Resting) to prove core loop before adding Improving/Contemplating.
+**Delivers:** GenServer with state transitions, goal-to-task decomposition via ClaudeClient, TaskQueue submission, completion monitoring via PubSub, manual pause/resume.
+**Implements:** Ralph-style inner loop per goal (decompose -> submit -> monitor -> verify completion).
+**Avoids:** Pitfall 3 (state corruption) via defensive timer cancellation, Pitfall 6 (supervisor ordering) via correct placement after dependencies.
 
-**Research flag:** SKIP — standard schema evolution pattern, well-documented in existing codebase (TASK-05 generation fencing shows the pattern).
+### Phase 5: Goal Decomposition with Grounding
+**Rationale:** Bridge intent to execution. Highest-risk feature because prompt quality determines system quality.
+**Delivers:** Structured decomposition prompt grounded in file tree, post-decomposition validation (file existence checks), "elephant carpaccio" slicing (3-8 tasks per goal).
+**Addresses:** Pitfall 5 (hallucinated tasks) via file tree grounding and validation.
+**Avoids:** Over-decomposition (P12) via min task size heuristic.
 
-### Phase 2: LLM Endpoint Registry
-**Rationale:** Routing decisions need endpoint data. Must exist before scheduler queries it. Independent of enriched task format (can build in parallel with Phase 1).
+### Phase 6: Pipeline Dependencies (DAG scheduling)
+**Rationale:** Enables research-first decomposition and sequential task execution within goals.
+**Delivers:** `depends_on` field in TaskQueue, dependency filter in Scheduler (15 lines), HubFSM submits tasks with dependency links.
+**Addresses:** Differentiator: pipeline pipelining. Unlocks parallelizing research with other work.
+**Avoids:** Branch conflicts (P14) by serializing dependent tasks.
 
-**Delivers:** LlmRegistry GenServer with DETS persistence, ETS cache, health checking, model discovery. Admin HTTP endpoints. DetsBackup integration. Telemetry events.
+### Phase 7: Goal Completion Verification
+**Rationale:** Verify goal-level success criteria, not just task completion. Catches semantic gaps.
+**Delivers:** LLM-based verification prompt, two-judge verification (LLM + mechanical checks), retry/redecompose on gaps.
+**Addresses:** Ralph-style verification layer. Differentiator: goal completion verification.
+**Avoids:** False positives (P8) via requiring mechanical criteria and two-judge agreement.
 
-**Uses:** Req HTTP client from STACK.md for Ollama API calls. Follows existing GenServer patterns (TaskQueue, Config, Presence).
+### Phase 8: Improvement Scanning (deterministic only)
+**Rationale:** Turn idle time into value. Start with deterministic scans (test gaps, doc gaps, dead deps) to prove value before adding LLM-assisted scans.
+**Delivers:** SelfImprovement module, git-diff-based scanning, finding structure, HubFSM Improving state integration.
+**Addresses:** Differentiator: autonomous codebase improvement. Table stakes: Improving state.
+**Avoids:** Pitfall 2 (Sisyphus loop) via improvement history DETS table, per-file cooldown, anti-oscillation detection. Pitfall 9 (bikeshedding) via category-priority mapping.
 
-**Avoids:** Pitfall 3 (cold start unreliability) by using /api/ps not /api/tags, warm checks. Pitfall 9 (synchronous health checks block GenServer) through async Task + ETS cache. Pitfall 11 (9th DETS table) — consider config file + ETS instead.
+### Phase 9: HubFSM Contemplating State
+**Rationale:** Add strategic thinking after core loop proves stable. Lower priority than Improving.
+**Delivers:** Contemplating state, system state analysis, scalability reports, structured proposal generation.
+**Addresses:** Differentiator: future feature contemplation.
+**Avoids:** Vaporware proposals (P13) via scope constraints and feasibility checks.
 
-**Research flag:** MEDIUM — Ollama API well-documented, but health check timing and Tailscale mesh latency need validation. Suggest targeted research for optimal health check intervals and timeout values.
+### Phase 10: Tiered Autonomy (PR-only mode)
+**Rationale:** Risk-based merge decisions. Start conservative (all PRs) before enabling auto-merge.
+**Delivers:** Tier classification (auto-merge candidates vs PR), risk scoring (lines changed, files touched, test coverage), PR creation with risk assessment.
+**Addresses:** Differentiator: tiered autonomy. Prepares for auto-merge.
+**Avoids:** Pitfall 4 (auto-merge regressions) by starting PR-only. Enables gradual relaxation of thresholds.
 
-### Phase 3: Model-Aware Scheduler
-**Rationale:** Integration point. Wires ComplexityClassifier + LlmRegistry into scheduler assignment flow. Depends on Phase 1 (task enrichment) and Phase 2 (endpoint registry).
+### Phase 11: Pre-Publication Cleanup
+**Rationale:** Safety gate before open-sourcing. Can be built independently of core loop.
+**Delivers:** Deterministic secret scanning (regex patterns for API keys, tokens, paths, IPs), blocking report generation, cleanup task generation.
+**Addresses:** Differentiator: pre-publication repo cleanup. Security requirement.
+**Avoids:** Pitfall 10 (git history breaking) via fork-based scrubbing and coordination.
 
-**Delivers:** Scheduler modifications (classify + route + assign). Extended do_assign payload with model routing fields. Model-aware matching that extends capability subset matching with complexity tier filtering.
-
-**Implements:** Core model-aware routing architecture from ARCHITECTURE.md. Scheduler queries LlmRegistry for healthy endpoints, enriches tasks with assigned_model/assigned_endpoint.
-
-**Avoids:** Pitfall 2 (overfitting classifier) by defaulting to strongest model, explicit hints only. Pitfall 5 (breaking match loop) by adding routing as pre-enrichment step, NOT inside core match loop.
-
-**Research flag:** SKIP — extends proven scheduler patterns (do_match_loop capability matching, do_assign enrichment). No new domain concepts.
-
-### Phase 4: Sidecar Model Routing
-**Rationale:** Agent-side complement to hub-side routing. Consumes hub routing decisions. Depends on Phase 1 (enriched task format arrives at sidecar) and Phase 3 (hub sends routing fields).
-
-**Delivers:** model-router.js (strategy dispatch), wake.js interpolation variables, index.js handleTaskAssign branching, config.json schema extension.
-
-**Addresses:** Sidecar LLM backend routing from FEATURES.md (table stakes). Strategy pattern makes trivial/local/cloud/default paths independently testable.
-
-**Avoids:** Pitfall 7 (sidecar complexity explosion) — decompose FIRST (create lib/model-router.js, lib/llm-client.js) before adding features. Pitfall 8 (Ollama streaming gotchas) — start with stream: false, three-tier timeouts. Pitfall 10 (protocol version mismatch) — bump protocol_version to 2, feature detection in capabilities.
-
-**Research flag:** HIGH — Ollama streaming behavior, Claude API integration, timeout tuning all need validation. Suggest targeted research: "Ollama API integration patterns for Node.js" covering streaming, timeouts, model loading delays.
-
-### Phase 5: Sidecar Trivial Execution
-**Rationale:** Specialization of model routing. Zero-LLM-token path for mechanical operations. Depends on Phase 4 (model router dispatches to trivial strategy).
-
-**Delivers:** trivial-executor.js module, wire into model-router 'trivial' strategy. Security: allowlist of permitted commands, working directory constraints.
-
-**Addresses:** Sidecar trivial execution from FEATURES.md (table stakes). Enables cost savings on 60-70% of typical operations (git status, file writes).
-
-**Avoids:** Pitfall 13 (separate code path divergence) — implement as "null model" in routing framework, unified result format.
-
-**Research flag:** SKIP — execCommand() already exists in wake.js. This extends existing exec infrastructure with allowlist pattern.
-
-### Phase 6: Verification Infrastructure
-**Rationale:** Can build in parallel with Phases 2-5 since it only touches completion path (handleResult), not assignment path. Depends on Phase 1 (task has verification_steps field).
-
-**Delivers:** verification.js module, wire into index.js handleResult, extend task_complete with verification_result.
-
-**Implements:** Verification step library from FEATURES.md (differentiator). Deterministic checks: file_exists, test_passes, git_clean, command_succeeds.
-
-**Avoids:** Pitfall 4 (LLM judging own work) — mechanical checks FIRST (shell exit codes), LLM judgment SECOND (different model). Pitfall 12 (verification extends task beyond sweep threshold) — send task_progress during verification.
-
-**Research flag:** SKIP — verification is deterministic shell commands. Existing execCommand() infrastructure handles execution.
-
-### Phase 7: Self-Verification Loop (Optional Enhancement)
-**Rationale:** Highest complexity, most dependencies. Requires all other pieces working end-to-end. Can be deferred to post-launch if needed.
-
-**Delivers:** Build-verify-fix pattern in sidecar. After task completion, run verification steps. If verification fails AND attempts < max_verification_attempts, feed failure back to LLM for corrections.
-
-**Addresses:** Agent self-verification loop from FEATURES.md (competitive differentiator). Industry evidence (Vercel, Anthropic) shows dramatic success rate improvement.
-
-**Avoids:** Pitfall 4 (false confidence from self-assessment) through mechanical-first verification pipeline with explicit confidence thresholds.
-
-**Research flag:** HIGH — self-verification feedback loop patterns, retry budgets, verification-aware prompting all need deeper investigation. Suggest targeted research: "Agent self-verification and build-verify-fix patterns in 2025-2026."
+### Phase 12: Dashboard Integration and Polish
+**Rationale:** Visibility into autonomous brain. After core functionality works.
+**Delivers:** Hub state panel, goal progress tracking, API cost visualization, improvement history, FSM state timeline.
+**Addresses:** Observability. Human oversight of autonomous system.
 
 ### Phase Ordering Rationale
 
-**Critical path:** Enriched Task Format → LLM Registry → Model-Aware Routing → Sidecar Backend Routing → Trivial Execution → Verification Infrastructure → Self-Verification Loop
-
-**Why this order:**
-1. Task enrichment first: every other feature reads from these fields. Nothing works without the data model.
-2. Endpoint registry second: routing decisions need endpoint availability data. Can build parallel to Phase 1.
-3. Scheduler routing third: the integration point that wires classifier + registry into assignment flow.
-4. Sidecar routing fourth: the agent-side complement that executes hub routing decisions.
-5. Trivial execution fifth: specialization of sidecar routing for zero-token path.
-6. Verification infrastructure sixth: only touches completion path, can build parallel to Phases 2-5.
-7. Self-verification last: requires entire pipeline working end-to-end, highest complexity, most dependencies.
-
-**Grouping rationale:**
-- Phases 1-3 are hub-side foundation (data model, registry, routing logic)
-- Phases 4-5 are sidecar-side execution (routing strategies, trivial path)
-- Phases 6-7 are quality infrastructure (verification, self-correction)
-
-**Pitfall avoidance:**
-- Enrichment before routing prevents data dependency failures
-- Registry before scheduler prevents routing without endpoint data
-- Decomposition (Phase 4) before feature additions prevents complexity explosion
-- Mechanical verification (Phase 6) before self-assessment (Phase 7) prevents false confidence
+- Cost controls (Phase 1) MUST come first. Non-negotiable for safe autonomous operation.
+- ClaudeClient (Phase 2) before anything that calls Claude (decomposition, verification, scanning).
+- GoalBacklog (Phase 3) before HubFSM because FSM needs goals to process.
+- HubFSM (Phase 4) as 2-state MVP proves core loop before adding complexity.
+- Decomposition (Phase 5) after HubFSM core so there's an orchestrator to test against.
+- Dependencies (Phase 6) enable advanced decomposition patterns.
+- Verification (Phase 7) completes the Ralph loop (observe-act-verify).
+- Improvement scanning (Phase 8) only after FSM + decomposition + verification are stable. Deterministic scans only; defer LLM-assisted scans to follow-up.
+- Contemplating (Phase 9) lowest operational priority, build after Improving works.
+- Tiered autonomy (Phase 10) starts PR-only to prove pipeline before enabling auto-merge.
+- Cleanup (Phase 11) independent, can be built anytime but needed before publication.
+- Dashboard (Phase 12) after functional components exist to visualize.
 
 ### Research Flags
 
-**Needs deeper research:**
-- **Phase 2 (LLM Endpoint Registry):** Optimal health check intervals, Tailscale mesh latency characteristics, Ollama cold start timing. Pattern is established (existing GenServers with health checks), but timing parameters need validation.
-- **Phase 4 (Sidecar Model Routing):** Ollama streaming behavior, Claude API rate limits and error handling, timeout tuning for model loading vs. inference. Multiple integration points with external APIs.
-- **Phase 7 (Self-Verification Loop):** Verification-aware prompting techniques, retry budget strategies, feedback loop termination conditions. Emerging pattern (2025-2026 research) with evolving best practices.
+Phases likely needing deeper research during planning:
+- **Phase 4 (HubFSM Core):** GenServer vs gen_statem decision requires architectural analysis. State corruption handling needs careful design. Research gen_statem state timeouts and postpone semantics vs explicit GenServer timer management.
+- **Phase 5 (Goal Decomposition):** Prompt engineering for decomposition is critical and under-documented. First 10-20 decompositions need manual review to calibrate. Research LLM-based task decomposition quality metrics.
+- **Phase 8 (Improvement Scanning):** Git diff analysis and finding prioritization need domain expertise. Research existing codebase scanning tools (Credo, Dialyzer) for integration vs LLM-only approach.
 
-**Standard patterns (skip research):**
-- **Phase 1 (Enriched Task Format):** Schema evolution is well-documented in existing codebase. TASK-05 generation fencing shows the pattern.
-- **Phase 3 (Model-Aware Scheduler):** Extends existing scheduler patterns (capability matching, do_assign enrichment). No new domain concepts.
-- **Phase 5 (Sidecar Trivial Execution):** Extends existing wake.js execCommand() infrastructure with allowlist pattern.
-- **Phase 6 (Verification Infrastructure):** Deterministic shell commands using existing exec infrastructure.
+Phases with standard patterns (skip research-phase):
+- **Phase 2 (ClaudeClient):** Req HTTP client wrapping is well-documented. GenServer rate limiting follows existing RateLimiter.Sweeper pattern.
+- **Phase 3 (GoalBacklog):** DETS + GenServer pattern established by TaskQueue/RepoRegistry. Direct code reuse.
+- **Phase 6 (Pipeline Dependencies):** Simple list of task IDs, not complex graph traversal. TaskQueue extension is mechanical.
+- **Phase 11 (Pre-Publication Cleanup):** Regex-based scanning is deterministic. Pattern libraries exist (gitleaks, GitHub secret scanning).
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Req and ollama npm verified via official docs and npm/GitHub. Ollama API extensively documented with GitHub issues covering edge cases. Two runtime dependencies with clear rationale. |
-| Features | HIGH | Codebase analysis confirms existing patterns. Table stakes features (registry, enrichment, routing) are architectural necessities. Differentiators (self-verification, heuristics) grounded in industry research (RouteLLM, Anthropic evals). |
-| Architecture | HIGH | Builds on proven v1.1 architecture (22 supervision tree components, 9 DETS tables, battle-tested scheduler). All changes additive — optional fields, new GenServer, strategy dispatch. Critical principle (hub decides, sidecar executes) prevents split-brain. |
-| Pitfalls | HIGH | Top 5 critical pitfalls confirmed by direct codebase analysis (scheduler.ex do_match_loop, task_queue.ex submit, socket.ex destructuring) plus external research (RouterEval on heuristic overfitting, Ollama issues on cold start, LLM hallucination surveys on self-assessment). |
+| Stack | HIGH | Minimal additions, leverages existing v1.2 foundation. Req is mature, GenServer patterns proven in codebase. |
+| Features | MEDIUM-HIGH | Ralph loop pattern well-documented with multiple implementations. Goal decomposition patterns established but require prompt tuning. Tiered autonomy is emerging industry pattern. Codebase self-improvement is newer territory. |
+| Architecture | HIGH | Grounded in direct analysis of v1.2 source (23 files examined). HubFSM integration follows existing supervision tree patterns. No architectural pivots, only targeted extensions. |
+| Pitfalls | HIGH | Critical pitfalls (cost spiral, Sisyphus loop, state corruption, auto-merge regressions, hallucinated tasks) identified from production autonomous agent deployments (2025-2026). Prevention strategies concrete and testable. |
 
 **Overall confidence:** HIGH
 
-The recommended stack is minimal (2 runtime additions), the architecture is additive (backward compatible), the phase structure respects dependencies, and the critical pitfalls have concrete prevention strategies. Research draws from authoritative sources: official Ollama API docs, Anthropic engineering guides, peer-reviewed routing evaluation papers, and direct analysis of the proven v1.1 codebase.
-
 ### Gaps to Address
 
-**Ollama cold start timing:** Research confirms the 5-minute keep_alive default and documents model loading delays, but actual timing on the target hardware (RTX 3080 Ti 12GB with Qwen3 8B Q4_K_M) needs empirical measurement. Suggest: benchmark model load times during Phase 2 implementation to calibrate timeout values.
+- **Decomposition prompt quality:** The first 10-20 goal decompositions need manual review to tune prompts. Quality is highly dependent on prompt engineering. Gap: no golden test set for decomposition validation.
+- **Auto-merge threshold calibration:** The specific thresholds (20 lines, protected paths, tier classification) need production data calibration. Start conservative, relax gradually. Gap: no baseline for "safe" change size in this codebase.
+- **LLM verification reliability:** LLM-as-judge for goal completion is known to be unreliable. Two-judge (LLM + mechanical) mitigates but doesn't eliminate false positives. Gap: need re-open rate tracking to measure verification quality.
+- **Cost budget tuning:** Per-state token budgets ($10/hour Executing, $3/hour Improving, $2/hour Contemplating) are estimates. Actual cost depends on goal complexity and scanning frequency. Gap: need production cost tracking to tune budgets.
+- **Improvement oscillation detection:** Anti-oscillation via git diff comparison is heuristic-based. May have false positives/negatives. Gap: need production data to tune semantic similarity thresholds.
 
-**Tailscale mesh latency:** Documented ranges (1-5ms direct, 50-200ms via DERP relay), but actual performance depends on network topology. Health check intervals and timeout values should be tuned based on observed latency. Suggest: measure Tailscale ping times between hub and Ollama hosts during Phase 2.
-
-**Verification step timeout budgets:** Research establishes the pattern (mechanical checks before LLM judgment), but specific timeout values for compilation, test execution, and verification loops need tuning. Suggest: start with conservative defaults (180s model load, 60s generation, 30s per verification step) and adjust based on telemetry during Phase 6.
-
-**Self-verification feedback loop termination:** Anthropic evals guidance documents the pattern, but optimal retry budgets (max_verification_attempts) and failure modes (verification timeout, retry exhaustion) need validation. Suggest: defer Phase 7 to post-launch, collect verification data from Phase 6 mechanical checks to calibrate retry strategy.
+All gaps are operational tuning, not architectural unknowns. Ship conservative defaults, instrument heavily, tune based on production telemetry.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- AgentCom v1.1 shipped codebase — all source files in lib/agent_com/ and sidecar/ (direct analysis, 2026-02-12)
-- [Req v0.5.17 on Hex](https://hex.pm/packages/req) — version, dependencies, release date Jan 2026
-- [Req documentation](https://hexdocs.pm/req/Req.html) — streaming, retry, JSON support, Finch pool config
-- [ollama npm v0.6.3](https://www.npmjs.com/package/ollama) — version, 412 dependents
-- [ollama-js GitHub README](https://github.com/ollama/ollama-js) — API methods, host config, format parameter
-- [Ollama API docs on GitHub](https://github.com/ollama/ollama/blob/main/docs/api.md) — all endpoints, /api/ps response fields including size_vram
-- [Ollama releases](https://github.com/ollama/ollama/releases) — v0.15.6 current as of Feb 7, 2026
-- [Ollama FAQ](https://docs.ollama.com/faq) — keep_alive default, parallel request memory multiplication
-- [Anthropic: Effective Context Engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) — task context structure, minimal high-signal tokens
-- [Anthropic: Demystifying Evals for AI Agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) — success criteria, deterministic vs LLM graders
+- AgentCom v1.2 codebase -- lib/agent_com/*.ex, sidecar/lib/, .planning/ (direct code analysis, 2026-02-12)
+- [snarktank/ralph](https://github.com/snarktank/ralph) -- Autonomous AI agent loop implementation (verified via WebFetch)
+- [vercel-labs/ralph-loop-agent](https://github.com/vercel-labs/ralph-loop-agent) -- Continuous Autonomy for AI SDK (verified via WebFetch)
+- [Ralph Wiggum Loop - beuke.org](https://beuke.org/ralph-wiggum-loop/) -- Detailed loop structure, stopping criteria, failure modes (verified via WebFetch)
+- [Everything is a Ralph Loop - ghuntley.com](https://ghuntley.com/loop/) -- Core insight: monolithic, single-process-per-task, context engineering (verified via WebFetch)
+- [From ReAct to Ralph Loop - Alibaba Cloud](https://www.alibabacloud.com/blog/from-react-to-ralph-loop-a-continuous-iteration-paradigm-for-ai-agents_602799) -- Ralph shifts control from LLM judgment to external verification (verified via WebFetch)
+- [GenStateMachine v3.0.0 documentation](https://hexdocs.pm/gen_state_machine/GenStateMachine.html) -- evaluated for FSM implementation
+- [Anthropix v0.6.2 documentation](https://hexdocs.pm/anthropix/Anthropix.html) -- Elixir Claude API client
+- [Claude API Rate Limits](https://docs.claude.com/en/api/rate-limits) -- RPM, ITPM, OTPM rate limiting model
 
 ### Secondary (MEDIUM confidence)
-- [RouteLLM (LMSYS)](https://lmsys.org/blog/2024-07-01-routellm/) — open-source complexity-based routing, 85% cost reduction
-- [RouterEval benchmark paper](https://aclanthology.org/2025.findings-emnlp.208.pdf) — heuristic overfitting failure mode
-- [When Routing Collapses: Degenerate Convergence](https://arxiv.org/html/2602.03478) — routing collapse analysis
-- [LLM routing in production (LogRocket)](https://blog.logrocket.com/llm-routing-right-model-for-requests) — heuristic classification, cascade fallback
-- [LLM Agent Hallucination Survey (2025)](https://arxiv.org/html/2509.18970v1) — agent-specific hallucination taxonomy
-- [Ollama GitHub issue #4350](https://github.com/ollama/ollama/issues/4350) — model loading timeout
-- [Ollama GitHub issue #7685](https://github.com/ollama/ollama/issues/7685) — streaming timeout behind gateway
-- [Ollama GitHub issue #9084](https://github.com/ollama/ollama/issues/9084) — tools breaking streaming
+- [Elephant Carpaccio - Henrik Kniberg](https://blog.crisp.se/2013/07/25/henrikkniberg/elephant-carpaccio-facilitation-guide) -- Thin vertical slices, nano-incremental development
+- [Agent Goal Decomposition - SparkCo](https://sparkco.ai/blog/mastering-agent-goal-decomposition-in-ai-systems) -- Planner agent pattern, dependency graphs (verified via WebFetch)
+- [GoalAct - NCIIP 2025 Best Paper](https://github.com/cjj826/GoalAct) -- Hierarchical decomposition into high-level skills (peer-reviewed)
+- [Eight Trends - Claude Blog 2026](https://claude.com/blog/eight-trends-defining-how-software-gets-built-in-2026) -- Human oversight model: 60% AI collaboration, 0-20% full delegation (official Anthropic)
+- [State Timeouts with gen_statem - DockYard](https://dockyard.com/blog/2020/01/31/state-timeouts-with-gen_statem) -- gen_statem timer patterns
+- [Preventing Infinite Loops and Cost Spirals - CodieSHub](https://codieshub.com/for-ai/prevent-agent-loops-costs)
+- [LLM-based Agents Suffer from Hallucinations - arXiv](https://arxiv.org/html/2509.18970v1)
+- [Why Do Multi-Agent LLM Systems Fail - Galileo](https://galileo.ai/blog/multi-agent-llm-systems-fail)
+- [Why Do Multi-Agent LLM Systems Fail - arXiv](https://arxiv.org/html/2503.13657v1) -- 14 distinct failure modes
+- [How Task Decomposition Makes AI More Affordable - Amazon Science](https://www.amazon.science/blog/how-task-decomposition-and-smaller-llms-can-make-ai-more-affordable)
+- [Scrubbing Secrets with Gitleaks and git filter-repo](https://medium.com/@sreejithv13055/scrubbing-secrets-a-practical-poc-using-gitleaks-and-git-filter-repo-08c64b8d246c)
+- [git-filter-repo Documentation](https://www.mankier.com/1/git-filter-repo)
 
 ### Tertiary (LOW confidence)
-- [IBM LLM Router cost savings](https://sourceforge.net/software/llm-routers/) — 85% cost reduction claim (cited in multiple sources but unverified primary)
-- [Agents At Work: 2026 Playbook](https://promptengineering.org/agents-at-work-the-2026-playbook-for-building-reliable-agentic-workflows/) — verification-aware planning patterns (community guide)
+- [Autonomous Enterprise 2026 - CNCF](https://www.cncf.io/blog/2026/01/23/the-autonomous-enterprise-and-the-four-pillars-of-platform-control-2026-forecast/) -- Platform control pillars (industry forecast)
+- [OpenAgentSafety Framework](https://arxiv.org/pdf/2507.06134) -- Comprehensive framework for agent safety evaluation (academic)
+- [Agents At Work: 2026 Playbook](https://promptengineering.org/agents-at-work-the-2026-playbook-for-building-reliable-agentic-workflows/) -- Verification-aware planning patterns (community guide)
 
 ---
 *Research completed: 2026-02-12*

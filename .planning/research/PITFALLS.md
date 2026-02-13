@@ -1,418 +1,380 @@
-# Domain Pitfalls: Smart Agent Pipeline (v1.2)
+# Domain Pitfalls
 
-**Domain:** Adding LLM mesh routing, model-aware task scheduling, enriched task format, and agent self-verification to existing Elixir/BEAM + Node.js distributed agent coordination system
+**Domain:** Adding autonomous Hub FSM brain to existing distributed agent coordination system
 **Researched:** 2026-02-12
-**Overall Confidence:** HIGH (codebase analysis of all core modules + Ollama API documentation + distributed systems research + LLM routing literature)
+**Codebase analyzed:** AgentCom v1.2 (Elixir/BEAM hub ~22K LOC, Node.js sidecars ~4.5K LOC, 10 DETS tables, 24 supervised GenServers, PubSub coordination, 5 AI agents on Tailscale mesh)
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause rewrites, broken production pipelines, or cascading failures across the existing system.
+Mistakes that cause rewrites, data loss, or runaway costs.
 
 ---
 
-### Pitfall 1: Enriching the Task Format Breaks the Entire Existing Pipeline
+### Pitfall 1: Token Cost Spiral from Autonomous Thinking
 
-**What goes wrong:** The current task map in `TaskQueue` has a flat structure with 18 fields (id, description, metadata, priority, status, assigned_to, generation, etc.). Adding enrichment fields (context, success_criteria, verification_steps, complexity_class, model_assignment, llm_endpoint) changes the shape of every task in DETS. Existing tasks in the `task_queue.dets` and `task_dead_letter.dets` files do not have these fields. The scheduler, socket, sidecar, and dashboard all pattern-match or destructure task maps -- every consumer breaks when fields are missing or unexpected.
+**What goes wrong:** The Hub FSM enters Contemplating or Improving and makes Claude API calls for strategic thinking -- goal decomposition, improvement identification, completion verification, contemplation proposals. Without hard caps, a single contemplation session can burn $50-200 in API credits. The problem compounds because the LLM may identify improvements that require more LLM calls to evaluate, creating recursive spending. A contemplation that spawns 10 improvement scans, each requiring Claude analysis, each producing 5 sub-tasks needing decomposition -- the cost tree fans out exponentially.
 
-**Why it happens:** The task map is a plain Elixir map (not a struct), so there is no compile-time enforcement of field presence. The `TaskQueue.submit/1` handler (line 206-229 of task_queue.ex) builds the task map inline with `Map.get` fallbacks. The `Scheduler.do_assign/2` (line 229-268 of scheduler.ex) extracts `task_id`, `description`, `metadata`, `generation` from the task and pushes them to the socket. The `Socket.handle_info({:push_task, task})` (line 170-185 of socket.ex) reads these fields with `||` fallbacks. The sidecar `handleTaskAssign` (line 506-560 of sidecar/index.js) expects `task_id`, `description`, `metadata`, `generation`, `assigned_at`. Every layer in the pipeline has its own assumption about what a task looks like.
+**Why it happens:** The Hub FSM is designed to think autonomously. Unlike the existing sidecar execution (where a human submitted a task with known scope), the hub generates its own work. There is no human gating the volume of LLM calls. The existing `cost-calculator.js` tracks cost per task execution, but the Hub's strategic thinking happens outside the task pipeline -- it is meta-work with no natural cost boundary.
 
-**Consequences:**
-- Tasks persisted before the enrichment update lack new fields; `Map.get(task, :complexity_class)` returns `nil`, which breaks routing logic that pattern-matches on complexity
-- Sidecar crashes or silently ignores new fields it does not understand (metadata is a catch-all map, but new top-level fields are not)
-- Dashboard renders break if it tries to display verification steps or model assignment for old tasks
-- Task history entries become inconsistent -- some have enrichment data, some do not
-- DETS stores the raw map term, so old records persist indefinitely with the old schema
+**Warning signs (concrete examples):**
+- Hub enters Contemplating, generates 12 improvement proposals at ~$0.50 each ($6), then decomposes each into 4 tasks at ~$0.30 each ($14.40), then verifies each decomposition at ~$0.20 ($9.60) = $30 for a single contemplation cycle
+- Hub identifies "cost tracking could be improved" as an improvement, spending $5 in API calls to analyze its own API spending patterns -- meta-loop
+- Weekend operation: 48 contemplation cycles x $30 each = $1,440 unattended
 
 **Prevention:**
-- Define enrichment fields as OPTIONAL with sane defaults in `TaskQueue.submit/1` -- every new field must have a fallback: `complexity_class: Map.get(params, :complexity_class, "unclassified")`, `model_assignment: nil`, `verification_steps: []`
-- Add a `task_version` field to the task map (start at 2, existing tasks are implicitly version 1) -- this allows downstream code to branch on version
-- Carry enrichment data INSIDE the existing `metadata` map for the sidecar transport layer, avoiding new top-level fields in the WebSocket protocol: `metadata.enrichment.complexity_class`, `metadata.enrichment.model_assignment`
-- Write a one-time migration function that runs on startup: scan DETS, backfill missing fields with defaults for any task in `queued` or `assigned` status
-- Update validation schemas LAST (after hub and sidecar are both handling the new fields) to avoid rejecting messages from lagging sidecars
+1. **CostLedger GenServer.** Track cumulative Claude API spend per hour/day/session. The Hub FSM checks the ledger before every API call. If budget exhausted, FSM transitions to Resting regardless of queue state. This is new infrastructure the Hub phase must build.
+2. **Per-state token budgets.** Executing = $10/hour, Improving = $3/hour, Contemplating = $2/hour. The Hub checks budget before entering each state.
+3. **Tiered model usage for meta-thinking.** Use Haiku ($1/$5 per M tokens) for triage ("Is this worth decomposing?"), Sonnet ($3/$15) for decomposition, Opus ($5/$25) only for final verification of complex completions. The existing complexity tier routing (trivial/standard/complex in `tier_resolver.ex`) should extend to the Hub's own thinking.
+4. **Cost telemetry.** Emit `[:agent_com, :hub_fsm, :api_call]` with token counts and estimated cost. Wire into existing Alerter with a `hub_api_spend` alert rule. The Alerter (5 existing rules) supports adding new rules dynamically.
+5. **Hard cap in code, not prompts.** The LLM cannot be trusted to honor "don't spend more than $X" instructions. The CostLedger must be a GenServer that the Hub FSM queries synchronously before every API call.
 
-**Detection:**
-- Tasks stuck in `queued` status because scheduler cannot classify them
-- Sidecar logs showing `undefined` for new fields
-- Dashboard errors when rendering enriched tasks
-- `FunctionClauseError` in pattern matches that expect new fields to exist
+**Detection:** `hub_fsm_api_cost_usd` metric in MetricsCollector. Dashboard panel showing Hub API spend over time, separate from task execution costs. Alert when hourly spend exceeds threshold.
 
-**Confidence:** HIGH -- directly observed: task map is untyped, every layer destructures independently, no migration mechanism exists.
+**Phase to address:** Hub FSM core phase. Cost controls must exist before the FSM makes its first API call. Do not ship autonomous thinking without budget limits.
 
-**Phase impact:** Must be the FIRST thing addressed in v1.2. Every other feature (routing, verification, model assignment) depends on the enriched task format.
+**Confidence:** HIGH. Every production autonomous LLM agent deployment from 2025-2026 cites uncontrolled API spending as the most common and most expensive failure mode. The CodieSHub prevention guide states: "Hard caps on iterations, tokens, time, and spend are non-negotiable in production."
 
 ---
 
-### Pitfall 2: Complexity Classification Overfits to Keyword Heuristics
+### Pitfall 2: Infinite Improvement Loop (The Sisyphus Pattern)
 
-**What goes wrong:** The scheduler needs to classify tasks as trivial/simple/complex to route them to the appropriate model (local Ollama vs. cloud Claude). The natural first implementation is keyword-based heuristics: if the description contains "rename", "delete", "move" => trivial; if it mentions "refactor", "architect", "design" => complex. This approach overfits to category heuristics and misroutes tasks in both directions -- simple tasks sent to expensive Claude, complex tasks sent to weak local models that produce garbage.
+**What goes wrong:** The Hub's Improving state scans a codebase, identifies improvement X, generates a task, the task gets executed, and on the next scan the Hub identifies improvement Y (caused by improvement X). Or worse: the Hub identifies X as an improvement, executes it, then identifies "undo X" as the next improvement. The system oscillates between two states forever, consuming resources and producing no net value.
 
-**Why it happens:** 2025-2026 research on LLM routing confirms this is the dominant failure mode. Empirical analyses reveal that many routers overfit to category heuristics, sending nearly all coding and math queries to high-cost models regardless of actual complexity. A task described as "rename the database migration file" (trivial) and "rename the entire authentication architecture" (complex) both contain "rename" but require vastly different capability levels. The scheduler has no training data -- v1.0/v1.1 treated all tasks as equivalent, so there is zero historical signal about task complexity.
+**Warning signs (concrete examples):**
+- Scan 1: "Extract helper function `format_timestamp/1` from `scheduler.ex`" -- executed, function extracted
+- Scan 2: "Inline trivial helper `format_timestamp/1` for readability" -- executed, function inlined
+- Scan 3: "Extract helper function `format_timestamp/1` from `scheduler.ex`" -- loop detected too late
+- Git history: commits alternate between "extract" and "inline" changes to the same code
 
-**Consequences:**
-- Cost explosion: trivial git operations sent to Claude burn API credits for no benefit
-- Quality collapse: complex design tasks sent to a 7B local model produce unusable results that fail self-verification and retry endlessly
-- Retry storms: misrouted complex tasks fail, retry (up to `max_retries: 3`), fail again on the same weak model, dead-letter
-- False confidence: the classifier "works" on test cases but fails on real task diversity
+**Why it happens:** LLMs have no stable "good enough" threshold. Each scan produces a fresh context window with no memory of previous improvements. The LLM sees current code state and generates opinions about it. Those opinions are not deterministic -- the same code can trigger different improvement suggestions on different runs. The existing system has no improvement history tracking.
+
+**Consequences:** Task queue fills with contradictory improvement tasks. Agents churn on improvements that cancel each other out. Git history becomes a mess of "refactor X" / "refactor X back" commits. If auto-merge is enabled for small improvements, main branch accumulates pointless churn.
 
 **Prevention:**
-- Start with a WHITELIST approach, not a classifier. Explicitly define trivial operations by task type, not description parsing: `{type: "git_checkout"}`, `{type: "file_move"}`, `{type: "status_check"}` => trivial. Everything else defaults to the strongest available model
-- Use the `metadata` field to carry explicit complexity hints from the task submitter (the human or upstream agent knows if this is trivial): `metadata.complexity: "trivial" | "standard" | "complex"`
-- Default to Claude (expensive but correct) and DEMOTE to local Ollama only when explicitly flagged or when the task type is on the trivial whitelist -- this is the safe direction because an overqualified model wastes money but still succeeds, while an underqualified model fails
-- Defer ML-based classification until you have 50+ completed tasks with outcome data to train against (the same threshold already established for the Flere-Imsaho PR reviewer role)
-- Log every routing decision with the classification rationale for post-hoc analysis
+1. **Improvement history with deduplication.** New DETS table (or namespaced key in a hub_state table) storing attempted improvements: `{hash_of_description, status, timestamp, outcome, files_touched}`. Before generating a new improvement task, check if a semantically similar improvement was attempted in the last N hours.
+2. **Improvement cooldown per file/module.** After improving file X, do not scan file X again for at least 24 hours. Track last-improved timestamps per file path.
+3. **Net-value gate.** Before committing an improvement, compare before/after codebase state against objective metrics: test count, test pass rate, total line count, number of functions. If metrics are neutral or worse, reject the improvement.
+4. **Improvement budget per scan cycle.** Limit the Improving state to generating at most 3-5 improvement tasks per cycle. After that, transition to Contemplating or Resting.
+5. **Anti-oscillation detection.** If the same file is modified by two consecutive improvement tasks, flag and halt. Compare git diffs of consecutive improvements to the same file -- if the second diff is the inverse of the first, block it.
 
-**Detection:**
-- Dead-letter rate increases after enabling routing (tasks that used to succeed now fail because they were sent to weaker models)
-- Token cost does not decrease (heuristics routing everything to Claude anyway)
-- Completion time variance increases dramatically (some tasks fast on local, some impossibly slow)
+**Detection:** Track the ratio of improvements accepted vs. reverted. Monitor git log for "undo" or "revert" patterns in auto-generated commits. Dashboard chart: improvements per file over time.
 
-**Confidence:** HIGH -- confirmed by [RouterEval benchmark research](https://aclanthology.org/2025.findings-emnlp.208.pdf) and [routing collapse analysis](https://arxiv.org/html/2602.03478) showing this is the dominant failure mode in LLM routing systems.
+**Phase to address:** Improvement scanning phase. The history table and cooldown must ship with the scanner from day one.
 
-**Phase impact:** Model-aware scheduler routing phase. Must resist the temptation to build a "smart" classifier on day one.
+**Confidence:** HIGH. The Ralph Loop pattern explicitly addresses this by using external verification (file system state, test results) rather than LLM self-assessment. Geoffrey Huntley's work on Ralph Loops emphasizes: "The self-assessment mechanism of LLMs is unreliable -- it exits when it subjectively thinks it is 'complete' rather than when it meets objectively verifiable standards."
 
 ---
 
-### Pitfall 3: Ollama Model Cold Start Makes Health Checks Unreliable
+### Pitfall 3: Hub FSM State Corruption from Concurrent Events
 
-**What goes wrong:** The LLM endpoint registry health-checks Ollama instances across the Tailscale mesh. A health check calls `GET /api/tags` or `GET /api/ps` and marks the endpoint as healthy. But "healthy" (Ollama process running, API responding) does not mean "ready to serve inference." Ollama unloads models after 5 minutes of inactivity by default. The first real request after idle triggers model loading, which takes 10-120 seconds depending on model size and hardware. During this loading time, subsequent requests queue (up to `OLLAMA_MAX_QUEUE=512`) or return 503 errors. The health check says "green" but the endpoint is effectively unavailable for 30+ seconds.
+**What goes wrong:** The Hub FSM is a single GenServer receiving events from multiple sources: PubSub task events, timer-based state transitions, API-triggered goal submissions, improvement scan completions. If the FSM processes a timer-based transition to Resting while simultaneously receiving a goal-complete event that should trigger a transition to Executing, the state machine enters an inconsistent state or silently drops the goal-complete event.
 
-**Why it happens:** Ollama's health model is process-level, not model-level. `GET /` returns 200 if the Ollama daemon is running. `GET /api/tags` returns the list of downloaded models, not loaded models. `GET /api/ps` returns currently loaded models -- this is the correct endpoint, but models expire from memory after the `keep_alive` period (default: 5 minutes). A hub health check at minute 4 sees the model loaded; a task routed at minute 6 hits a cold start. The health check becomes a lagging indicator, not a leading one.
+**Warning signs (concrete examples):**
+- Hub is in Executing state. A `Process.send_after` Resting timer fires (from the previous cycle). The GenServer mailbox has: `[:resting_timeout, {:goal_complete, goal_id}]`. The `:resting_timeout` is processed first, transitions to Resting, and the `:goal_complete` event hits a "wrong state" guard and is silently dropped. The goal is never marked complete.
+- Hub receives two PubSub events in quick succession: `{:task_event, :task_completed}` (last task in a goal) and `{:improvement_scan_complete, results}`. Both trigger state transitions. The second event arrives before the first transition completes, causing the FSM to attempt an invalid transition.
 
-**Consequences:**
-- Tasks routed to "healthy" Ollama endpoints timeout waiting for model load (default sidecar confirmation timeout is 30 seconds -- model load for a 30B model can exceed 120 seconds)
-- Thundering herd: if all 5 agents simultaneously get tasks routed to the same Ollama instance, parallel model loads exhaust VRAM. Ollama handles this by queuing, but the queue depth causes cascading timeouts
-- False failover: health check marks endpoint unhealthy after timeout, routes to cloud Claude (expensive), then Ollama finishes loading and becomes idle again -- oscillating between cold-start failure and expensive fallback
-- Parallel requests during loading multiply context memory: "parallel request processing for a given model results in increasing the context size by the number of parallel requests" -- 4 parallel requests on a 2K context becomes 8K context with doubled memory allocation
+**Why it happens:** The existing `AgentFSM` is per-agent (one process per agent, events come from one WebSocket). The Hub FSM is a singleton receiving events from the entire system -- much higher event volume and diversity. The `AgentFSM` already handles stale timers (line 493 of `agent_fsm.ex`: ignoring acceptance timeouts for wrong task IDs). The Hub FSM needs similar handling but with a larger state space and more timer types.
+
+**Consequences:** Hub stuck in wrong state. Goals complete but FSM does not transition. Resting timer interrupts active execution. FSM transitions to Improving while still Executing, causing improvement scanner to run on code that is mid-modification by an active task.
 
 **Prevention:**
-- Use `GET /api/ps` (not `/api/tags`) for health checks -- this shows models currently loaded in memory, their VRAM usage, and their expiration time
-- Implement a "warm" check: an endpoint is `healthy` only if `GET /api/ps` shows the expected model loaded AND the model's expiration time is more than 60 seconds away
-- Send periodic keep-alive requests to critical Ollama endpoints: a lightweight `POST /api/generate` with `keep_alive: "30m"` and a tiny prompt keeps the model loaded without burning significant GPU time
-- Set `OLLAMA_KEEP_ALIVE=-1` on dedicated inference hosts to prevent automatic unloading (but be aware of [GitHub issue #9410](https://github.com/ollama/ollama/issues/9410) where this setting may not be fully reliable)
-- Implement request queuing at the hub level: do not route more than 2 concurrent tasks to the same Ollama endpoint (use the model's loaded context to determine capacity)
-- Add a `model_load_timeout_ms` per endpoint in the registry that is distinct from the request timeout -- model loading should have a 180-second timeout, while generation should have a 60-second timeout
+1. **Consider `gen_statem` instead of GenServer.** Erlang's `:gen_statem` provides state-specific callbacks, state timeouts (auto-cancelled on state change), and `postpone` semantics (deferring events to a later state). The DockYard article on state timeouts shows how `:gen_statem` eliminates the stale-timer problem entirely.
+2. **If using GenServer:** Implement a transition function identical to `AgentFSM.transition/2` (line 508) with a `@valid_transitions` map. Guard every `handle_info` and `handle_cast` with a state check. Cancel ALL pending timers on every state transition (not just one timer as in `agent_fsm.ex`).
+3. **Event queuing with priorities.** If an event arrives during a state where it cannot be processed, queue it (do not drop it). Process queued events after completing the current state's work. `gen_statem`'s `postpone` action handles this automatically.
+4. **Watchdog timer.** If the Hub FSM has been in any single state for more than a configurable maximum duration (e.g., 2 hours in Executing, 30 minutes in Contemplating), force-transition to Resting with a warning log. This prevents stuck states.
+5. **State transition telemetry.** Emit `[:agent_com, :hub_fsm, :transition]` on every state change with `from_state`, `to_state`, `trigger`, `duration_in_previous_state_ms`. Wire into dashboard.
 
-**Detection:**
-- First task after idle period consistently fails with timeout
-- Ollama endpoint oscillates between healthy and unhealthy in the registry
-- Token costs spike because cold-start failures cascade to cloud fallback
-- Sidecar logs showing `confirmation_timeout` (existing 30-second timeout is too short for model loading)
+**Detection:** Dashboard panel showing current Hub FSM state with time-in-state. Alert if time-in-state exceeds threshold. Log every transition with the trigger that caused it.
 
-**Confidence:** HIGH -- confirmed by [Ollama FAQ](https://docs.ollama.com/faq) documenting 5-minute keep_alive default, [Ollama GitHub issue #4350](https://github.com/ollama/ollama/issues/4350) documenting model loading timeout problems, and [Ollama /api/ps documentation](https://docs.ollama.com/api/ps) showing runtime model state.
+**Phase to address:** Hub FSM core phase. This is architectural and must be decided before implementation begins.
 
-**Phase impact:** LLM endpoint registry phase. Health checking must be model-aware, not just process-aware.
+**Confidence:** HIGH. The existing codebase already demonstrates the timer race pattern in `AgentFSM` (stale acceptance timeout handling). The Hub FSM's event diversity guarantees this problem will manifest without explicit handling.
 
 ---
 
-### Pitfall 4: Self-Verification is an LLM Judging Its Own Work (Dunning-Kruger for Machines)
+### Pitfall 4: Auto-Merge Regression Introduction
 
-**What goes wrong:** Agent self-verification means the same LLM (or same-class model) that produced the output also evaluates whether the output meets success criteria. This creates a systematic bias: the model that confidently generated wrong code will confidently verify it as correct. Research shows that LLMs trained with next-token objectives and common leaderboards learn to reward confident guessing over calibrated uncertainty. A model that hallucinated a function name will also hallucinate that the function name is correct when asked to verify.
+**What goes wrong:** The Hub's tiered autonomy feature auto-merges "small" improvements (style fixes, docs, simple refactors) without human review. An improvement passes verification checks (tests pass, files exist, git clean) but introduces a subtle regression: a refactored function changes return value semantics, a "style fix" changes indentation that breaks YAML parsing, a "documentation update" overwrites important context.
 
-**Why it happens:** The proposed architecture has the sidecar call an LLM to do work, then call the same (or similar) LLM to check the work against success criteria. The verification LLM has the same training biases, the same knowledge gaps, and no access to ground truth (it cannot compile the code, run tests, or check the filesystem). It is asked "does this output satisfy these criteria?" and generates a plausible-sounding "yes" because that is what LLMs do -- generate plausible text.
+**Warning signs (concrete examples):**
+- Hub auto-merges "simplify `normalize_capabilities/1` in `agent_fsm.ex`" -- the simplification removes the `nil` rejection clause (line 537). Now `nil` capabilities leak through, causing downstream `agent_matches_task?/2` to crash when matching against `nil`.
+- Hub auto-merges "update error messages in `task_queue.ex`" -- changes `:not_assigned` error atom to `"not_assigned"` string. The `reclaim_task/1` caller pattern-matches on the atom and silently falls through to a catch-all.
+- Tests pass because no test covers the `nil` capability case or the error atom matching.
 
-**Consequences:**
-- Bad PRs submitted with "verification passed" status, creating false confidence
-- Subtle errors compound: a misnamed variable passes self-verification, the next task builds on the wrong name, the third task cannot find the function and fails
-- Self-verification adds latency and cost (an additional LLM call per task) for near-zero actual quality improvement on tasks the model was already wrong about
-- The system appears to work during testing (models get easy test tasks right and also verify them correctly) but fails in production on harder tasks where verification is most needed
+**Why it happens:** The existing verification system (`verification.js`) runs mechanical checks: `file_exists`, `test_passes`, `git_clean`, `command_succeeds`. These are necessary but not sufficient for semantic regressions. The LLM-generated code passes tests because tests do not cover every edge case. Test suites are never complete.
+
+**Consequences:** Main branch accumulates subtle regressions. Because changes are small and auto-merged, they are hard to bisect. The compounding effect of many small regressions makes the codebase progressively worse while each individual change looks harmless.
 
 **Prevention:**
-- **Ground truth verification first, LLM verification second.** The verification pipeline should prioritize mechanical checks: does the code compile? Do existing tests pass? Does `git diff` show changes in the expected files? Can the changed file be parsed? These are cheap, fast, and 100% reliable
-- Structure success criteria as a checklist with two tiers:
-  - **Mechanical checks** (the sidecar runs these directly -- zero LLM tokens): file exists, tests pass, no syntax errors, branch is clean, diff is non-empty
-  - **Semantic checks** (LLM evaluates these -- but only after mechanical checks pass): does the implementation match the intent? Are there edge cases?
-- Use a DIFFERENT model for verification than for generation when possible. If generation used a 7B local model, verify with Claude. If generation used Claude, verify with a different Claude call with explicit adversarial prompting ("find problems with this code, assume it has bugs")
-- Set a verification confidence threshold: the LLM must express specific concerns, not just "LGTM." Require the verification prompt to output a structured JSON with `{passed: bool, issues: [{severity, description}], confidence: float}` -- reject if confidence is below threshold or if issues list is empty (suspiciously clean verification = likely rubber-stamped)
-- Log verification decisions alongside outcomes. After 50+ tasks, analyze: did tasks that passed self-verification actually succeed? This builds the feedback loop needed for calibration
+1. **Never auto-merge to main directly.** Even "safe" auto-merges go to an integration branch (`hub-improvements`). Batch merge to main on a schedule or after human spot-check.
+2. **Conservative size gates.** Auto-merge only if: fewer than 10 lines changed, zero new files, zero deleted files, all existing tests pass, no changes to public function signatures (detect via AST comparison for `.ex` files). Any condition failure creates a PR instead.
+3. **Semantic diff analysis.** Before auto-merging, compare before/after test counts. If any test was removed or renamed, escalate to PR. If any function signature changed, escalate.
+4. **Auto-merge quota.** Maximum 3 auto-merges per day per repo. After that, all improvements become PRs. Limits blast radius.
+5. **Auto-revert mechanism.** Tag each auto-merge commit with `[auto-merge] hub-improvement-{id}`. Run full test suite 5 minutes after merge. If tests fail, auto-revert immediately and alert.
+6. **Start with PR-only mode.** Ship the entire improvement pipeline with PR creation only. Add auto-merge as a later enhancement after the PR pipeline proves reliable with 20+ successful improvements.
 
-**Detection:**
-- Self-verification pass rate above 95% (suspiciously high -- means it is rubber-stamping)
-- PRs that passed verification getting rejected by human reviewers
-- Verification always passes when the same model is used for generation and verification
-- Verification latency/cost not correlated with task complexity (all tasks take the same time to verify regardless of difficulty)
+**Detection:** Track test count over time. Alert if test count decreases after auto-merge. Track test execution time -- unexpected increases indicate added complexity.
 
-**Confidence:** HIGH -- confirmed by [2025 survey on agent hallucinations](https://arxiv.org/html/2509.18970v1), [Chain-of-Verification research](https://learnprompting.org/docs/advanced/self_criticism/chain_of_verification), and [HaluGate token-level verification](https://blog.vllm.ai/2025/12/14/halugate.html) all documenting the limitations of LLM self-judgment.
+**Phase to address:** Tiered autonomy phase. Start with PR-only; add auto-merge later.
 
-**Phase impact:** Self-verification phase. Design verification as a mechanical-first pipeline, not an LLM-judgment pipeline.
+**Confidence:** HIGH. GitLab's AI Merge Agent (November 2025) reports 85% success rate -- meaning 15% require human intervention. For a smaller system without GitLab's sophistication, the failure rate will be higher.
 
 ---
 
-### Pitfall 5: Touching the Scheduler Breaks the Battle-Tested Assignment Loop
+### Pitfall 5: Goal Decomposition Hallucination (Phantom Tasks)
 
-**What goes wrong:** The current `Scheduler.try_schedule_all/1` and `do_match_loop/2` are simple, stateless, and proven correct across v1.0 and v1.1 (48 + 153 commits, smoke tested). Adding model-aware routing means the scheduler must now consider: task complexity class, available LLM endpoints, endpoint health status, model capabilities, agent proximity to endpoints, and current endpoint load. This turns a 100-line stateless matcher into a complex scheduling engine with external state dependencies (endpoint registry queries mid-loop). A bug in the new routing logic causes ALL task assignment to fail, not just LLM-routed tasks.
+**What goes wrong:** The Hub FSM uses Claude to decompose a high-level goal into concrete tasks. The LLM generates tasks referencing files, modules, or patterns that do not exist. Example: "Refactor `lib/agent_com/error_handler.ex` to use structured error types" -- but `error_handler.ex` does not exist. The task enters the queue, gets assigned, and the agent either fails or worse, creates the fictional file from scratch.
 
-**Why it happens:** The current scheduler is beautifully simple: query idle agents, query queued tasks, match by capabilities, assign. It holds no state (`%{}`). Adding model routing means the scheduler must:
-1. Classify each task's complexity (new logic)
-2. Query the endpoint registry for available models (new dependency)
-3. Match task complexity to model capability (new matching dimension)
-4. Consider endpoint health and load (new external state)
-5. Pick the best agent based on proximity to the endpoint (new optimization)
+**Warning signs (concrete examples):**
+- Goal: "improve error handling." Decomposed task: "Add Ecto changesets to the Agent schema" -- this project does not use Ecto.
+- Goal: "add monitoring." Decomposed task: "Configure Prometheus exporter in `config/prod.exs`" -- there is no `prod.exs` in this project (single `config.exs`).
+- Goal: "clean up deprecated code." Decomposed task: "Remove usage of `Phoenix.Channel`" -- this project uses raw WebSocket via WebSock, not Phoenix Channels.
 
-Each of these is a new failure mode. If the endpoint registry is down, the scheduler blocks. If the complexity classifier throws, the entire match loop crashes. If the model assignment logic has an off-by-one in the capability comparison, tasks pile up in the queue.
+**Why it happens:** The LLM decomposes goals based on training data about "typical Elixir projects," not this specific codebase. Without grounding in the actual file tree and module structure, the LLM invents plausible-sounding but fictional work items. This codebase is non-standard: DETS instead of Ecto, Bandit instead of Phoenix, flat GenServer state machines instead of `gen_statem`. The LLM will pattern-match to typical conventions.
 
-**Consequences:**
-- Scheduler GenServer crashes, stopping ALL task assignment until restart (even for tasks that do not need LLM routing)
-- Tasks with `complexity_class: nil` (old-format tasks) have no routing path and accumulate indefinitely
-- Endpoint registry query latency adds to every scheduling attempt, slowing the reactive loop that currently responds to PubSub events in microseconds
-- The `30_000ms` stuck sweep cannot distinguish between "task stuck because agent crashed" and "task stuck because model is loading" -- it reclaims tasks that are legitimately waiting for model load
+**Consequences:** Phantom tasks fill the queue and consume real resources (agent time, API tokens, git branches). If an agent "succeeds" at a phantom task by creating new files the LLM described, the codebase grows unnecessary code.
 
 **Prevention:**
-- Keep the existing match loop UNTOUCHED. Add model routing as a SEPARATE step that runs AFTER the basic capability match. The scheduler assigns a task to an agent (existing logic), then the agent/sidecar handles model selection (new logic). This keeps the scheduler simple and pushes complexity to the edges
-- If routing MUST be in the scheduler, implement it as a pre-processing enrichment step: before the match loop, annotate each task with its model assignment. The match loop itself still just checks capabilities -- but capabilities now include `can_reach_claude`, `can_reach_ollama_7b`, etc.
-- Add a fallback path: if complexity classification fails, default to "standard" routing (strongest available model). Never let a classification failure block assignment
-- Wrap all new scheduler logic in try/rescue that falls back to the existing simple matching. Log classification failures but do not crash the scheduler
-- Increase the stuck sweep threshold for LLM-routed tasks: add a `task_type` field that distinguishes mechanical tasks (5-minute timeout) from LLM tasks (15-minute timeout, because model loading + inference + verification takes longer)
+1. **Ground decomposition in actual file tree.** Before decomposing, feed the LLM: `ls lib/agent_com/*.ex`, `ls sidecar/lib/`, module names and public function signatures. Prompt: "ONLY reference files and modules that appear in the file tree above."
+2. **Post-decomposition validation.** After the LLM generates tasks, mechanically verify: for each file path mentioned, check `File.exists?`. For each module name, verify it is defined. Reject tasks referencing non-existent entities.
+3. **Two-pass decomposition.** First pass: abstract tasks ("improve error handling in auth module"). Second pass: provide actual `auth.ex` contents and ask for concrete, grounded task with specific line numbers.
+4. **Include codebase context.** The existing `.planning/codebase/ARCHITECTURE.md` describes the actual architecture. Include it in every decomposition prompt. Add a "what this project does NOT use" section: no Ecto, no Phoenix, no PostgreSQL.
+5. **Decomposition confidence scoring.** Ask LLM to rate confidence (1-5) per task. Tasks with confidence < 3 go to "needs human review" queue.
 
-**Detection:**
-- Queue depth increasing without agent assignment (scheduler crashed or routing is blocking)
-- All tasks being routed to Claude (fallback path triggering because local routing is broken)
-- Scheduling attempt telemetry showing increased latency per attempt
-- `scheduler_assign_failed` log entries increasing after routing deployment
+**Detection:** Track task failure rate by source. If hub-decomposed tasks fail at higher rate than human-submitted tasks, decomposition prompts need grounding.
 
-**Confidence:** HIGH -- directly observed: `Scheduler.do_match_loop/2` is 15 lines of clean recursive matching; any change to its structure risks the proven behavior.
+**Phase to address:** Goal decomposition phase. Grounding must be built into the decomposition pipeline from day one.
 
-**Phase impact:** Model-aware scheduler routing phase. The routing decision should be OUTSIDE the core match loop, either as a pre-enrichment step or pushed to the sidecar.
+**Confidence:** HIGH. Amazon Science's 2025 paper on task decomposition specifically calls out "sub-tasks that don't map to available tools or agent capabilities" as a primary failure mode. The arXiv paper on multi-agent failures identifies 14 distinct failure modes, with "decomposition inaccuracies" among the most impactful.
 
 ---
 
 ## Moderate Pitfalls
 
-Mistakes that cause significant rework, degraded performance, or incorrect behavior.
+Mistakes that cause significant debugging time or partial rewrites.
 
 ---
 
-### Pitfall 6: Thundering Herd on Ollama Endpoint Recovery
+### Pitfall 6: Supervisor Tree Disruption When Adding Hub FSM
 
-**What goes wrong:** An Ollama endpoint goes unhealthy (host reboots, model crashes, network blip). While unhealthy, tasks accumulate in the queue or get routed to cloud fallback. The endpoint recovers and the health check marks it healthy. The scheduler immediately routes ALL queued tasks that match that endpoint's capabilities, overwhelming the just-recovered instance with concurrent requests. Ollama responds with 503 errors (`OLLAMA_MAX_QUEUE` exceeded) or extreme latency from parallel model loading.
+**What goes wrong:** Adding a new GenServer (Hub FSM) to `application.ex`'s supervision tree with wrong restart strategy or position causes cascading failures. The Hub FSM depends on TaskQueue, Scheduler, RepoRegistry, and DetsBackup -- all must be started first. If placed before dependencies in the `children` list, it crashes on init. With `strategy: :one_for_one` (line 61), the crash is isolated but the Hub FSM never starts.
 
-**Why it happens:** The scheduler is event-driven and reacts to scheduling opportunities greedily: `try_schedule_all/1` processes the entire queue of waiting tasks against all available agents. When an endpoint transitions from unhealthy to healthy, this creates a burst of assignments. Ollama's concurrency model is limited: `OLLAMA_NUM_PARALLEL` defaults to 1, meaning requests are serialized by default. Even with parallel mode enabled, "parallel request processing for a given model results in increasing the context size by the number of parallel requests" -- 4 parallel requests quadruple memory usage.
-
-**Consequences:**
-- Recovered endpoint immediately overwhelmed, goes unhealthy again (oscillation)
-- VRAM exhaustion from parallel context multiplication crashes the Ollama process
-- Tasks assigned during the burst all fail simultaneously, triggering retry storms that amplify the problem
-- Cloud fallback costs spike during oscillation periods
+**Why it happens:** The supervisor tree has 24 children (lines 32-58 of `application.ex`). Ordering is deliberate: PubSub first, then Registries, then GenServers. The Hub FSM needs TaskQueue and Scheduler running before it subscribes to PubSub topics.
 
 **Prevention:**
-- Implement endpoint capacity tracking in the registry: each endpoint has a `max_concurrent` limit (default: 1 for Ollama, higher for cloud APIs). The scheduler checks `current_in_flight < max_concurrent` before routing
-- Add a recovery grace period: when an endpoint transitions from unhealthy to healthy, it enters a "warming" state where only 1 task is routed. After that task succeeds, capacity ramps up linearly (1, 2, 4, max)
-- Use a circuit breaker pattern per endpoint: after N consecutive failures, the endpoint enters an "open" state that rejects new tasks for a cooldown period. The `fuse` Erlang library or `ExternalService` Elixir library provides this pattern
-- Decouple health check frequency from routing decisions: health checks can run every 30 seconds, but routing recovery should be gradual over minutes
+1. Place Hub FSM after Scheduler and RepoRegistry but before Bandit in the children list.
+2. Use `restart: :transient` -- restart on abnormal termination but not normal shutdown.
+3. Defensive init: if dependencies not yet available, use `Process.send_after(self(), :retry_init, 1000)` rather than crashing.
+4. Test the boot sequence: start full application and verify all children running.
 
-**Detection:**
-- Endpoint flapping between healthy/unhealthy in rapid succession
-- Bursts of task failures immediately following endpoint recovery
-- Ollama process restarting (OOM kill) visible in host system logs
-- Sudden spikes in cloud API usage correlated with endpoint recovery events
+**Detection:** Application crash on startup with `{:noproc, {GenServer, :call, [AgentCom.TaskQueue, ...]}}`.
 
-**Confidence:** MEDIUM -- based on [thundering herd patterns](https://distributed-computing-musings.com/2025/08/thundering-herd-problem-preventing-the-stampede/) and Ollama's documented concurrency limitations. Not directly observed in this system yet, but the architecture creates the conditions.
+**Phase to address:** Hub FSM core phase.
 
-**Phase impact:** LLM endpoint registry phase. Capacity tracking and circuit breakers must be designed alongside health checking.
+**Confidence:** HIGH. Basic OTP, but the large supervisor tree makes ordering mistakes easy.
 
 ---
 
-### Pitfall 7: Sidecar Complexity Explosion From Simple Relay to LLM Orchestrator
+### Pitfall 7: DETS Table Proliferation and Backup Coverage Gap
 
-**What goes wrong:** The current sidecar (`sidecar/index.js`) is a 780-line Node.js script that does three things: maintain a WebSocket connection, manage a task queue (max 1 active), and watch for result files. The v1.2 changes require the sidecar to: route LLM calls to the correct endpoint (local Ollama or cloud API), manage model selection per task, handle streaming responses from Ollama, run mechanical verification checks (compile, test, file parse), execute LLM-based semantic verification, handle trivial tasks without any LLM call, and manage verification retry loops. This transforms a simple relay script into a stateful orchestration engine.
+**What goes wrong:** The Hub FSM needs persistent state: goal backlog, improvement history, contemplation log, cost ledger. Each could be a new DETS table. The existing `DetsBackup` has a hardcoded `@tables` list of 10 tables (line 20-31 of `dets_backup.ex`). If new tables are added but `@tables` is not updated, new tables are not backed up, not compacted, not monitored, and not recoverable.
 
-**Why it happens:** The sidecar is the natural place for LLM call execution (it runs on the agent's machine, close to local Ollama). But the current architecture is a thin relay -- the `HubConnection` class handles task assignment by persisting the task, running a wake command, and watching for result files. There is no LLM client, no HTTP request logic (beyond WebSocket), no streaming handler, no verification pipeline. Adding all of this to a single `index.js` file creates a maintenance nightmare.
-
-**Consequences:**
-- Single-file sidecar grows from 780 lines to 2000+ lines, making bugs hard to find
-- Error handling becomes fragmented: wake errors, LLM API errors, verification errors, streaming errors all handled differently
-- The pm2-managed sidecar process is not designed for long-running LLM inference calls (120+ seconds) -- pm2's restart logic may interfere
-- Testing becomes impossible: the current sidecar has zero tests; a complex orchestrator without tests is a ticking timebomb
-- Configuration explosion: each sidecar needs Ollama URLs, API keys, model preferences, verification settings, timeout values, retry policies
+**Why it happens:** `@tables` is a compile-time constant. Adding a new DETS table requires updating three places: (1) the new GenServer that opens it, (2) `@tables` in DetsBackup, (3) `table_owner/1` (line 321-330 of `dets_backup.ex`) for compaction. Missing any one creates a silent gap.
 
 **Prevention:**
-- Decompose the sidecar into modules BEFORE adding LLM features. Create `lib/llm-client.js` (Ollama/Claude HTTP calls), `lib/verification.js` (mechanical + semantic checks), `lib/task-executor.js` (orchestrates wake + LLM call + verification), keeping `index.js` as the thin relay it was designed to be
-- Add the LLM routing configuration to `config.json` with a clear structure: `{ "llm_endpoints": [{"url": "http://localhost:11434", "type": "ollama", "models": ["qwen2.5-coder:7b"]}], "cloud_api_key": "..." }`
-- Implement an HTTP client wrapper that handles Ollama-specific gotchas (streaming, timeouts, model loading delays, 503 handling) in one place, not scattered through the codebase
-- Consider whether some of this logic belongs in the Elixir hub instead of the Node.js sidecar. The hub already has GenServer supervision, circuit breakers via `fuse`, and telemetry. The sidecar should remain a thin executor; the hub should make the routing decisions
-- Add basic sidecar tests using a mock Ollama server before shipping LLM features
+1. **Minimize new tables.** Use one `hub_state` DETS table with namespaced keys: `{:goals, goal_id}`, `{:improvements, hash}`, `{:cost_ledger, date}`. One table to register.
+2. **Registration validation at startup.** Add a function querying `:dets.all()` at boot and comparing against `@tables`. Log warning for unregistered tables.
+3. **Implementation checklist.** Every plan adding a DETS table must include "Update DetsBackup @tables and table_owner/1" as a verification step.
 
-**Detection:**
-- Sidecar `index.js` exceeds 1500 lines
-- Multiple developers unable to understand the sidecar flow
-- Sidecar crashes from unhandled promise rejections in LLM call chains
-- pm2 restarting the sidecar during long inference calls
+**Detection:** Health endpoint (`/api/health/dets`) shows per-table metrics. New table absent from health response means it is unregistered.
 
-**Confidence:** HIGH -- directly observed: sidecar is 780 lines in a single file with zero tests and no module structure beyond basic `lib/` extraction.
+**Phase to address:** Hub FSM core or goal backlog phase.
 
-**Phase impact:** Should be addressed early -- decompose the sidecar BEFORE adding LLM features to it.
+**Confidence:** HIGH. Mechanical integration concern unique to this codebase.
 
 ---
 
-### Pitfall 8: Ollama Streaming Gotchas Break the Sidecar Request Pipeline
+### Pitfall 8: Goal Completion Verification False Positives
 
-**What goes wrong:** The sidecar needs to call Ollama's `/api/generate` or `/api/chat` endpoints. Ollama streams responses by default (NDJSON chunks). The sidecar's HTTP handling must correctly buffer streaming chunks, detect completion, handle mid-stream errors, and enforce timeouts. Several Ollama-specific behaviors break naive HTTP clients:
-1. Streaming with tools enabled returns a single complete response, not streamed chunks (breaking stream parsers)
-2. Long context processing can take 30+ seconds before the FIRST token appears (causing premature timeout)
-3. Model loading delay occurs BEFORE streaming starts (adding 10-120 seconds of silence)
-4. 503 errors when queue is full are returned as HTTP, not as streaming chunks
-5. Ollama returns `done: true` in the final chunk, but connection may not close immediately
+**What goes wrong:** The Hub FSM uses LLM-powered verification to determine if a goal is complete. The LLM says "yes" when the goal is not complete, because verification prompt lacks context or the LLM optimistically interprets partial completion as full. Hub marks goal as done, moves to next goal, incomplete work is never revisited.
 
-**Why it happens:** Ollama's API has evolved rapidly and has several behaviors that differ from standard HTTP streaming conventions. The sidecar currently uses the `ws` library for WebSocket but has no HTTP client for REST API calls. Whatever HTTP client is added must handle NDJSON streaming, which is not native to Node.js `fetch` or most HTTP libraries without explicit stream parsing.
+**Warning signs (concrete examples):**
+- Goal: "Improve error handling across all GenServers." Sub-tasks completed for 4 of 12 GenServers. LLM verification: "Error handling has been significantly improved across the codebase" = true. Goal marked complete with 8 GenServers untouched.
+- Goal: "Add telemetry to all public API endpoints." LLM verification checks current codebase and sees telemetry exists (it was already there from v1.1). Reports goal complete even though no new telemetry was added.
 
-**Consequences:**
-- Sidecar treats model loading silence as a timeout and fails the task prematurely
-- Streaming parser crashes on tool-enabled responses that arrive as a single block
-- Memory leak from unbounded stream buffering on large responses
-- 503 errors not distinguished from successful empty responses
-- Task reported as failed when Ollama was actually processing correctly (just slowly)
+**Why it happens:** The existing verification system (Phase 21-22) uses mechanical checks that are deterministic. Goal completion is semantic judgment. "Is error handling improved across the codebase?" cannot be answered by checking file existence. The Ralph Loop insight applies: LLM self-assessment is unreliable.
 
 **Prevention:**
-- Use `stream: false` for the initial implementation. This is simpler, avoids all streaming gotchas, and is sufficient for task-oriented work (not interactive chat). Add streaming later as an optimization
-- If streaming is needed, implement a proper NDJSON parser that handles partial lines, buffering, and the `done: true` sentinel
-- Implement THREE distinct timeouts: (1) connection timeout (5s -- is Ollama reachable?), (2) first-token timeout (180s -- accounts for model loading + context processing), (3) inter-token timeout (30s -- if streaming stops mid-response, something is wrong)
-- Always check the HTTP status code BEFORE attempting to parse the response body. 503 means "queue full, retry later" not "empty response"
-- Test with `stream: false` first to validate the pipeline, then add streaming as a separate change
+1. **Require mechanical success criteria for every goal.** At creation time, require at least one verifiable criterion: "tests pass," "file X exists," "endpoint Y returns 200." Goals without mechanical criteria cannot be auto-completed.
+2. **Two-judge verification.** LLM for semantic assessment plus mechanical checks. Both must agree. If LLM says complete but mechanical checks fail, goal stays open.
+3. **Sub-task completion tracking.** A goal is complete only when ALL decomposed sub-tasks are completed (not just "most"). The Hub tracks sub-task completion percentage and requires 100%.
+4. **Human review for complex goals.** Goals with more than 5 sub-tasks or touching more than 3 files must be human-verified. Hub transitions them to "pending review" state.
 
-**Detection:**
-- Task failures with "timeout" that succeed on immediate retry (cold start)
-- Sidecar memory growing during long inference calls (stream buffering)
-- Inconsistent response parsing between tool and non-tool calls
-- Tasks succeeding in test (small models, fast load) but failing in production (large models, slow load)
+**Detection:** Track re-opened goals (marked complete then found incomplete). Re-open rate > 10% means verification is too loose.
 
-**Confidence:** HIGH -- confirmed by [Ollama streaming docs](https://docs.ollama.com/api/streaming), [Ollama issue #9084](https://github.com/ollama/ollama/issues/9084) (tools breaking streaming), [Ollama issue #7685](https://github.com/ollama/ollama/issues/7685) (gateway timeout on streaming), and [Ollama issue #4350](https://github.com/ollama/ollama/issues/4350) (model loading timeout).
+**Phase to address:** Goal lifecycle phase.
 
-**Phase impact:** Sidecar model routing phase. Start with `stream: false` and non-tool calls.
+**Confidence:** MEDIUM. The existing verification infrastructure provides patterns, but semantic verification is harder than mechanical.
 
 ---
 
-### Pitfall 9: Tailscale Mesh Latency Makes Synchronous Health Checks Expensive
+### Pitfall 9: Improvement Scanner Bikeshedding
 
-**What goes wrong:** The LLM endpoint registry needs to health-check Ollama instances running on different machines across the Tailscale mesh. Each health check is an HTTP request over Tailscale (WireGuard tunnel). Tailscale typically adds 1-5ms latency for direct connections, but can spike to 50-200ms when connections relay through DERP servers (when NAT traversal fails). With 5+ Ollama endpoints to check every 30 seconds, synchronous health checks take 250-1000ms per cycle, blocking the registry GenServer.
+**What goes wrong:** The improvement scanner identifies cosmetic improvements instead of substantive ones: variable renames, import reordering, type spec additions to internal helpers, comment reformatting. The task queue fills with bikeshedding that consumes agent capacity while high-value work waits.
 
-**Why it happens:** The registry GenServer naturally implements health checking as a periodic task (like the existing `sweep_stuck` in the Scheduler). If health checks are synchronous HTTP calls inside a GenServer `handle_info`, the GenServer is blocked for the duration of ALL health checks. During this time, endpoint queries from the scheduler are queued, adding latency to every task assignment. Worse, if a host is unreachable, the HTTP timeout (typically 5-10 seconds) blocks the GenServer for the full duration.
+**Warning signs (concrete examples):**
+- 10 improvement tasks generated: 7 are "rename variable `x` to `more_descriptive_name`", 2 are "add @doc to private function", 1 is "fix potential race condition in timer handling." The race condition fix (actual value) is buried under style noise.
+- Scanner generates "add @moduledoc to `AgentCom.TaskRouter.TierResolver`" -- the module already has adequate documentation.
 
-**Consequences:**
-- Registry becomes a bottleneck: scheduler queries queue behind health checks
-- Single unreachable host blocks the entire health check cycle for its timeout duration
-- Cascading delays: scheduler latency increases, task assignment slows, agents sit idle
-- Health check data becomes stale if checks take longer than the check interval
+**Why it happens:** LLMs are trained on code review discussions disproportionately about style and naming. When asked "what could be improved?", the LLM defaults to easiest observations. Structural improvements require deeper analysis.
 
 **Prevention:**
-- Run health checks asynchronously using `Task.async` or `Task.Supervisor.async_nolink` -- the GenServer starts health check tasks and processes results when they complete, without blocking
-- Set aggressive HTTP timeouts for health checks: 2-second connect timeout, 3-second response timeout. A healthy Ollama responds to `/api/ps` in under 100ms; anything slower is effectively unhealthy
-- Stagger health checks: do not check all endpoints simultaneously. Check one endpoint per second to spread the load
-- Cache health status with a TTL: the scheduler reads cached status from ETS (fast), the health checker updates ETS asynchronously (slow but non-blocking)
-- Use `Mint` (already a dependency via Bandit) for HTTP calls to Ollama endpoints rather than adding HTTPoison/Req -- avoid new dependencies when a capable HTTP client is already available
+1. **Category-priority mapping.** security > correctness > performance > reliability > observability > readability > style. Security = `urgent`, style = `low`. Scanner must categorize each improvement.
+2. **Minimum impact threshold.** Reject improvements affecting fewer than 3 lines or only changing comments/whitespace.
+3. **Prompt engineering.** Scanner prompt: "Focus on bugs, security issues, error handling gaps, and performance problems. Do NOT suggest variable renames, comment changes, import reordering, or formatting changes."
+4. **Rate limit by category.** Maximum 1 style improvement per day, unlimited security/correctness.
+5. **Value scoring.** Ask LLM to estimate impact (1-10). Discard below 5.
 
-**Detection:**
-- Endpoint registry query latency visible in scheduler telemetry
-- Health check cycle taking longer than the check interval (falling behind)
-- Agents sitting idle while tasks are queued (scheduler blocked on registry)
+**Detection:** Tag improvement tasks by category. Dashboard chart showing improvements by category over time. Style/naming dominance means prompt recalibration needed.
 
-**Confidence:** MEDIUM -- based on [Tailscale performance issues](https://github.com/tailscale/tailscale/issues/14791) and general distributed systems patterns. Latency depends heavily on network topology.
+**Phase to address:** Improvement scanning phase.
 
-**Phase impact:** LLM endpoint registry phase. Design the registry as an async actor with ETS-cached state.
+**Confidence:** HIGH. Every code review tool based on LLMs (CodeRabbit, Sourcery, etc.) has had to explicitly filter out bikeshedding.
 
 ---
 
-### Pitfall 10: WebSocket Protocol Changes Require Coordinated Hub + Sidecar Deployment
+### Pitfall 10: Secret Scrubbing Breaks Git History and Agent Collaboration
 
-**What goes wrong:** The enriched task format and model routing information need to flow from the hub to the sidecar via the existing WebSocket `task_assign` message. Adding new fields to `task_assign` (like `model_endpoint`, `complexity_class`, `verification_steps`) means the hub sends data the sidecar does not understand. If the hub is updated first, sidecars receive unknown fields and may break. If sidecars are updated first, they expect fields the hub does not send. Unlike a typical web service where the server controls the deployment, this system has independently-deployed sidecars on 5 different machines managed by pm2.
+**What goes wrong:** Pre-publication cleanup uses `git filter-repo` to scrub secrets from history. This rewrites every commit hash, breaking: (1) all existing clones (5 agents must re-clone), (2) all open PRs, (3) all branch tracking, (4) all commit references in planning files (`.planning/MILESTONES.md` references git ranges like `107f592a..a529eed`).
 
-**Why it happens:** The current WebSocket protocol is implicit -- there is no version negotiation beyond the `protocol_version: 1` field in the identify message (which is sent but never checked by the hub). The sidecar's `handleTaskAssign` destructures specific fields (`msg.task_id`, `msg.description`, `msg.metadata`). New fields like `msg.model_endpoint` or `msg.verification_steps` will be `undefined` in old sidecars. Conversely, a new sidecar sending `task_complete` with verification results will confuse an old hub.
+**Warning signs (concrete examples):**
+- `git filter-repo --invert-paths --path priv/tokens.json` rewrites the entire history. All 337+ commits get new hashes. The milestone audit records (`v1.1..v1.2`, commit ranges) become invalid.
+- Sidecar's `agentcom-git.js` runs `git pull --rebase origin main`. After filter-repo, this fails with diverged history. All 5 sidecars crash-loop.
+- On Windows (this project's platform): case-insensitive filesystem causes `git filter-repo` to silently choose wrong version of files differing only in case.
 
-**Consequences:**
-- Partial deployment (some sidecars updated, some not) creates inconsistent behavior across agents
-- Updated hub sends model routing info that old sidecars ignore, leading to tasks executed on wrong models
-- Updated sidecars send verification results that old hub does not store, losing verification data
-- Rolling updates become a multi-machine coordination problem across the Tailscale mesh
+**Why it happens:** `git filter-repo` is destructive by design. The `git filter-repo` man page explicitly warns: "using git filter-repo is destructive and will rewrite the entire history of the original repository."
 
 **Prevention:**
-- Use the existing `protocol_version` field: bump to `2` for v1.2. The hub checks the version in the `identify` message and sends version-appropriate `task_assign` payloads
-- Design all new fields as ADDITIVE (backward compatible): old sidecars ignore unknown fields in `task_assign` (JavaScript naturally handles this), new sidecars receive enrichment data in `metadata.enrichment` rather than top-level fields
-- Implement feature detection: the sidecar's `identify` message includes `capabilities` -- add capability strings like `"model_routing"`, `"self_verification"` so the hub knows which sidecars support v1.2 features
-- Deploy hub first with backward compatibility, then update sidecars one at a time. The hub should work with a mix of v1 and v2 sidecars simultaneously
-- Add a `GET /api/sidecar/version` expectation or include version in the identify response so operators can see which sidecars are updated
+1. **Scrub on a fork, not the original.** Create a fresh clone, scrub, push as public repo. Keep unscrubbed repo as internal development repo.
+2. **Coordinate with agents.** Before scrubbing: pause all repos in RepoRegistry, wait for in-flight tasks to complete. After: update sidecar configs, re-clone on each machine.
+3. **Inventory secrets first.** Use `gitleaks detect --log-opts="--all"` to scan full history. Verify completeness. After scrubbing, run again to confirm removal.
+4. **Test on throwaway copy.** Clone, scrub, verify compilation and tests pass, verify no secrets remain. Then execute on real target.
+5. **Expect secrets in unexpected places.** Check: commit messages (tokens in debug output), `priv/tokens.json` (plaintext tokens), sidecar `config.json` files (API keys), log files (if committed), DETS backup files (if committed).
+6. **Pre-commit hook after scrub.** Add `gitleaks` as a pre-commit hook and CI step to prevent re-introduction.
 
-**Detection:**
-- Some agents executing tasks without model routing while others use it
-- Missing verification results for tasks that should have been verified
-- Sidecar logs showing `undefined` for new fields
-- Hub logs showing unknown message fields from updated sidecars
+**Detection:** `gitleaks detect --log-opts="--all"` before and after. Compare results.
 
-**Confidence:** HIGH -- directly observed: `protocol_version: 1` is sent by the sidecar but never checked by the hub; `handleTaskAssign` destructures specific fields.
+**Phase to address:** Pre-publication cleanup phase (last phase). Must be planned as coordinated operation.
 
-**Phase impact:** Should be addressed in the first phase. Establish the v2 protocol contract before building features on it.
+**Confidence:** HIGH. The `git filter-repo` documentation explicitly warns about these issues.
+
+---
+
+### Pitfall 11: Scheduler Starvation from Hub-Generated Task Volume
+
+**What goes wrong:** The Hub FSM generates improvement tasks and decomposes goals into sub-tasks. These flow into the existing TaskQueue and Scheduler. If the Hub generates 20 improvement tasks while 5 human-submitted tasks wait, the scheduler may match agents to improvement tasks first (equal or higher priority), starving human-submitted work.
+
+**Warning signs (concrete examples):**
+- Nathan submits "Fix authentication bug on endpoint X" at priority `normal`. Hub has already queued 15 improvement tasks at priority `normal`. The 15 hub tasks were submitted first (lower `created_at`), so FIFO ordering puts Nathan's task 16th in line. With 5 agents, Nathan waits for 3 improvement cycles before his bug fix gets picked up.
+- Hub's Improving state generates 10 tasks in a batch. These immediately consume all 5 agents. The queue is "busy" but not productive from Nathan's perspective.
+
+**Why it happens:** The scheduler's `try_schedule_all` (line 258 of `scheduler.ex`) iterates tasks in priority+FIFO order. It does not distinguish task sources. Hub-generated tasks compete equally with human-submitted tasks.
+
+**Prevention:**
+1. **Task source field.** Add `source` to task schema: `"human"`, `"hub_goal"`, `"hub_improvement"`, `"hub_contemplation"`. Use for filtering and priority adjustments.
+2. **Source-aware priority boost.** Human-submitted tasks get implicit priority boost (-1 to priority integer). Hub improvement tasks get priority floor (minimum `low` = 3).
+3. **Reserved agent capacity.** At least 1 agent must always be available for non-hub work. Scheduler skips hub tasks if assigning would leave zero agents for human tasks.
+4. **Hub task rate limiting.** Hub submits max N tasks per hour. Batch decomposition outputs (15 tasks released as 3 batches of 5 with delays).
+5. **Preemption for urgent human tasks.** If human task with `urgent` priority enters queue and all agents work on hub tasks, reclaim least-important hub task.
+
+**Detection:** Dashboard: average wait time for human-submitted vs. hub-generated tasks. If human wait time increases after hub FSM enabled, priority scheme needs adjustment.
+
+**Phase to address:** Goal decomposition and improvement scanning phases. `source` field added in first phase.
+
+**Confidence:** HIGH. Basic resource contention, becomes visible immediately when hub starts generating tasks.
 
 ---
 
 ## Minor Pitfalls
 
-Mistakes that cause inconvenience, tech debt, or suboptimal behavior.
+Mistakes that cause inconvenience or need small fixes.
 
 ---
 
-### Pitfall 11: Endpoint Registry DETS Table Adds a 9th Persistence Point
+### Pitfall 12: Over-Decomposition of Goals
 
-**What goes wrong:** The natural implementation of the LLM endpoint registry uses DETS for persistence (consistent with the rest of the system). This adds a 9th DETS table to the existing 8, increasing backup/compaction surface area, DETS file size monitoring scope, and potential corruption exposure. Each new DETS table is another file that can corrupt on hard crash, another table to compact, another backup target.
-
-**Why it happens:** The system uses DETS for everything persistent. Adding another DETS table follows the established pattern. But the endpoint registry has different persistence characteristics than the task queue or mailbox: endpoint configuration is small (dozens of entries, not thousands), changes infrequently (operator adds/removes endpoints), and can be reconstructed from a config file.
+**What goes wrong:** LLM decomposes a simple goal into excessive tiny tasks. "Add health check endpoint" becomes 8 tasks: "create route", "add handler", "return JSON", "add tests", "add docs", "update dashboard", "add telemetry", "add to operations guide". Each task is too small, and coordination overhead (branch creation, PR, merge) exceeds the work itself.
 
 **Prevention:**
-- Store endpoint configuration in a JSON/TOML config file, not DETS. The registry loads from config on startup and enriches with runtime health data kept in ETS
-- Health state (last check time, current status, loaded models) is ephemeral and belongs in ETS, not DETS. If the hub restarts, health state is rebuilt from fresh checks within 30 seconds
-- Only persist endpoint configuration that requires operator action to change: URL, name, model list, capacity limits. Runtime state like health, load, and response time is regenerated
+1. Minimum task size: if describable in fewer than 20 words and touching 1 file, merge with related tasks.
+2. Prompt: "Generate 2-5 tasks per goal. Each should represent 10-60 minutes of work."
+3. Post-decomposition consolidation: "These tasks are too granular. Merge related tasks into cohesive units."
 
-**Detection:**
-- DETS backup job taking longer after adding registry table
-- Registry corruption blocking task routing (all endpoints appear unhealthy)
+**Phase to address:** Goal decomposition phase.
 
-**Confidence:** HIGH -- design recommendation based on observed DETS complexity in existing codebase.
-
-**Phase impact:** LLM endpoint registry phase. Use config file + ETS, not another DETS table.
+**Confidence:** MEDIUM. Impact depends on prompt engineering quality.
 
 ---
 
-### Pitfall 12: Verification Step Timeout Extends Task Duration Beyond Existing Sweeps
+### Pitfall 13: Contemplation State Producing Vaporware Proposals
 
-**What goes wrong:** Adding self-verification adds 10-60 seconds to every task execution (mechanical checks + LLM verification call). The existing stuck assignment sweep in the scheduler fires at 300 seconds (5 minutes) and the `complete_by` overdue sweep runs every 30 seconds. A task that takes 4 minutes for execution plus 1 minute for verification hits the 5-minute stuck threshold and gets reclaimed while the agent is running verification. The agent then tries to complete a task that has been reclaimed and given to another agent.
-
-**Why it happens:** The stuck sweep threshold was calibrated for v1.0 tasks which had no verification step. The `@stuck_threshold_ms 300_000` in `scheduler.ex` line 51 does not account for the additional time needed for post-execution verification. The generation fencing (TASK-05) catches the stale completion attempt (`{:error, :stale_generation}`), but the task is now duplicated: the new agent is also working on it.
+**What goes wrong:** Contemplating state generates feature proposals that sound impressive but are infeasible, redundant with existing features, or out of scope. Proposals consume review time and create backlog noise.
 
 **Prevention:**
-- Send `task_progress` messages during verification (the protocol already supports this, and the sidecar already has the code path at line 389-393 of socket.ex). This updates `updated_at`, preventing the stuck sweep from reclaiming
-- Add a `verification_in_progress` status to the task lifecycle (not just `assigned` and `working`) so the stuck sweep knows to use a longer threshold for tasks being verified
-- Alternatively, increase the default timeout for LLM-routed tasks via a per-task `stuck_threshold_ms` field rather than a global constant
-- The sidecar should send progress updates at least once per minute during verification to maintain the heartbeat
+1. Include "Out of Scope" section from PROJECT.md in contemplation prompt so LLM does not re-propose rejected ideas. The existing out-of-scope list has 15 items with explicit rationale.
+2. Each proposal must include: estimated complexity, dependencies, required infrastructure.
+3. Maximum 1 proposal per contemplation cycle.
 
-**Detection:**
-- Tasks being reclaimed during the verification phase
-- Duplicate task execution (two agents working on the same task)
-- `stale_generation` errors in task completion logs
-- Agent utilization metrics showing agents "idle" when they are actually verifying
+**Phase to address:** Contemplation phase.
 
-**Confidence:** HIGH -- directly observed: `@stuck_threshold_ms 300_000` is hardcoded in scheduler.ex, `update_progress` is already available but verification would need to call it.
-
-**Phase impact:** Self-verification phase. Must integrate with existing sweep mechanisms.
+**Confidence:** MEDIUM.
 
 ---
 
-### Pitfall 13: Trivial Task Execution Bypasses the Entire LLM Pipeline
+### Pitfall 14: Pipeline Pipelining Creating Branch Conflicts
 
-**What goes wrong:** The "sidecar trivial execution" feature means some tasks (git checkout, file move, status check) run without any LLM call. This creates a second execution path in the sidecar that bypasses the LLM client, verification pipeline, and model routing. Bugs in the trivial path (no progress reporting, no verification, no result formatting) are different from bugs in the LLM path. Testing must cover both paths, and future changes must update both paths.
-
-**Why it happens:** The optimization is sound: why burn LLM tokens on `git checkout main`? But the implementation creates a fork in the execution logic that can diverge. The trivial path needs its own error handling, timeout management, result reporting, and progress heartbeat -- parallel to but different from the LLM path.
+**What goes wrong:** Pipeline pipelining front-loads research/planning so multiple goals are in-flight simultaneously. If two goals touch the same files (both modify `scheduler.ex`), the second goal's execution branch has merge conflicts the agents cannot resolve autonomously.
 
 **Prevention:**
-- Implement trivial execution as a "model" in the routing framework, not as a separate code path. The model router selects `"local_exec"` as the model, and the LLM client has a `local_exec` handler that runs shell commands directly. This keeps the pipeline unified: route -> execute -> verify -> complete, regardless of whether execution involved an LLM
-- Even trivial tasks should go through (simplified) verification: did the git command succeed? Is the working directory clean? Did the file actually move?
-- Use the same result format for trivial and LLM tasks so the hub does not need to distinguish them
+1. File-level locking: record which files each goal will modify (from `file_hints`). Prevent scheduling tasks with overlapping file targets.
+2. Sequential execution for conflicting goals. Pipeline research/planning but serialize execution.
+3. Small, focused tasks minimize conflict surface.
 
-**Detection:**
-- Trivial tasks not appearing in metrics (they bypass the instrumented LLM pipeline)
-- Trivial task failures not triggering retry logic (different error handling path)
-- Inconsistent task result format between trivial and LLM tasks breaking dashboard display
+**Phase to address:** Pipeline pipelining phase.
 
-**Confidence:** MEDIUM -- design recommendation based on general software engineering patterns. The specific risk depends on implementation.
+**Confidence:** MEDIUM. Requires new infrastructure to track expected file modifications.
 
-**Phase impact:** Sidecar trivial execution phase. Implement as a "null model" in the routing framework.
+---
+
+### Pitfall 15: LLM Context Window Overflow in Codebase Scanning
+
+**What goes wrong:** Improvement scanner tries to feed the entire codebase to the LLM. At ~22K LOC Elixir + ~4.5K LOC JavaScript, the codebase plus prompt hits 60-80K tokens. LLM truncates or loses context, producing incomplete analysis.
+
+**Prevention:**
+1. Scan per-file or per-module, not per-codebase.
+2. Prioritize by recency: scan recently modified files first (most likely to benefit).
+3. Two-pass: first pass sends file names/sizes/dates for triage; second pass sends only flagged files.
+
+**Phase to address:** Improvement scanning phase.
+
+**Confidence:** HIGH. At 22K LOC, this is already a constraint.
+
+---
+
+### Pitfall 16: Hub FSM Timer Drift in Resting State
+
+**What goes wrong:** Hub FSM enters Resting with `Process.send_after` timer. Under BEAM load, timer message is delayed. Over many cycles, drift accumulates and effective work rate drops.
+
+**Prevention:**
+1. Monotonic time for scheduling: `System.monotonic_time(:millisecond)`.
+2. Track expected vs. actual wake time. Alert if drift exceeds 10%.
+3. Do not compound timers -- schedule from current time, not expected previous end.
+
+**Phase to address:** Hub FSM core phase.
+
+**Confidence:** LOW. Unlikely at current scale (5 agents, single BEAM node).
 
 ---
 
@@ -420,90 +382,84 @@ Mistakes that cause inconvenience, tech debt, or suboptimal behavior.
 
 | Phase Topic | Likely Pitfall | Mitigation | Severity |
 |---|---|---|---|
-| **Task Format Enrichment** | Breaking existing pipeline (Pitfall 1) | Optional fields with defaults, carry in metadata, migration on startup | Critical |
-| **Task Format Enrichment** | DETS schema evolution (old tasks lack new fields) | Backfill migration function, task_version field | Critical |
-| **Task Format Enrichment** | Validation schema update rejects old sidecar messages | Update validation LAST, not FIRST | Moderate |
-| **LLM Endpoint Registry** | Health check lag vs. cold start (Pitfall 3) | Use /api/ps not /api/tags, keep-alive pings, warm check | Critical |
-| **LLM Endpoint Registry** | Synchronous health checks block GenServer (Pitfall 9) | Async tasks + ETS cache | Moderate |
-| **LLM Endpoint Registry** | Adding 9th DETS table (Pitfall 11) | Config file + ETS, not DETS | Minor |
-| **LLM Endpoint Registry** | Thundering herd on recovery (Pitfall 6) | Capacity tracking, circuit breaker, recovery grace period | Moderate |
-| **Model-Aware Scheduling** | Overfitting complexity classifier (Pitfall 2) | Whitelist approach, default to strongest model, explicit hints | Critical |
-| **Model-Aware Scheduling** | Breaking the match loop (Pitfall 5) | Routing as pre-enrichment, not inside match loop | Critical |
-| **Model-Aware Scheduling** | Stuck sweep reclaims tasks during model loading | Per-task timeout based on model type | Moderate |
-| **Sidecar Model Routing** | Complexity explosion (Pitfall 7) | Decompose into modules BEFORE adding LLM features | Critical |
-| **Sidecar Model Routing** | Ollama streaming gotchas (Pitfall 8) | Start with stream: false, three-tier timeouts | Critical |
-| **Sidecar Model Routing** | Protocol version mismatch (Pitfall 10) | Bump protocol_version, feature detection in capabilities | Moderate |
-| **Sidecar Trivial Execution** | Separate code path divergence (Pitfall 13) | Implement as "null model" in routing framework | Minor |
-| **Self-Verification** | LLM judging own work (Pitfall 4) | Mechanical checks first, different model for verification | Critical |
-| **Self-Verification** | Verification extends task beyond sweep threshold (Pitfall 12) | Progress heartbeat during verification, per-task timeouts | Moderate |
-| **Self-Verification** | Verification cost/latency for trivial tasks | Skip semantic verification for trivial tasks, mechanical only | Minor |
+| **Hub FSM Core** | State corruption from concurrent events (P3) | Use `gen_statem` or implement comprehensive timer cancellation | Critical |
+| **Hub FSM Core** | Supervisor tree ordering (P6) | Place after Scheduler, `restart: :transient`, defensive init | Moderate |
+| **Hub FSM Core** | Timer drift (P16) | Monotonic time, drift tracking | Minor |
+| **Hub FSM Core** | Cost spiral before controls exist (P1) | CostLedger GenServer must exist before first API call | Critical |
+| **Goal Backlog** | DETS table not registered with backup (P7) | Single table with namespaced keys, update DetsBackup | Moderate |
+| **Goal Decomposition** | Hallucinated tasks (P5) | Ground in file tree, post-decomposition validation | Critical |
+| **Goal Decomposition** | Over-decomposition (P12) | Min task size heuristic, prompt guidance | Minor |
+| **Goal Decomposition** | Scheduler starvation from volume (P11) | Source field, priority boost, reserved capacity | Moderate |
+| **Goal Completion** | False positive verification (P8) | Mechanical criteria required, two-judge verification | Moderate |
+| **Improvement Scanning** | Infinite loop / Sisyphus pattern (P2) | Cooldown, dedup, net-value gate, anti-oscillation | Critical |
+| **Improvement Scanning** | Bikeshedding (P9) | Category priority, min impact threshold, prompt engineering | Moderate |
+| **Improvement Scanning** | Context window overflow (P15) | Per-module scanning, metadata triage | Minor |
+| **Tiered Autonomy** | Auto-merge regressions (P4) | Integration branch, size gating, canary period, start PR-only | Critical |
+| **Pipeline Pipelining** | Branch conflicts (P14) | File-level locking, sequential for overlapping goals | Moderate |
+| **Contemplation** | Vaporware proposals (P13) | Scope constraints, feasibility check, rate limit | Minor |
+| **Pre-publication** | Git history breaking (P10) | Fork-based scrub, coordinated agent pause | Moderate |
+| **Cost Control (all)** | Token cost spiral (P1) | CostLedger, per-state budgets, tiered model usage | Critical |
 
 ---
 
-## Integration Pitfalls (Cross-Cutting)
+## Integration Pitfalls Specific to Existing Architecture
 
-### Adding features in the wrong order causes compounding problems
+These arise specifically from how the Hub FSM integrates with existing AgentCom components.
 
-**Recommended order and rationale:**
+### Existing AgentFSM vs. Hub FSM Naming Confusion
 
-1. **Enriched task format first** -- because every other feature (routing, verification, model assignment) depends on the task carrying enrichment data. Cannot route without complexity_class; cannot verify without verification_steps
-2. **Protocol version negotiation second** -- because the sidecar must understand the new task format before receiving enriched tasks. Hub backward compatibility with v1 sidecars established here
-3. **LLM endpoint registry third** -- because model-aware routing needs to know what endpoints are available before making routing decisions. Health checking is foundational
-4. **Sidecar decomposition fourth** -- restructure sidecar into modules before adding LLM client code. Prevents the 780-line file from becoming a 2500-line file
-5. **Sidecar model routing fifth** -- the sidecar can now call Ollama/Claude based on task assignment, using the decomposed module structure
-6. **Model-aware scheduler routing sixth** -- the scheduler enriches tasks with model assignments, using endpoint registry data. This is the integration point
-7. **Self-verification last** -- because it requires: enriched tasks (success criteria), sidecar LLM client (verification calls), and endpoint registry (model selection for verification). It is the highest-complexity feature with the most dependencies
+The codebase already has `AgentFSM` (per-agent state machine, `lib/agent_com/agent_fsm.ex`). Adding a `HubFSM` creates ambiguity. The Hub FSM is a singleton orchestrator; the Agent FSM is per-connection. Name the module clearly: `AgentCom.HubBrain` or `AgentCom.Autonomy` rather than `AgentCom.HubFSM` to avoid confusion.
 
-**Anti-pattern: Adding self-verification before sidecar decomposition.** Verification logic crammed into the monolithic sidecar creates an untestable mess.
+### PubSub Topic Management
 
-**Anti-pattern: Adding model-aware scheduling before the endpoint registry.** The scheduler cannot make routing decisions without knowing what models are available and healthy.
+The system already uses 6+ PubSub topics: "tasks", "presence", "llm_registry", "messages", "backups", "repo_registry". The Hub FSM needs its own topic for state changes and goal events. Keep it to one topic: `"hub_brain"`. Do not create per-state or per-goal topics.
 
-**Anti-pattern: Building a smart complexity classifier on day one.** Without historical task data, any classifier is speculation. Start with explicit hints and a whitelist.
+### DETS Auto-Save Timing
 
-**Anti-pattern: Modifying the scheduler match loop to include routing logic.** The match loop is proven correct. Push routing to the edges (pre-enrichment or sidecar-side).
+Existing tables use `auto_save: 5_000` (5 seconds). Hub FSM state changes may occur faster. Use explicit `:dets.sync/1` after critical changes (goal completion, improvement acceptance) as `persist_task/2` does in `task_queue.ex`.
 
----
+### Rate Limiter Interaction
 
-## Codebase-Specific Gotchas Relevant to v1.2
+The Hub FSM submits tasks to TaskQueue on behalf of itself. The existing `RateLimiter` is per-agent-id. If Hub uses a pseudo-agent-id (e.g., "hub-brain"), it could trigger rate limiting. Either exempt hub submissions or configure generous limits for the hub's pseudo-agent-id.
 
-Specific landmines found by reading the AgentCom source code that will affect v1.2 implementation.
+### Alerter Configuration
 
-| File | Issue | Impact on v1.2 |
-|---|---|---|
-| `scheduler.ex:163-192` | `try_schedule_all/1` queries `AgentFSM.list_all()` and `TaskQueue.list(status: :queued)` on every event -- adding endpoint registry queries here multiplies the per-event cost | Must cache routing decisions or query endpoint status from ETS, not via GenServer call |
-| `scheduler.ex:210-226` | `agent_matches_task?/2` only checks `needed_capabilities` as string subset -- model routing needs a richer capability model | Extend capabilities to include model-access capabilities: `["model:qwen2.5-coder:7b", "model:claude-opus"]` |
-| `socket.ex:170-185` | `handle_info({:push_task, task})` builds the `task_assign` payload with hardcoded field list -- new enrichment fields must be added here | Must remain backward compatible; carry enrichment in `metadata` sub-map |
-| `task_queue.ex:206-229` | Task map built inline with `Map.get` fallbacks -- no struct, no type enforcement, no migration | Add `task_version` field and default all new fields |
-| `sidecar/index.js:506-560` | `handleTaskAssign` destructures `msg.task_id`, `msg.description`, `msg.metadata` -- enrichment fields in `metadata.enrichment` would be backward compatible | Enrichment in metadata.enrichment avoids breaking this code |
-| `sidecar/index.js:86-142` | `wakeAgent` has hardcoded retry/timeout logic -- LLM task execution needs completely different timeout semantics | Do not reuse wake logic for LLM calls; build separate execution pipeline |
-| `validation/schemas.ex:245-254` | `post_task` schema allows `metadata: :map` -- enrichment fields nested in metadata pass validation without schema changes | Leverage this for backward-compatible enrichment delivery |
-| `config.exs` / `test.exs` | All DETS paths are configurable via `Application.get_env` (fixed in v1.1) -- endpoint registry should follow this pattern | Use config for registry, not hardcoded paths |
+The Alerter has 5 configured rules. Hub FSM needs new rules: high API spend, stuck state, excessive task generation. Add without disrupting existing rules. The Alerter supports dynamic addition.
+
+### Existing Sidecar Compatibility
+
+The Hub FSM generates tasks that flow through the existing pipeline to sidecars. Sidecars do not need to know about the Hub FSM -- tasks look the same to them. However, if hub-generated tasks have different `metadata` shapes (e.g., `metadata.source: "hub_improvement"`), the sidecar's `handleTaskAssign` must handle this gracefully. New metadata fields nested inside the existing `metadata` map are safe (JavaScript ignores unknown properties).
+
+### Dashboard Impact
+
+The existing dashboard (`dashboard.ex`, `dashboard_state.ex`, `dashboard_socket.ex`) shows task queue, agent states, and system health. The Hub FSM adds a new dimension: hub state, goal progress, improvement history, cost tracking. This is new dashboard UI, but it should use the existing WebSocket push pattern (`DashboardNotifier`) rather than adding a new transport.
 
 ---
 
 ## Sources
 
-- [Ollama FAQ - keep_alive, concurrency, VRAM management](https://docs.ollama.com/faq) -- model loading behavior, parallel request memory multiplication
-- [Ollama /api/tags documentation](https://docs.ollama.com/api/tags) -- model listing endpoint format
-- [Ollama /api/ps documentation](https://docs.ollama.com/api/ps) -- running model state endpoint
-- [Ollama GitHub issue #4350](https://github.com/ollama/ollama/issues/4350) -- configurable model loading timeout
-- [Ollama GitHub issue #7685](https://github.com/ollama/ollama/issues/7685) -- streaming behind gateway with timeout
-- [Ollama GitHub issue #8699](https://github.com/ollama/ollama/issues/8699) -- custom timeout with API call
-- [Ollama GitHub issue #9084](https://github.com/ollama/ollama/issues/9084) -- tools breaking stream=True on /v1 endpoint
-- [Ollama GitHub issue #9410](https://github.com/ollama/ollama/issues/9410) -- OLLAMA_KEEP_ALIVE reliability issues
-- [RouterEval: Comprehensive Benchmark for LLM Routing](https://aclanthology.org/2025.findings-emnlp.208.pdf) -- routing evaluation methodology
-- [When Routing Collapses: Degenerate Convergence of LLM Routers](https://arxiv.org/html/2602.03478) -- routing failure modes
-- [Top 5 LLM Routing Techniques (2025)](https://www.getmaxim.ai/articles/top-5-llm-routing-techniques/) -- cascading, heuristic, and ML-based routing patterns
-- [LLM Agent Hallucination Survey (2025)](https://arxiv.org/html/2509.18970v1) -- agent-specific hallucination taxonomy
-- [Chain-of-Verification (CoVe)](https://learnprompting.org/docs/advanced/self_criticism/chain_of_verification) -- self-verification techniques and limitations
-- [HaluGate: Token-Level Hallucination Detection](https://blog.vllm.ai/2025/12/14/halugate.html) -- alternative to LLM-as-judge verification
-- [Thundering Herd Problem: Preventing the Stampede](https://distributed-computing-musings.com/2025/08/thundering-herd-problem-preventing-the-stampede/) -- recovery surge patterns
-- [ExternalService - Elixir circuit breaker library](https://github.com/jvoegele/external_service) -- circuit breaker pattern for Elixir
-- [Fuse - Erlang circuit breaker](https://hex.pm/packages/fuse) -- battle-tested circuit breaker for BEAM
-- [Tailscale performance issue #14791](https://github.com/tailscale/tailscale/issues/14791) -- TCP bandwidth problems
-- [Tailscale SSH latency issue #17993](https://github.com/tailscale/tailscale/issues/17993) -- high-latency link performance
-- Direct codebase analysis: scheduler.ex, task_queue.ex, agent_fsm.ex, socket.ex, validation/schemas.ex, sidecar/index.js reviewed in full
+- [Preventing Infinite Loops and Cost Spirals in Autonomous Agent Deployments](https://codieshub.com/for-ai/prevent-agent-loops-costs)
+- [LLM-based Agents Suffer from Hallucinations: A Survey](https://arxiv.org/html/2509.18970v1)
+- [Why Do Multi-Agent LLM Systems Fail (Galileo)](https://galileo.ai/blog/multi-agent-llm-systems-fail)
+- [Why Do Multi-Agent LLM Systems Fail (arXiv)](https://arxiv.org/html/2503.13657v1)
+- [From ReAct to Ralph Loop: Continuous Iteration for AI Agents](https://www.alibabacloud.com/blog/from-react-to-ralph-loop-a-continuous-iteration-paradigm-for-ai-agents_602799)
+- [Ralph Loops in Software Engineering (LinearB)](https://linearb.io/blog/ralph-loop-agentic-engineering-geoffrey-huntley)
+- [Everything is a Ralph Loop (ghuntley)](https://ghuntley.com/loop/)
+- [Ralph Loop Agent (Vercel Labs)](https://github.com/vercel-labs/ralph-loop-agent)
+- [The Agentic Recursive Deadlock: LLM Orchestration Collapses](https://tech-champion.com/artificial-intelligence/the-agentic-recursive-deadlock-llm-orchestration-collapses/)
+- [Agentic AI Pitfalls: Loops, Hallucinations, Ethical Failures & Fixes](https://medium.com/@amitkharche/agentic-ai-pitfalls-loops-hallucinations-ethical-failures-fixes-77bd97805f9f)
+- [Self-Modifying AI Risks (ISACA)](https://www.isaca.org/resources/news-and-trends/isaca-now-blog/2025/unseen-unchecked-unraveling-inside-the-risky-code-of-self-modifying-ai)
+- [LLM Task Decomposition Strategies](https://apxml.com/courses/agentic-llm-memory-architectures/chapter-4-complex-planning-tool-integration/task-decomposition-strategies)
+- [Systematic Decomposition of Complex LLM Tasks (arXiv)](https://arxiv.org/html/2510.07772v1)
+- [How Task Decomposition Makes AI More Affordable (Amazon Science)](https://www.amazon.science/blog/how-task-decomposition-and-smaller-llms-can-make-ai-more-affordable)
+- [Scrubbing Secrets with Gitleaks and git filter-repo](https://medium.com/@sreejithv13055/scrubbing-secrets-a-practical-poc-using-gitleaks-and-git-filter-repo-08c64b8d246c)
+- [git-filter-repo Documentation](https://www.mankier.com/1/git-filter-repo)
+- [State Timeouts with gen_statem (DockYard)](https://dockyard.com/blog/2020/01/31/state-timeouts-with-gen_statem)
+- [GenStateMachine Elixir Wrapper](https://hexdocs.pm/gen_state_machine/GenStateMachine.html)
+- [GitLab AI Merge Agent](https://www.webpronews.com/gitlabs-ai-merge-agent-automating-chaos-in-code-merges/)
+- [Claude API Pricing 2026](https://www.metacto.com/blogs/anthropic-api-pricing-a-full-breakdown-of-costs-and-integration)
+- [Taming AI Agents: The Autonomous Workforce of 2026 (CIO)](https://www.cio.com/article/4064998/taming-ai-agents-the-autonomous-workforce-of-2026.html)
 
 ---
-*Pitfalls research for: Smart Agent Pipeline v1.2 (LLM mesh routing, model-aware scheduling, agent self-verification)*
+*Pitfalls research for: v1.3 Hub FSM Loop of Self-Improvement*
 *Researched: 2026-02-12*
