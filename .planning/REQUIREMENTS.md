@@ -47,7 +47,7 @@ Requirements for milestone v1.2 Smart Agent Pipeline. Each maps to roadmap phase
 
 - [x] **VERIFY-01**: Task results include a structured verification report with pass/fail per check
 - [x] **VERIFY-02**: Pre-built verification step types exist for common patterns (file_exists, test_passes, git_clean, command_succeeds)
-- [ ] **VERIFY-03**: After completing work, agent runs verification steps and retries fixes if checks fail (build-verify-fix loop)
+- [x] **VERIFY-03**: After completing work, agent runs verification steps and retries fixes if checks fail (build-verify-fix loop)
 - [x] **VERIFY-04**: Mechanical verification (compile, tests, file existence) runs before any LLM-based judgment
 
 ## Future Requirements
@@ -120,7 +120,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EXEC-04 | Phase 20 | Pending |
 | VERIFY-01 | Phase 21 | Complete |
 | VERIFY-02 | Phase 21 | Complete |
-| VERIFY-03 | Phase 22 | Pending |
+| VERIFY-03 | Phase 22 | Complete |
 | VERIFY-04 | Phase 21 | Complete |
 
 **Coverage:**

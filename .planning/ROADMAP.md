@@ -4,7 +4,7 @@
 
 - [x] **v1.0 Core Architecture** - Phases 1-8 (shipped 2026-02-11)
 - [x] **v1.1 Hardening** - Phases 9-16 (shipped 2026-02-12)
-- [ ] **v1.2 Smart Agent Pipeline** - Phases 17-22 (in progress)
+- [ ] **v1.2 Smart Agent Pipeline** - Phases 17-23 (in progress)
 
 ## Phases
 
@@ -55,7 +55,8 @@
 - [x] **Phase 19: Model-Aware Scheduler** - Scheduler routes tasks to the right execution tier based on complexity, model availability, and host load
 - [x] **Phase 20: Sidecar Execution** - Sidecars call the correct LLM backend (local Ollama, Claude API, or zero-token local execution) per task assignment
 - [x] **Phase 21: Verification Infrastructure** - Deterministic mechanical verification checks produce structured pass/fail reports before task submission
-- [ ] **Phase 22: Self-Verification Loop** - Agents run verification after execution and retry fixes when checks fail (build-verify-fix pattern)
+- [x] **Phase 22: Self-Verification Loop** - Agents run verification after execution and retry fixes when checks fail (build-verify-fix pattern)
+- [ ] **Phase 23: Multi-Repo Registry and Workspace Switching** - Hub maintains priority-ordered repo list with pause/resume; sidecar switches workspace per task
 
 ## Phase Details
 
@@ -163,7 +164,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 17 -> 17.1 -> 17.2 -> 18 -> ... -> 22
+Phases execute in numeric order: 17 -> 17.1 -> 17.2 -> 18 -> ... -> 23
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -174,4 +175,24 @@ Phases execute in numeric order: 17 -> 17.1 -> 17.2 -> 18 -> ... -> 22
 | 19. Model-Aware Scheduler | v1.2 | 4/4 | Complete | 2026-02-12 |
 | 20. Sidecar Execution | v1.2 | 4/4 | Complete | 2026-02-12 |
 | 21. Verification Infrastructure | v1.2 | 4/4 | Complete | 2026-02-12 |
-| 22. Self-Verification Loop | v1.2 | 0/3 | Not started | - |
+| 22. Self-Verification Loop | v1.2 | 3/3 | Complete | 2026-02-12 |
+| 23. Multi-Repo Registry + Workspace Switching | v1.2 | 0/TBD | Not started | - |
+
+### Phase 23: Multi-Repo Registry and Workspace Switching
+**Goal**: Hub maintains a priority-ordered list of repos with active/paused status. Tasks inherit the top-priority active repo by default. Scheduler skips tasks tagged with paused repos. Sidecar maintains a per-repo workspace cache and switches context per task.
+**Depends on**: Phase 17 (tasks carry repo field), Phase 20 (sidecar execution context)
+**Success Criteria** (what must be TRUE):
+  1. Admin can add a repo to the registry via HTTP API and see it in the priority-ordered list
+  2. Repos can be reordered (move up/down) and the priority order is respected by the scheduler
+  3. A paused repo's tasks remain queued but are skipped by the scheduler until unpaused
+  4. A task submitted without a repo field inherits the top-priority active repo
+  5. Sidecar can execute tasks against different repos by maintaining a per-repo workspace cache
+  6. Dashboard shows the repo registry with add/remove, reorder, and pause controls
+**Plans**: TBD
+
+Plans:
+- [ ] 23-01: TBD
+- [ ] 23-02: TBD
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 23 to break down)
