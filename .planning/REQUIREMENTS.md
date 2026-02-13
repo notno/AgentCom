@@ -22,7 +22,7 @@ Requirements for v1.3 Hub FSM Loop of Self-Improvement. Each maps to roadmap pha
 
 - [ ] **GOAL-01**: Centralized goal backlog with DETS persistence and priority ordering (urgent/high/normal/low)
 - [ ] **GOAL-02**: Goals can be submitted via HTTP API, CLI tool, and internal generation
-- [ ] **GOAL-03**: Hub decomposes goals into enriched tasks via Claude API (elephant carpaccio slicing)
+- [ ] **GOAL-03**: Hub decomposes goals into enriched tasks via Claude Code CLI (elephant carpaccio slicing)
 - [ ] **GOAL-04**: Decomposition is grounded in actual file tree (validates referenced files exist)
 - [ ] **GOAL-05**: Each goal has a lifecycle (submitted -> decomposing -> executing -> verifying -> complete/failed)
 - [ ] **GOAL-06**: Hub monitors child task completion and drives Ralph-style inner loop per goal
@@ -32,7 +32,7 @@ Requirements for v1.3 Hub FSM Loop of Self-Improvement. Each maps to roadmap pha
 
 ### Claude API Client
 
-- [ ] **CLIENT-01**: Req-based Claude API HTTP client GenServer with rate limiting and request serialization
+- [ ] **CLIENT-01**: Claude Code CLI wrapper GenServer (`claude -p`) with invocation rate limiting and serialization
 - [ ] **CLIENT-02**: Structured prompt/response handling for decomposition, verification, and improvement identification
 
 ### Self-Improvement
@@ -45,7 +45,7 @@ Requirements for v1.3 Hub FSM Loop of Self-Improvement. Each maps to roadmap pha
 
 ### Cost and Safety
 
-- [ ] **COST-01**: CostLedger GenServer tracks cumulative Claude API spend per hour/day/session
+- [ ] **COST-01**: CostLedger GenServer tracks cumulative Claude Code CLI invocations per hour/day/session
 - [ ] **COST-02**: Per-state token budgets are configurable (Executing, Improving, Contemplating)
 - [ ] **COST-03**: Hub FSM checks budget before every API call; transitions to Resting if budget exhausted
 - [ ] **COST-04**: Cost telemetry emitted via :telemetry and wired to existing Alerter
@@ -82,12 +82,12 @@ Requirements for v1.3 Hub FSM Loop of Self-Improvement. Each maps to roadmap pha
 ### Document Format
 
 - [ ] **FORMAT-01**: All new machine-consumed documents (goals, task context, scan results, FSM state) use XML format
-- [ ] **FORMAT-02**: Existing .planning/ artifacts converted from markdown to XML
+- [ ] **FORMAT-02**: ~~Existing .planning/ artifacts converted from markdown to XML~~ DESCOPED -- GSD stays markdown
 
 ### Dashboard
 
 - [ ] **DASH-01**: Dashboard shows Hub FSM state, goal progress, and goal backlog depth
-- [ ] **DASH-02**: Dashboard shows hub API cost tracking separate from task execution costs
+- [ ] **DASH-02**: Dashboard shows hub CLI invocation tracking separate from task execution costs
 
 ## Future Requirements
 
