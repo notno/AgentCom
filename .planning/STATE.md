@@ -12,14 +12,14 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 Phase: 23 of 23 (Multi-Repo Registry and Workspace Switching)
 Plan: 2 of 3
 Status: Executing
-Last activity: 2026-02-12 -- Completed 23-02 Workspace Manager
+Last activity: 2026-02-12 -- Completed 23-01 Repo Registry and HTTP Admin API
 
 Progress: [████████░░] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 69 (19 v1.0 + 32 v1.1 + 18 v1.2)
+- Total plans completed: 70 (19 v1.0 + 32 v1.1 + 19 v1.2)
 - Average duration: 5 min
 - Total execution time: 4.3 hours
 
@@ -63,6 +63,7 @@ Progress: [████████░░] 80%
 | Phase 22 P01 | 2min | 2 tasks | 2 files |
 | Phase 22 P03 | 1min | 2 tasks | 1 files |
 | Phase 22 P02 | 3min | 3 tasks | 5 files |
+| Phase 23 P01 | 3min | 2 tasks | 6 files |
 | Phase 23 P02 | 3min | 2 tasks | 2 files |
 
 ## Accumulated Context
@@ -155,6 +156,10 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - [Phase 22]: verification_history as top-level WS field alongside verification_report (consistent extraction pattern)
 - [Phase 22]: max_verification_retries capped at 5 via min() in task struct (hard safety cap)
 - [Phase 22]: Integration test uses require.cache stubbing for end-to-end pipeline verification (no live dependencies)
+- 23-01: Single DETS key (:repos) storing ordered list for atomic reordering (no per-repo keys)
+- 23-01: URL normalization strips trailing / and .git before storage and comparison
+- 23-01: RepoRegistry placed in supervisor after LlmRegistry, before DashboardState
+- 23-01: Compact handler added to RepoRegistry for DetsBackup compaction support
 - 23-02: Dots preserved in URL slugs for domain readability (github.com-notno-AgentCom)
 - 23-02: WorkspaceManager initialized once on startup, shared across all task executions
 - 23-02: effectiveConfig shallow copy ensures _config is never mutated by workspace resolution
@@ -189,5 +194,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 23-02-PLAN.md (Workspace Manager)
+Stopped at: Completed 23-01-PLAN.md (Repo Registry and HTTP Admin API)
 Resume file: None
