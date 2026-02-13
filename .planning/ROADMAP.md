@@ -108,7 +108,11 @@ Plans:
   2. Per-state token budgets (Executing, Improving, Contemplating) are configurable via the existing Config GenServer
   3. Any code path that would call the Claude API checks the CostLedger budget first and transitions HubFSM to Resting if budget is exhausted
   4. Cost telemetry events are emitted via :telemetry and trigger existing Alerter rules when thresholds are approached
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 25-01-PLAN.md -- CostLedger GenServer with dual-layer DETS+ETS store, supervision tree, DetsBackup
+- [ ] 25-02-PLAN.md -- Telemetry events, Alerter rule 7, DetsHelpers test isolation
+- [ ] 25-03-PLAN.md -- TDD: comprehensive CostLedger test suite
 
 ### Phase 26: Claude API Client
 **Goal**: The hub can make structured LLM calls through a rate-limited, cost-aware HTTP client
