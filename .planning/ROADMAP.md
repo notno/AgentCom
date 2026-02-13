@@ -176,7 +176,7 @@ Phases execute in numeric order: 17 -> 17.1 -> 17.2 -> 18 -> ... -> 23
 | 20. Sidecar Execution | v1.2 | 4/4 | Complete | 2026-02-12 |
 | 21. Verification Infrastructure | v1.2 | 4/4 | Complete | 2026-02-12 |
 | 22. Self-Verification Loop | v1.2 | 3/3 | Complete | 2026-02-12 |
-| 23. Multi-Repo Registry + Workspace Switching | v1.2 | 0/TBD | Not started | - |
+| 23. Multi-Repo Registry + Workspace Switching | v1.2 | 0/3 | Not started | - |
 
 ### Phase 23: Multi-Repo Registry and Workspace Switching
 **Goal**: Hub maintains a priority-ordered list of repos with active/paused status. Tasks inherit the top-priority active repo by default. Scheduler skips tasks tagged with paused repos. Sidecar maintains a per-repo workspace cache and switches context per task.
@@ -188,11 +188,9 @@ Phases execute in numeric order: 17 -> 17.1 -> 17.2 -> 18 -> ... -> 23
   4. A task submitted without a repo field inherits the top-priority active repo
   5. Sidecar can execute tasks against different repos by maintaining a per-repo workspace cache
   6. Dashboard shows the repo registry with add/remove, reorder, and pause controls
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 23-01: TBD
-- [ ] 23-02: TBD
-
-Plans:
-- [ ] TBD (run /gsd:plan-phase 23 to break down)
+- [ ] 23-01-PLAN.md -- RepoRegistry GenServer, HTTP API, validation, supervisor, DetsBackup
+- [ ] 23-02-PLAN.md -- Sidecar workspace manager and index.js integration
+- [ ] 23-03-PLAN.md -- Scheduler repo filtering, TaskQueue nil-repo inheritance, dashboard UI
