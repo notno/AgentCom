@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.2 Smart Agent Pipeline -- Phase 20 In Progress
+**Current focus:** v1.2 Smart Agent Pipeline -- Phase 20 Complete, Phase 21 Complete
 
 ## Current Position
 
-Phase: 21 of 22 (Verification Infrastructure)
-Plan: 4 of 4
-Status: Phase Complete
-Last activity: 2026-02-12 -- Completed 21-04 Store Wiring Gap Closure
+Phase: 22 of 22 (Self-Verification Loop)
+Plan: 0 of 1
+Status: Ready for Phase 22
+Last activity: 2026-02-12 -- Completed 20-04 Dashboard Execution Streaming
 
 Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 67 (19 v1.0 + 32 v1.1 + 16 v1.2)
+- Total plans completed: 68 (19 v1.0 + 32 v1.1 + 17 v1.2)
 - Average duration: 5 min
 - Total execution time: 4.3 hours
 
@@ -37,7 +37,7 @@ Progress: [█████░░░░░] 50%
 | 16-operations-docs | 4 | 14 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 21-04 (2 min), 20-01 (2 min), 19-04 (6 min), 19-03 (5 min), 19-02 (7 min)
+- Last 5 plans: 20-04 (3 min), 21-04 (2 min), 20-01 (2 min), 19-04 (6 min), 19-03 (5 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -59,6 +59,7 @@ Progress: [█████░░░░░] 50%
 | Phase 20 P02 | 2min | 2 tasks | 2 files |
 | Phase 20 P03 | 4min | 2 tasks | 5 files |
 | Phase 21 P04 | 2min | 2 tasks (gap closure) | 2 files |
+| Phase 20 P04 | 3min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -139,6 +140,8 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - 21-04: Configurable :name opt with __MODULE__ default for Store (production uses module name, tests use unique atoms)
 - 21-04: Guard-based dispatch for save/2: is_binary(task_id) routes to registered name, is_pid routes directly
 - 21-04: No changes to task_queue.ex needed -- existing call site already correct, gap was Store-side only
+- [Phase 20]: execution_event push uses DashboardSocket existing batching (no additional batching layer)
+- [Phase 20]: Execution output panel collapsible below task detail with auto-scroll and color-coded event types
 
 ### Pending Todos
 
@@ -146,7 +149,6 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 2. Pipeline phase discussions and research ahead of execution (area: planning)
 3. Pre-publication repo cleanup synthesized from agent audits (area: general)
 4. Multi-project fallback queue for idle agent utilization (area: architecture)
-5. Dashboard task submission UI (area: ui)
 
 ### Blockers/Concerns
 
@@ -166,5 +168,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 21-04-PLAN.md (Store Wiring Gap Closure)
+Stopped at: Completed 20-04-PLAN.md (Dashboard Execution Streaming)
 Resume file: None
