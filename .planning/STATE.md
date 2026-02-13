@@ -19,7 +19,7 @@ Progress: [██████▌       ] 50% (1/2 plans)
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 82 (19 v1.0 + 32 v1.1 + 25 v1.2 + 6 v1.3)
+- Total plans completed: 83 (19 v1.0 + 32 v1.1 + 25 v1.2 + 7 v1.3)
 - Average duration: 4 min
 - Total execution time: ~5.5 hours
 
@@ -51,6 +51,9 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - try/rescue around budget_exhausted telemetry so telemetry failure never blocks budget checking
 - catch :exit in Alerter evaluate_hub_invocation_rate for CostLedger not-yet-started safety
 - All 36 CostLedger tests passed on first run -- 25-01/02 implementation was complete, no source fixes needed in TDD phase
+- GoalBacklog follows TaskQueue pattern: DETS+sync, priority index, PubSub broadcast
+- Lifecycle state machine with 6 states: submitted->decomposing->executing->verifying->complete/failed
+- Priority index only tracks :submitted goals; dequeue pops and transitions to :decomposing atomically
 - RepoScanner as library module (not GenServer) -- stateless scanning, no supervision overhead
 - Module attribute patterns with compile-time regex -- zero runtime compilation cost
 - Elixir maps for scan reports (not XML) -- JSON-serializable for API consumption
@@ -81,5 +84,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 35-01-PLAN.md -- RepoScanner core (Patterns, FileWalker, Finding, scan_repo, scan_all)
+Stopped at: Completed 27-01-PLAN.md -- GoalBacklog GenServer (DETS persistence, lifecycle state machine, 16 tests)
 Resume file: None
