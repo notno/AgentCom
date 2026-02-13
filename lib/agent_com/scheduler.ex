@@ -559,7 +559,11 @@ defmodule AgentCom.Scheduler do
           verification_steps: Map.get(assigned_task, :verification_steps, []),
           complexity: Map.get(assigned_task, :complexity),
           # Routing decision (Phase 19)
-          routing_decision: routing_decision
+          routing_decision: routing_decision,
+          # Verification control (Phase 21/22)
+          skip_verification: Map.get(assigned_task, :skip_verification, false),
+          verification_timeout_ms: Map.get(assigned_task, :verification_timeout_ms),
+          max_verification_retries: Map.get(assigned_task, :max_verification_retries, 0)
         }
 
         :telemetry.execute(
