@@ -1409,6 +1409,8 @@ defmodule AgentCom.Endpoint do
       "verification_steps" => Map.get(task, :verification_steps, []),
       "complexity" => format_complexity(Map.get(task, :complexity)),
       "verification_report" => Map.get(task, :verification_report),
+      "verification_history" => Map.get(task, :verification_history, []),
+      "max_verification_retries" => Map.get(task, :max_verification_retries, 0),
       "routing_decision" => format_routing_decision(Map.get(task, :routing_decision))
     }
   end
