@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.2 Smart Agent Pipeline -- Phase 20-22 Complete, Phase 23 In Progress
+**Current focus:** v1.2 Smart Agent Pipeline -- Phase 20-23 Complete
 
 ## Current Position
 
 Phase: 23 of 23 (Multi-Repo Registry and Workspace Switching)
-Plan: 2 of 3
-Status: Executing
-Last activity: 2026-02-12 -- Completed 23-01 Repo Registry and HTTP Admin API
+Plan: 3 of 3
+Status: Complete
+Last activity: 2026-02-12 -- Completed 23-03 Scheduler Integration, Dashboard UI, and Repo Registry Wiring
 
-Progress: [████████░░] 80%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 70 (19 v1.0 + 32 v1.1 + 19 v1.2)
+- Total plans completed: 71 (19 v1.0 + 32 v1.1 + 20 v1.2)
 - Average duration: 5 min
 - Total execution time: 4.3 hours
 
@@ -65,6 +65,7 @@ Progress: [████████░░] 80%
 | Phase 22 P02 | 3min | 3 tasks | 5 files |
 | Phase 23 P01 | 3min | 2 tasks | 6 files |
 | Phase 23 P02 | 3min | 2 tasks | 2 files |
+| Phase 23 P03 | 4min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -165,6 +166,10 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 - 23-02: effectiveConfig shallow copy ensures _config is never mutated by workspace resolution
 - 23-02: Workspace update failures log warning but continue with stale workspace (don't fail the task)
 - 23-02: Workspace clone failures fail the task immediately via sendTaskFailed
+- 23-03: Scheduler 4-branch cond: nil-repo always schedulable, active-repo schedulable, paused-repo skipped, unknown-repo schedulable
+- 23-03: Nil-repo inheritance at submit time (not schedule time) for immediate visibility in all views
+- 23-03: DashboardSocket repo commands push fresh snapshot for immediate UI consistency
+- 23-03: Repo status badges reuse existing badge CSS classes (completed=active, assigned=paused)
 
 ### Roadmap Evolution
 
@@ -194,5 +199,5 @@ v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions a
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 23-01-PLAN.md (Repo Registry and HTTP Admin API)
+Stopped at: Completed 23-03-PLAN.md (Scheduler Integration, Dashboard UI, and Repo Registry Wiring)
 Resume file: None
