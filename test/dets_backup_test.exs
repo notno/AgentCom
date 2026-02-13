@@ -11,11 +11,11 @@ defmodule AgentCom.DetsBackupTest do
     %{tmp_dir: tmp_dir}
   end
 
-  test "health_metrics returns data for all 10 tables" do
+  test "health_metrics returns data for all 12 tables" do
     metrics = AgentCom.DetsBackup.health_metrics()
     assert is_map(metrics)
     assert is_list(metrics.tables)
-    assert length(metrics.tables) == 10
+    assert length(metrics.tables) == 12
 
     Enum.each(metrics.tables, fn t ->
       assert Map.has_key?(t, :table)
@@ -30,7 +30,7 @@ defmodule AgentCom.DetsBackupTest do
   test "backup_all creates backup files and returns results" do
     {:ok, results} = AgentCom.DetsBackup.backup_all()
     assert is_list(results)
-    assert length(results) == 10
+    assert length(results) == 12
 
     Enum.each(results, fn result ->
       assert {:ok, info} = result
@@ -53,7 +53,7 @@ defmodule AgentCom.DetsBackupTest do
 
     # last_backup_results should be a list (not nil, since we just ran a backup)
     assert is_list(decoded["last_backup_results"])
-    assert length(decoded["last_backup_results"]) == 10
+    assert length(decoded["last_backup_results"]) == 12
 
     # Each entry should have a "status" key that is either "ok" or "error"
     Enum.each(decoded["last_backup_results"], fn entry ->
@@ -77,7 +77,7 @@ defmodule AgentCom.DetsBackupTest do
 
     table_atoms = [:task_queue, :task_dead_letter, :agent_mailbox, :message_history,
                    :agent_channels, :channel_history, :agentcom_config, :thread_messages, :thread_replies,
-                   :repo_registry]
+                   :repo_registry, :cost_ledger, :goal_backlog]
 
     Enum.each(table_atoms, fn table ->
       prefix = "#{table}_"

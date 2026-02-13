@@ -34,6 +34,7 @@ defmodule AgentCom.TestHelpers.DetsHelpers do
     Application.put_env(:agent_com, :llm_registry_data_dir, Path.join(tmp_dir, "llm_registry"))
     Application.put_env(:agent_com, :repo_registry_data_dir, Path.join(tmp_dir, "repo_registry"))
     Application.put_env(:agent_com, :cost_ledger_data_dir, Path.join(tmp_dir, "cost_ledger"))
+    Application.put_env(:agent_com, :goal_backlog_data_dir, Path.join(tmp_dir, "goal_backlog"))
     Application.put_env(:agent_com, :backup_dir, Path.join(tmp_dir, "backups"))
 
     # Ensure subdirectories exist
@@ -44,6 +45,7 @@ defmodule AgentCom.TestHelpers.DetsHelpers do
     File.mkdir_p!(Path.join(tmp_dir, "llm_registry"))
     File.mkdir_p!(Path.join(tmp_dir, "repo_registry"))
     File.mkdir_p!(Path.join(tmp_dir, "cost_ledger"))
+    File.mkdir_p!(Path.join(tmp_dir, "goal_backlog"))
     File.mkdir_p!(Path.join(tmp_dir, "backups"))
 
     tmp_dir
@@ -61,6 +63,7 @@ defmodule AgentCom.TestHelpers.DetsHelpers do
     stop_order = [
       AgentCom.Scheduler,
       AgentCom.DetsBackup,
+      AgentCom.GoalBacklog,
       AgentCom.CostLedger,
       AgentCom.TaskQueue,
       AgentCom.MessageHistory,
@@ -89,7 +92,7 @@ defmodule AgentCom.TestHelpers.DetsHelpers do
     dets_tables = [
       :task_queue, :task_dead_letter, :agent_mailbox, :message_history,
       :agent_channels, :channel_history, :agentcom_config, :thread_messages,
-      :thread_replies, :repo_registry, :cost_ledger
+      :thread_replies, :repo_registry, :cost_ledger, :goal_backlog
     ]
 
     for table <- dets_tables do

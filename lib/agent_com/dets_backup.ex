@@ -28,7 +28,8 @@ defmodule AgentCom.DetsBackup do
     :thread_messages,
     :thread_replies,
     :repo_registry,
-    :cost_ledger
+    :cost_ledger,
+    :goal_backlog
   ]
 
   @daily_interval_ms 24 * 60 * 60 * 1000
@@ -328,6 +329,7 @@ defmodule AgentCom.DetsBackup do
   defp table_owner(:thread_replies), do: AgentCom.Threads
   defp table_owner(:repo_registry), do: AgentCom.RepoRegistry
   defp table_owner(:cost_ledger), do: AgentCom.CostLedger
+  defp table_owner(:goal_backlog), do: AgentCom.GoalBacklog
   defp table_owner(:task_queue), do: AgentCom.TaskQueue
   defp table_owner(:task_dead_letter), do: AgentCom.TaskQueue
 
@@ -459,6 +461,10 @@ defmodule AgentCom.DetsBackup do
       :cost_ledger ->
         dir = Application.get_env(:agent_com, :cost_ledger_data_dir, "priv/data/cost_ledger")
         Path.join(dir, "cost_ledger.dets")
+
+      :goal_backlog ->
+        dir = Application.get_env(:agent_com, :goal_backlog_data_dir, "priv/data/goal_backlog")
+        Path.join(dir, "goal_backlog.dets")
     end
   end
 
