@@ -129,13 +129,58 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (populated by roadmapper) | | |
+| FORMAT-01 | Phase 24 | Pending |
+| FORMAT-02 | Phase 24 | Pending |
+| COST-01 | Phase 25 | Pending |
+| COST-02 | Phase 25 | Pending |
+| COST-03 | Phase 25 | Pending |
+| COST-04 | Phase 25 | Pending |
+| CLIENT-01 | Phase 26 | Pending |
+| CLIENT-02 | Phase 26 | Pending |
+| GOAL-01 | Phase 27 | Pending |
+| GOAL-02 | Phase 27 | Pending |
+| GOAL-05 | Phase 27 | Pending |
+| GOAL-08 | Phase 27 | Pending |
+| PIPE-01 | Phase 28 | Pending |
+| PIPE-02 | Phase 28 | Pending |
+| PIPE-03 | Phase 28 | Pending |
+| FSM-01 | Phase 29 | Pending |
+| FSM-02 | Phase 29 | Pending |
+| FSM-03 | Phase 29 | Pending |
+| FSM-04 | Phase 29 | Pending |
+| FSM-05 | Phase 29 | Pending |
+| GOAL-03 | Phase 30 | Pending |
+| GOAL-04 | Phase 30 | Pending |
+| GOAL-06 | Phase 30 | Pending |
+| GOAL-07 | Phase 30 | Pending |
+| GOAL-09 | Phase 30 | Pending |
+| FSM-06 | Phase 31 | Pending |
+| FSM-07 | Phase 31 | Pending |
+| FSM-08 | Phase 31 | Pending |
+| IMPR-01 | Phase 32 | Pending |
+| IMPR-02 | Phase 32 | Pending |
+| IMPR-03 | Phase 32 | Pending |
+| IMPR-04 | Phase 32 | Pending |
+| IMPR-05 | Phase 32 | Pending |
+| CONTEMP-01 | Phase 33 | Pending |
+| CONTEMP-02 | Phase 33 | Pending |
+| SCALE-01 | Phase 33 | Pending |
+| SCALE-02 | Phase 33 | Pending |
+| AUTO-01 | Phase 34 | Pending |
+| AUTO-02 | Phase 34 | Pending |
+| AUTO-03 | Phase 34 | Pending |
+| CLEAN-01 | Phase 35 | Pending |
+| CLEAN-02 | Phase 35 | Pending |
+| CLEAN-03 | Phase 35 | Pending |
+| CLEAN-04 | Phase 35 | Pending |
+| DASH-01 | Phase 36 | Pending |
+| DASH-02 | Phase 36 | Pending |
 
 **Coverage:**
-- v1.3 requirements: 39 total
-- Mapped to phases: 0
-- Unmapped: 39
+- v1.3 requirements: 46 total
+- Mapped to phases: 46
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-12*
-*Last updated: 2026-02-12 after initial definition*
+*Last updated: 2026-02-13 after roadmap creation*
