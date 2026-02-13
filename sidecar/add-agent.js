@@ -373,6 +373,7 @@ async function registerAgent(progress) {
     fatal(
       `Agent "${agentName}" already registered. Options:\n` +
       `  - Rejoin with existing token: node add-agent.js --hub ${HUB_URL} --name ${agentName} --rejoin --token <token>\n` +
+      `  - Reset token via admin API: curl -X POST ${HUB_URL}/api/admin/agents/${agentName}/reset-token -H "Authorization: Bearer <admin-token>"\n` +
       `  - Choose a different name with --name\n` +
       `  - Remove the existing agent first via admin API`
     );
