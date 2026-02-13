@@ -214,9 +214,11 @@ function buildSummary(checks) {
  * @param {object} task - Active task object from _queue.active
  *   Expected fields: task_id, verification_steps, skip_verification, verification_timeout_ms
  * @param {object} config - Sidecar config object (has repo_dir)
+ * @param {number} [runNumber] - Verification run number (default 1, passed by verification loop)
  * @returns {Promise<object>} Verification report
  */
-async function runVerification(task, config) {
+async function runVerification(task, config, runNumber) {
+  runNumber = runNumber || 1;
   const taskId = task.task_id;
   const logFn = config._log || (() => {});
 
@@ -225,7 +227,7 @@ async function runVerification(task, config) {
     logFn('info', 'verification_skipped', { task_id: taskId });
     return {
       task_id: taskId,
-      run_number: 1,
+      run_number: runNumber,
       status: 'skip',
       started_at: Date.now(),
       duration_ms: 0,
@@ -241,7 +243,7 @@ async function runVerification(task, config) {
     logFn('info', 'verification_auto_pass', { task_id: taskId });
     return {
       task_id: taskId,
-      run_number: 1,
+      run_number: runNumber,
       status: 'auto_pass',
       started_at: Date.now(),
       duration_ms: 0,
@@ -269,7 +271,7 @@ async function runVerification(task, config) {
 
       resolve({
         task_id: taskId,
-        run_number: 1,
+        run_number: runNumber,
         status: 'timeout',
         started_at: startedAt,
         duration_ms: Date.now() - startedAt,
@@ -313,7 +315,7 @@ async function runVerification(task, config) {
 
       resolve({
         task_id: taskId,
-        run_number: 1,
+        run_number: runNumber,
         status,
         started_at: startedAt,
         duration_ms: totalDuration,
@@ -330,7 +332,7 @@ async function runVerification(task, config) {
 
       resolve({
         task_id: taskId,
-        run_number: 1,
+        run_number: runNumber,
         status: 'error',
         started_at: startedAt,
         duration_ms: Date.now() - startedAt,
