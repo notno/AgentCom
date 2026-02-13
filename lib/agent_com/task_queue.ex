@@ -271,7 +271,13 @@ defmodule AgentCom.TaskQueue do
           Map.get(params, :max_verification_retries,
             Map.get(params, "max_verification_retries", 0)),
           5
-        )
+        ),
+      skip_verification:
+        Map.get(params, :skip_verification,
+          Map.get(params, "skip_verification", false)),
+      verification_timeout_ms:
+        Map.get(params, :verification_timeout_ms,
+          Map.get(params, "verification_timeout_ms", nil))
     }
 
     complexity = task.complexity
