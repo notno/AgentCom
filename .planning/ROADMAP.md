@@ -4,7 +4,7 @@
 
 - [x] **v1.0 Core Architecture** - Phases 1-8 (shipped 2026-02-11)
 - [x] **v1.1 Hardening** - Phases 9-16 (shipped 2026-02-12)
-- [ ] **v1.2 Smart Agent Pipeline** - Phases 17-23 (in progress)
+- [x] **v1.2 Smart Agent Pipeline** - Phases 17-23 (shipped 2026-02-12)
 
 ## Phases
 
@@ -56,7 +56,7 @@
 - [x] **Phase 20: Sidecar Execution** - Sidecars call the correct LLM backend (local Ollama, Claude API, or zero-token local execution) per task assignment
 - [x] **Phase 21: Verification Infrastructure** - Deterministic mechanical verification checks produce structured pass/fail reports before task submission
 - [x] **Phase 22: Self-Verification Loop** - Agents run verification after execution and retry fixes when checks fail (build-verify-fix pattern)
-- [ ] **Phase 23: Multi-Repo Registry and Workspace Switching** - Hub maintains priority-ordered repo list with pause/resume; sidecar switches workspace per task
+- [x] **Phase 23: Multi-Repo Registry and Workspace Switching** - Hub maintains priority-ordered repo list with pause/resume; sidecar switches workspace per task
 
 ## Phase Details
 
@@ -176,7 +176,7 @@ Phases execute in numeric order: 17 -> 17.1 -> 17.2 -> 18 -> ... -> 23
 | 20. Sidecar Execution | v1.2 | 4/4 | Complete | 2026-02-12 |
 | 21. Verification Infrastructure | v1.2 | 4/4 | Complete | 2026-02-12 |
 | 22. Self-Verification Loop | v1.2 | 3/3 | Complete | 2026-02-12 |
-| 23. Multi-Repo Registry + Workspace Switching | v1.2 | 0/3 | Not started | - |
+| 23. Multi-Repo Registry + Workspace Switching | v1.2 | 3/3 | Complete | 2026-02-12 |
 
 ### Phase 23: Multi-Repo Registry and Workspace Switching
 **Goal**: Hub maintains a priority-ordered list of repos with active/paused status. Tasks inherit the top-priority active repo by default. Scheduler skips tasks tagged with paused repos. Sidecar maintains a per-repo workspace cache and switches context per task.
