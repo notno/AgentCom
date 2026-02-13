@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 ## Current Position
 
 Phase: 25 of 36 (Cost Control Infrastructure)
-Plan: 1/3 complete
+Plan: 2/3 complete
 Status: Executing
-Last activity: 2026-02-13 -- Plan 25-01 CostLedger GenServer with dual-layer DETS+ETS budget enforcement
+Last activity: 2026-02-13 -- Plan 25-02 Telemetry, Alerter rule 7, and CostLedger DETS test isolation
 
-Progress: [████_________] 33% (1/3 plans)
+Progress: [████████_____] 67% (2/3 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 79 (19 v1.0 + 32 v1.1 + 25 v1.2 + 3 v1.3)
+- Total plans completed: 80 (19 v1.0 + 32 v1.1 + 25 v1.2 + 4 v1.3)
 - Average duration: 4 min
 - Total execution time: ~5.5 hours
 
@@ -48,6 +48,8 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - All 77 XML tests passed on first run -- Plan 01 implementation was correct, no source fixes needed in TDD phase
 - CostLedger fail-open on ETS/Config unavailability -- safety during startup outweighs cost risk
 - Dual-layer DETS+ETS for CostLedger: DETS durability + ETS hot-path O(1) budget checks without GenServer.call
+- try/rescue around budget_exhausted telemetry so telemetry failure never blocks budget checking
+- catch :exit in Alerter evaluate_hub_invocation_rate for CostLedger not-yet-started safety
 
 ### Research Findings (v1.3)
 
@@ -75,5 +77,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 25-01-PLAN.md -- CostLedger GenServer operational, ready for Plan 25-02
+Stopped at: Completed 25-02-PLAN.md -- Telemetry events wired, Alerter rule 7 active, DetsHelpers updated
 Resume file: None
