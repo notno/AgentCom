@@ -516,17 +516,20 @@ class HubConnection {
 
   sendTaskComplete(taskId, result) {
     const generation = this.taskGenerations.get(taskId) || 0;
-    // Extract verification_report as top-level WS field (not nested inside result)
+    // Extract verification_report and verification_history as top-level WS fields (not nested inside result)
     const verificationReport = result.verification_report;
+    const verificationHistory = result.verification_history;
     const cleanResult = { ...result };
     delete cleanResult.verification_report;
+    delete cleanResult.verification_history;
 
     const sent = this.send({
       type: 'task_complete',
       task_id: taskId,
       result: cleanResult,
       generation,
-      verification_report: verificationReport || null
+      verification_report: verificationReport || null,
+      verification_history: verificationHistory || null
     });
     this.taskGenerations.delete(taskId);
     return sent;
@@ -580,7 +583,9 @@ class HubConnection {
       skip_verification: msg.skip_verification || false,
       verification_timeout_ms: msg.verification_timeout_ms || null,
       // Routing decision (Phase 20)
-      routing_decision: msg.routing_decision || null
+      routing_decision: msg.routing_decision || null,
+      // Verification retry config (Phase 22)
+      max_verification_retries: msg.max_verification_retries || 0
     };
 
     // Persist BEFORE acknowledging (crash between accept and persist loses the task)
@@ -631,7 +636,7 @@ class HubConnection {
    * Streams progress events to hub via WebSocket, reports completion/failure.
    */
   async executeTask(task) {
-    const { dispatch } = require('./lib/execution/dispatcher');
+    const { executeWithVerification } = require('./lib/execution/verification-loop');
     const { ProgressEmitter } = require('./lib/execution/progress-emitter');
 
     const emitter = new ProgressEmitter((events) => {
@@ -654,7 +659,7 @@ class HubConnection {
       task.status = 'working';
       saveQueue(QUEUE_PATH, _queue);
 
-      const result = await dispatch(task, _config, (event) => emitter.emit(event));
+      const result = await executeWithVerification(task, _config, (event) => emitter.emit(event));
       emitter.flush();
       emitter.destroy();
 
@@ -666,7 +671,11 @@ class HubConnection {
         tokens_out: result.tokens_out,
         estimated_cost_usd: result.estimated_cost_usd,
         equivalent_claude_cost_usd: result.equivalent_claude_cost_usd,
-        execution_ms: result.execution_ms
+        execution_ms: result.execution_ms,
+        verification_report: result.verification_report,
+        verification_history: result.verification_history,
+        verification_status: result.verification_status,
+        verification_attempts: result.verification_attempts
       });
     } catch (err) {
       emitter.destroy();
