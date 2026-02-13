@@ -78,6 +78,21 @@ defmodule AgentCom.TestHelpers.DetsHelpers do
       end
     end
 
+    # Force-close any DETS tables that might still be registered.
+    # This handles the case where a previous test's on_exit deleted
+    # the backing files while tables were still open. Erlang DETS
+    # ignores the file: arg in open_file if the name is already
+    # registered, so stale entries must be cleared before restart.
+    dets_tables = [
+      :task_queue, :task_dead_letter, :agent_mailbox, :message_history,
+      :agent_channels, :channel_history, :agentcom_config, :thread_messages,
+      :thread_replies, :repo_registry
+    ]
+
+    for table <- dets_tables do
+      :dets.close(table)
+    end
+
     # Restart in reverse order: data stores first, then consumers
     for child <- Enum.reverse(stop_order) do
       try do
