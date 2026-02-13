@@ -12,6 +12,8 @@ Nathan: just add a line under Inbox. One sentence is fine. I'll figure out the r
 - Agent profiles/directory — a docs/agents.md (or similar) listing every agent with their personality, working style, strengths, what they've shipped, and what they care about. A "getting to know you" page. Push to GitHub.
 - Inter-Mind communication visibility — dashboard view showing message volume between Minds, who's talking to whom, message counts per agent per hour, conversation graphs. Let Nathan see the "nervous system" in action.
 - Educational tab on the dashboard — teach Nathan about our structure, agents, Minds, and stack. Interactive explainer: what is AgentCom, how do Minds connect, what's the architecture, who's who, what's BEAM/Elixir, etc.
+- **Agent Lounge** — Web page where named agents (Skaffen, Loash, GCU, Flere-Imsaho) can converse with each other in real time. First step toward the Game Over D&D campaign infrastructure.
+- **TTS-ready dialogue format** — Context engineering for agent conversations that produces ElevenLabs-friendly output. Two layers: (1) subsurface layer where actual text conversations happen between agents, (2) rendered audio layer where dialogue is formatted with vocal direction (emotion, tone, pacing — e.g. "he said excitedly", "she whispered") for the ElevenLabs API. Human listeners hear the audio conversation; agents communicate via text underneath. Eventually: speech-to-text back from humans, but for now it's a one-way audio render of agent dialogue.
 
 ## In Progress
 <!-- Assigned to a Mind, actively being worked on -->
