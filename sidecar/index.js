@@ -12,6 +12,8 @@ const { runGitCommand } = require('./lib/git-workflow');
 const { initLogger, log, LEVELS } = require('./lib/log');
 const { collectMetrics } = require('./lib/resources');
 const { runVerification } = require('./verification');
+const { WorkspaceManager } = require('./lib/workspace-manager');
+const os = require('os');
 
 // =============================================================================
 // 1. Config Loader
@@ -69,6 +71,7 @@ function loadConfig() {
 // =============================================================================
 
 let _config = null; // Will be set after config loads
+let _workspaceManager = null; // Phase 23: multi-repo workspace manager
 
 // =============================================================================
 // 3. Queue Manager
@@ -639,6 +642,31 @@ class HubConnection {
     const { executeWithVerification } = require('./lib/execution/verification-loop');
     const { ProgressEmitter } = require('./lib/execution/progress-emitter');
 
+    // Resolve per-task workspace (Phase 23: multi-repo support)
+    let effectiveConfig = { ..._config };
+    if (task.repo && _workspaceManager) {
+      try {
+        const wsDir = _workspaceManager.ensureWorkspace(task.repo);
+        effectiveConfig.repo_dir = wsDir;
+        log('info', 'workspace_resolved', {
+          task_id: task.task_id,
+          repo: task.repo,
+          workspace: wsDir
+        });
+      } catch (err) {
+        log('error', 'workspace_resolve_failed', {
+          task_id: task.task_id,
+          repo: task.repo,
+          error: err.message
+        });
+        this.sendTaskFailed(task.task_id,
+          `Workspace setup failed for ${task.repo}: ${err.message}`);
+        _queue.active = null;
+        saveQueue(QUEUE_PATH, _queue);
+        return;
+      }
+    }
+
     const emitter = new ProgressEmitter((events) => {
       for (const event of events) {
         this.send({
@@ -659,7 +687,7 @@ class HubConnection {
       task.status = 'working';
       saveQueue(QUEUE_PATH, _queue);
 
-      const result = await executeWithVerification(task, _config, (event) => emitter.emit(event));
+      const result = await executeWithVerification(task, effectiveConfig, (event) => emitter.emit(event));
       emitter.flush();
       emitter.destroy();
 
@@ -927,6 +955,15 @@ function main() {
     capabilities: config.capabilities,
     version: '1.0.0'
   });
+
+  // Initialize workspace manager for multi-repo support (Phase 23)
+  const agentName = config.agent_id || 'unknown';
+  const wsBaseDir = path.join(os.homedir(), '.agentcom', agentName, 'workspaces');
+  try {
+    _workspaceManager = new WorkspaceManager(wsBaseDir);
+  } catch (err) {
+    log('warning', 'workspace_manager_init_failed', { error: err.message });
+  }
 
   // Load persisted queue state and check for incomplete tasks (crash recovery)
   _queue = loadQueue(QUEUE_PATH);
