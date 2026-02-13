@@ -78,7 +78,9 @@ defmodule AgentCom.TestFactory do
       priority: Keyword.get(opts, :priority, "normal"),
       submitted_by: Keyword.get(opts, :submitted_by, "test-submitter"),
       max_retries: Keyword.get(opts, :max_retries, 3),
-      needed_capabilities: Keyword.get(opts, :needed_capabilities, [])
+      needed_capabilities: Keyword.get(opts, :needed_capabilities, []),
+      depends_on: Keyword.get(opts, :depends_on, []),
+      goal_id: Keyword.get(opts, :goal_id, nil)
     }
 
     AgentCom.TaskQueue.submit(params)

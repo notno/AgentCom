@@ -167,6 +167,20 @@ defmodule AgentCom.TaskQueue do
     GenServer.call(__MODULE__, {:expire_task, task_id})
   end
 
+  @doc "Return all tasks belonging to a goal."
+  def tasks_for_goal(goal_id) do
+    GenServer.call(__MODULE__, {:tasks_for_goal, goal_id})
+  end
+
+  @doc "Return goal progress summary: total, completed, failed, pending."
+  def goal_progress(goal_id) do
+    tasks = tasks_for_goal(goal_id)
+    total = length(tasks)
+    completed = Enum.count(tasks, fn t -> Map.get(t, :status) == :completed end)
+    failed = Enum.count(tasks, fn t -> Map.get(t, :status) == :dead_letter end)
+    %{goal_id: goal_id, total: total, completed: completed, failed: failed, pending: total - completed - failed}
+  end
+
   @doc "Return queue statistics: counts by status and by priority."
   def stats do
     GenServer.call(__MODULE__, :stats)
@@ -277,12 +291,24 @@ defmodule AgentCom.TaskQueue do
           Map.get(params, "skip_verification", false)),
       verification_timeout_ms:
         Map.get(params, :verification_timeout_ms,
-          Map.get(params, "verification_timeout_ms", nil))
+          Map.get(params, "verification_timeout_ms", nil)),
+      # Pipeline dependency fields (Phase 28)
+      depends_on: Map.get(params, :depends_on, Map.get(params, "depends_on", [])),
+      goal_id: Map.get(params, :goal_id, Map.get(params, "goal_id", nil))
     }
 
-    complexity = task.complexity
+    # Phase 28: Validate that all dependency IDs exist
+    deps = Map.get(task, :depends_on, [])
+    invalid = Enum.reject(deps, fn dep_id ->
+      match?({:ok, _}, lookup_task(dep_id)) or match?({:ok, _}, lookup_dead_letter(dep_id))
+    end)
 
-    persist_task(task, @tasks_table)
+    if invalid != [] do
+      {:reply, {:error, {:invalid_dependencies, invalid}}, state}
+    else
+      complexity = task.complexity
+
+      persist_task(task, @tasks_table)
 
     # Emit telemetry when explicit tier disagrees with inferred tier (Phase 17)
     if complexity.explicit_tier && complexity.explicit_tier != complexity.inferred.tier do
@@ -308,6 +334,7 @@ defmodule AgentCom.TaskQueue do
     )
 
     {:reply, {:ok, task}, %{state | priority_index: new_index}}
+    end
   end
 
   # -- get ---------------------------------------------------------------------
@@ -330,6 +357,7 @@ defmodule AgentCom.TaskQueue do
     status_filter = Keyword.get(opts, :status)
     priority_filter = Keyword.get(opts, :priority)
     assigned_filter = Keyword.get(opts, :assigned_to)
+    goal_filter = Keyword.get(opts, :goal_id)
 
     priority_int =
       case priority_filter do
@@ -344,7 +372,8 @@ defmodule AgentCom.TaskQueue do
           matches =
             (is_nil(status_filter) or task.status == status_filter) and
               (is_nil(priority_int) or task.priority == priority_int) and
-              (is_nil(assigned_filter) or task.assigned_to == assigned_filter)
+              (is_nil(assigned_filter) or task.assigned_to == assigned_filter) and
+              (is_nil(goal_filter) or Map.get(task, :goal_id) == goal_filter)
 
           if matches, do: [task | acc], else: acc
         end,
@@ -768,6 +797,22 @@ defmodule AgentCom.TaskQueue do
       {:error, reason} ->
         {:reply, {:error, reason}, state}
     end
+  end
+
+  # -- tasks_for_goal ----------------------------------------------------------
+
+  @impl true
+  def handle_call({:tasks_for_goal, goal_id}, _from, state) do
+    tasks =
+      :dets.foldl(
+        fn {_id, task}, acc ->
+          if Map.get(task, :goal_id) == goal_id, do: [task | acc], else: acc
+        end,
+        [],
+        @tasks_table
+      )
+
+    {:reply, tasks, state}
   end
 
   # -- stats -------------------------------------------------------------------
