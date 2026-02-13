@@ -69,6 +69,7 @@ defmodule AgentCom.Endpoint do
   - PUT    /api/admin/repo-registry/:repo_id/move-down — Move repo down in priority (auth required)
   - PUT    /api/admin/repo-registry/:repo_id/pause     — Pause a repo (auth required)
   - PUT    /api/admin/repo-registry/:repo_id/unpause   — Unpause a repo (auth required)
+  - POST   /api/admin/repo-scanner/scan — Scan repos for sensitive content (auth required)
   - GET    /api/schemas           — Schema discovery (no auth)
   - WS     /ws                   — WebSocket for agent connections
   """
@@ -915,7 +916,9 @@ defmodule AgentCom.Endpoint do
                   complexity_tier: params["complexity_tier"],
                   max_verification_retries: params["max_verification_retries"],
                   skip_verification: params["skip_verification"],
-                  verification_timeout_ms: params["verification_timeout_ms"]
+                  verification_timeout_ms: params["verification_timeout_ms"],
+                  depends_on: params["depends_on"] || [],
+                  goal_id: params["goal_id"]
                 }
 
                 case AgentCom.TaskQueue.submit(task_params) do
@@ -968,6 +971,7 @@ defmodule AgentCom.Endpoint do
         end
         opts = if p = conn.params["priority"], do: [{:priority, p} | opts], else: opts
         opts = if a = conn.params["assigned_to"], do: [{:assigned_to, a} | opts], else: opts
+        opts = if g = conn.params["goal_id"], do: [{:goal_id, g} | opts], else: opts
 
         tasks = AgentCom.TaskQueue.list(opts)
         formatted = Enum.map(tasks, &format_task/1)
@@ -1456,6 +1460,43 @@ defmodule AgentCom.Endpoint do
     end
   end
 
+  # --- Admin: Repo Scanner (auth required) ---
+
+  @valid_scan_categories ~w(tokens ips workspace_files personal_refs)a
+
+  post "/api/admin/repo-scanner/scan" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      params = conn.body_params
+      opts = case parse_scan_categories(params["categories"]) do
+        {:ok, cats} -> [categories: cats]
+        :all -> []
+        {:error, _reason} ->
+          :error_categories
+      end
+
+      if opts == :error_categories do
+        send_json(conn, 422, %{"error" => "invalid_categories", "valid" => Enum.map(@valid_scan_categories, &to_string/1)})
+      else
+        case params["repo_path"] do
+          nil ->
+            {:ok, reports} = AgentCom.RepoScanner.scan_all(opts)
+            send_json(conn, 200, %{"reports" => Enum.map(reports, &format_scan_report/1)})
+
+          repo_path when is_binary(repo_path) ->
+            case AgentCom.RepoScanner.scan_repo(repo_path, opts) do
+              {:ok, report} ->
+                send_json(conn, 200, format_scan_report(report))
+              {:error, reason} ->
+                send_json(conn, 422, %{"error" => inspect(reason)})
+            end
+        end
+      end
+    end
+  end
+
   # --- Schema Discovery (no auth, NOT rate limited) ---
 
   get "/api/schemas" do
@@ -1509,7 +1550,9 @@ defmodule AgentCom.Endpoint do
       "verification_report" => Map.get(task, :verification_report),
       "verification_history" => Map.get(task, :verification_history, []),
       "max_verification_retries" => Map.get(task, :max_verification_retries, 0),
-      "routing_decision" => format_routing_decision(Map.get(task, :routing_decision))
+      "routing_decision" => format_routing_decision(Map.get(task, :routing_decision)),
+      "depends_on" => Map.get(task, :depends_on, []),
+      "goal_id" => Map.get(task, :goal_id)
     }
   end
 
@@ -1599,6 +1642,62 @@ defmodule AgentCom.Endpoint do
       map when map == %{} -> {:error, "at least one tier (light, normal, heavy) must be specified"}
       map -> {:ok, map}
     end
+  end
+
+  defp parse_scan_categories(nil), do: :all
+  defp parse_scan_categories(cats) when is_list(cats) do
+    parsed =
+      Enum.reduce_while(cats, [], fn cat, acc when is_binary(cat) ->
+        atom = String.to_atom(cat)
+        if atom in @valid_scan_categories do
+          {:cont, [atom | acc]}
+        else
+          {:halt, {:error, "unknown category: #{cat}"}}
+        end
+      end)
+
+    case parsed do
+      {:error, _} = err -> err
+      list when is_list(list) -> {:ok, Enum.reverse(list)}
+    end
+  end
+  defp parse_scan_categories(_), do: :all
+
+  defp format_scan_report(report) do
+    # Convert atom keys to string keys for JSON, and findings structs to maps
+    by_category = report.summary.by_category
+                  |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
+
+    findings = Enum.map(report.findings, fn f ->
+      %{
+        "file_path" => f.file_path,
+        "line_number" => f.line_number,
+        "category" => to_string(f.category),
+        "pattern_name" => f.pattern_name,
+        "matched_text" => f.matched_text,
+        "severity" => to_string(f.severity),
+        "replacement" => f.replacement,
+        "action" => to_string(f.action)
+      }
+    end)
+
+    %{
+      "repo_path" => report.repo_path,
+      "scanned_at" => report.scanned_at,
+      "scan_duration_ms" => report.scan_duration_ms,
+      "files_scanned" => report.files_scanned,
+      "findings" => findings,
+      "summary" => %{
+        "critical" => report.summary.critical,
+        "warning" => report.summary.warning,
+        "by_category" => by_category
+      },
+      "blocking" => report.blocking,
+      "gitignore_recommendations" => report.gitignore_recommendations,
+      "cleanup_tasks" => Enum.map(report.cleanup_tasks, fn task ->
+        Map.new(task, fn {k, v} -> {to_string(k), v} end)
+      end)
+    }
   end
 
   defp send_json(conn, status, data) do
