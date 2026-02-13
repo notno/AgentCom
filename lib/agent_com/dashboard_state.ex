@@ -57,6 +57,7 @@ defmodule AgentCom.DashboardState do
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "alerts")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "rate_limits")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "llm_registry")
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "repo_registry")
 
     Process.send_after(self(), :check_queue_growth, @queue_check_interval_ms)
     Process.send_after(self(), :reset_hourly, @hourly_reset_interval_ms)
@@ -75,7 +76,7 @@ defmodule AgentCom.DashboardState do
       rate_limit_violation_counts: %{}
     }
 
-    Logger.info("started", topics: ["tasks", "presence", "backups", "validation", "alerts", "rate_limits", "llm_registry"])
+    Logger.info("started", topics: ["tasks", "presence", "backups", "validation", "alerts", "rate_limits", "llm_registry", "repo_registry"])
 
     {:ok, state}
   end
@@ -127,12 +128,14 @@ defmodule AgentCom.DashboardState do
     # Format queued tasks for the task list
     formatted_queued_tasks =
       Enum.map(queued_tasks, fn t ->
+        complexity = Map.get(t, :complexity)
         %{
           id: t.id,
           description: t.description,
           priority: t.priority,
           submitted_by: Map.get(t, :submitted_by),
-          created_at: t.created_at
+          created_at: t.created_at,
+          complexity_tier: if(complexity, do: to_string(Map.get(complexity, :effective_tier)), else: nil)
         }
       end)
 
@@ -202,6 +205,13 @@ defmodule AgentCom.DashboardState do
         _ -> %{endpoints: [], resources: %{}, fleet_models: %{}}
       end
 
+    repo_registry =
+      try do
+        AgentCom.RepoRegistry.snapshot()
+      rescue
+        _ -> %{repos: []}
+      end
+
     # Compute routing stats from tasks with routing decisions
     all_tasks =
       try do
@@ -228,6 +238,7 @@ defmodule AgentCom.DashboardState do
       active_alerts: active_alerts,
       rate_limits: rate_limits,
       llm_registry: llm_registry,
+      repo_registry: repo_registry,
       routing_stats: routing_stats
     }
 
@@ -383,6 +394,12 @@ defmodule AgentCom.DashboardState do
   # -- PubSub: llm_registry events (data fetched live in snapshot) ------------
 
   def handle_info({:llm_registry_update, _detail}, state) do
+    {:noreply, state}
+  end
+
+  # -- PubSub: repo_registry events (data fetched live in snapshot) ----------
+
+  def handle_info({:repo_registry_update, _detail}, state) do
     {:noreply, state}
   end
 

@@ -30,6 +30,7 @@ defmodule AgentCom.DashboardSocket do
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "metrics")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "alerts")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "llm_registry")
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "repo_registry")
 
     # Get initial snapshot
     snapshot = AgentCom.DashboardState.snapshot()
@@ -100,6 +101,43 @@ defmodule AgentCom.DashboardSocket do
           end
 
         {:push, {:text, Jason.encode!(result)}, state}
+
+      # -- Repo Registry commands (Phase 23) -----------------------------------
+
+      {:ok, %{"type" => "add_repo", "url" => url} = msg} ->
+        name = Map.get(msg, "name", nil)
+        case AgentCom.RepoRegistry.add_repo(%{url: url, name: name}) do
+          {:ok, _repo} ->
+            snapshot = AgentCom.DashboardState.snapshot()
+            {:push, {:text, Jason.encode!(%{type: "snapshot", data: snapshot})}, state}
+          {:error, :already_exists} ->
+            {:push, {:text, Jason.encode!(%{type: "repo_error", error: "repo_already_exists"})}, state}
+        end
+
+      {:ok, %{"type" => "remove_repo", "repo_id" => repo_id}} ->
+        AgentCom.RepoRegistry.remove_repo(repo_id)
+        snapshot = AgentCom.DashboardState.snapshot()
+        {:push, {:text, Jason.encode!(%{type: "snapshot", data: snapshot})}, state}
+
+      {:ok, %{"type" => "move_repo_up", "repo_id" => repo_id}} ->
+        AgentCom.RepoRegistry.move_up(repo_id)
+        snapshot = AgentCom.DashboardState.snapshot()
+        {:push, {:text, Jason.encode!(%{type: "snapshot", data: snapshot})}, state}
+
+      {:ok, %{"type" => "move_repo_down", "repo_id" => repo_id}} ->
+        AgentCom.RepoRegistry.move_down(repo_id)
+        snapshot = AgentCom.DashboardState.snapshot()
+        {:push, {:text, Jason.encode!(%{type: "snapshot", data: snapshot})}, state}
+
+      {:ok, %{"type" => "pause_repo", "repo_id" => repo_id}} ->
+        AgentCom.RepoRegistry.set_status(repo_id, :paused)
+        snapshot = AgentCom.DashboardState.snapshot()
+        {:push, {:text, Jason.encode!(%{type: "snapshot", data: snapshot})}, state}
+
+      {:ok, %{"type" => "unpause_repo", "repo_id" => repo_id}} ->
+        AgentCom.RepoRegistry.set_status(repo_id, :active)
+        snapshot = AgentCom.DashboardState.snapshot()
+        {:push, {:text, Jason.encode!(%{type: "snapshot", data: snapshot})}, state}
 
       _ ->
         {:ok, state}
@@ -311,6 +349,17 @@ defmodule AgentCom.DashboardSocket do
   def handle_info({:llm_registry_update, detail}, state) do
     formatted = %{
       type: "llm_registry_update",
+      detail: to_string(detail)
+    }
+
+    {:ok, %{state | pending_events: [formatted | state.pending_events]}}
+  end
+
+  # -- PubSub: repo_registry events --------------------------------------------
+
+  def handle_info({:repo_registry_update, detail}, state) do
+    formatted = %{
+      type: "repo_registry_update",
       detail: to_string(detail)
     }
 
