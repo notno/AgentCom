@@ -145,7 +145,10 @@ Plans:
   1. Tasks support an optional depends_on field containing a list of prerequisite task IDs
   2. Scheduler filters out tasks whose dependencies have not yet completed, only scheduling tasks with all dependencies satisfied
   3. Tasks carry a goal_id field linking them to their parent goal, enabling goal-level progress tracking
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 28-01-PLAN.md -- Core implementation: TaskQueue fields, scheduler filter, API layer, dependency validation
+- [ ] 28-02-PLAN.md -- TDD: dependency filtering, goal progress, backward compatibility tests
 
 ### Phase 29: Hub FSM Core
 **Goal**: The hub operates as an autonomous 4-state brain with observable, controllable state transitions
