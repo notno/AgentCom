@@ -640,9 +640,7 @@ defmodule AgentCom.HubFSM do
       pid = self()
 
       Task.start(fn ->
-        # Healing.run_healing_cycle/0 will be implemented in Plan 02
-        # For now, return immediately with placeholder result
-        result = %{actions_taken: 0, issues_found: 0, placeholder: true}
+        result = AgentCom.HubFSM.Healing.run_healing_cycle()
         send(pid, {:healing_cycle_complete, result})
       end)
     end

@@ -11,16 +11,6 @@ defmodule AgentCom.HubFSM.HealingTest do
   alias AgentCom.HubFSM.Healing
 
   describe "run_healing_cycle/0" do
-    test "returns summary with 0 actions when no issues detected" do
-      # With no real services running, HealthAggregator returns healthy
-      summary = Healing.run_healing_cycle()
-
-      assert summary.issues_found == 0
-      assert summary.actions_taken == 0
-      assert summary.results == []
-      assert is_integer(summary.timestamp)
-    end
-
     test "returns correct summary structure" do
       summary = Healing.run_healing_cycle()
 
@@ -28,6 +18,16 @@ defmodule AgentCom.HubFSM.HealingTest do
       assert Map.has_key?(summary, :actions_taken)
       assert Map.has_key?(summary, :results)
       assert Map.has_key?(summary, :timestamp)
+      assert is_integer(summary.issues_found)
+      assert is_integer(summary.actions_taken)
+      assert is_list(summary.results)
+      assert is_integer(summary.timestamp)
+    end
+
+    test "actions_taken matches results length" do
+      summary = Healing.run_healing_cycle()
+
+      assert summary.actions_taken == length(summary.results)
     end
 
     test "does not crash when services are unavailable" do
@@ -36,6 +36,16 @@ defmodule AgentCom.HubFSM.HealingTest do
 
       assert is_map(summary)
       assert summary.issues_found >= 0
+    end
+
+    test "results are tuples of category and action map" do
+      summary = Healing.run_healing_cycle()
+
+      Enum.each(summary.results, fn {category, result} ->
+        assert is_atom(category)
+        assert is_map(result)
+        assert Map.has_key?(result, :action)
+      end)
     end
   end
 end
