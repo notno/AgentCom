@@ -10,19 +10,12 @@ defmodule AgentCom.XML.Schemas.Proposal do
 
       <proposal id="prop-001" impact="medium" effort="small" repo="AgentCom" proposed-at="2026-01-01T00:00:00Z">
         <title>Add circuit breaker to API client</title>
-        <problem>External API calls fail silently under load</problem>
-        <solution>Implement circuit breaker pattern with configurable thresholds</solution>
         <description>Implement circuit breaker pattern for external API calls</description>
         <rationale>Three failures in last 24 hours suggest instability</rationale>
-        <why-now>Load has increased 3x since last release</why-now>
-        <why-not>Adds complexity to the call path; may mask transient issues</why-not>
         <related-files>
           <file>lib/agent_com/config.ex</file>
           <file>lib/agent_com/scheduler.ex</file>
         </related-files>
-        <dependencies>
-          <dependency>error-tracking-module</dependency>
-        </dependencies>
         <metadata>optional freeform text</metadata>
       </proposal>
 
@@ -30,17 +23,12 @@ defmodule AgentCom.XML.Schemas.Proposal do
 
   - `id` - Unique proposal identifier (required)
   - `title` - Short proposal title (required)
-  - `problem` - Problem statement this proposal addresses
-  - `solution` - Proposed solution description
   - `description` - Detailed description (required)
   - `rationale` - Why this proposal is being made
-  - `why_now` - Why this should be done in the current phase
-  - `why_not` - Risks or reasons this might not be worth doing
   - `impact` - Expected impact: "low", "medium", "high"
   - `effort` - Estimated effort: "small", "medium", "large"
   - `repo` - Target repository
   - `related_files` - List of related file paths
-  - `dependencies` - List of dependency strings
   - `proposed_at` - ISO 8601 timestamp
   - `metadata` - Freeform text metadata
   """
@@ -53,19 +41,14 @@ defmodule AgentCom.XML.Schemas.Proposal do
   defstruct [
     :id,
     :title,
-    :problem,
-    :solution,
     :description,
     :rationale,
-    :why_now,
-    :why_not,
     :impact,
     :effort,
     :repo,
     :proposed_at,
     :metadata,
-    related_files: [],
-    dependencies: []
+    related_files: []
   ]
 
   @doc """
@@ -108,17 +91,12 @@ defmodule AgentCom.XML.Schemas.Proposal do
     proposal = %__MODULE__{
       id: Parser.find_attr(attrs, "id"),
       title: Parser.find_child_text(children, "title"),
-      problem: Parser.find_child_text(children, "problem"),
-      solution: Parser.find_child_text(children, "solution"),
       description: Parser.find_child_text(children, "description"),
       rationale: Parser.find_child_text(children, "rationale"),
-      why_now: Parser.find_child_text(children, "why-now"),
-      why_not: Parser.find_child_text(children, "why-not"),
       impact: Parser.find_attr(attrs, "impact"),
       effort: Parser.find_attr(attrs, "effort"),
       repo: Parser.find_attr(attrs, "repo"),
       related_files: Parser.find_child_list(children, "related-files", "file"),
-      dependencies: Parser.find_child_list(children, "dependencies", "dependency"),
       proposed_at: Parser.find_attr(attrs, "proposed-at"),
       metadata: Parser.find_child_text(children, "metadata")
     }
@@ -133,17 +111,12 @@ defmodule AgentCom.XML.Schemas.Proposal do
   @type t :: %__MODULE__{
     id: String.t() | nil,
     title: String.t() | nil,
-    problem: String.t() | nil,
-    solution: String.t() | nil,
     description: String.t() | nil,
     rationale: String.t() | nil,
-    why_now: String.t() | nil,
-    why_not: String.t() | nil,
     impact: String.t() | nil,
     effort: String.t() | nil,
     repo: String.t() | nil,
     related_files: [String.t()],
-    dependencies: [String.t()],
     proposed_at: String.t() | nil,
     metadata: String.t() | nil
   }
@@ -166,15 +139,10 @@ defimpl Saxy.Builder, for: AgentCom.XML.Schemas.Proposal do
     children =
       []
       |> maybe_add_element("title", proposal.title)
-      |> maybe_add_element("problem", proposal.problem)
-      |> maybe_add_element("solution", proposal.solution)
       |> maybe_add_element("description", proposal.description)
       |> maybe_add_element("rationale", proposal.rationale)
-      |> maybe_add_element("why-now", proposal.why_now)
-      |> maybe_add_element("why-not", proposal.why_not)
-      |> maybe_add_files(proposal.related_files)
-      |> maybe_add_dependencies(proposal.dependencies)
       |> maybe_add_element("metadata", proposal.metadata)
+      |> maybe_add_files(proposal.related_files)
       |> Enum.reverse()
 
     element("proposal", attrs, children)
@@ -188,12 +156,5 @@ defimpl Saxy.Builder, for: AgentCom.XML.Schemas.Proposal do
   defp maybe_add_files(acc, files) do
     items = Enum.map(files, &element("file", [], &1))
     [element("related-files", [], items) | acc]
-  end
-
-  defp maybe_add_dependencies(acc, []), do: acc
-
-  defp maybe_add_dependencies(acc, deps) do
-    items = Enum.map(deps, &element("dependency", [], &1))
-    [element("dependencies", [], items) | acc]
   end
 end

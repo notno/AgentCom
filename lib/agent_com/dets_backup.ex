@@ -131,7 +131,7 @@ defmodule AgentCom.DetsBackup do
       last_backup_at: state.last_backup_at,
       last_backup_results: normalize_backup_results(state.last_backup_results),
       last_compaction_at: state.last_compaction_at,
-      compaction_history: normalize_compaction_history(state.compaction_history)
+      compaction_history: state.compaction_history
     }
 
     {:reply, metrics, state}
@@ -156,7 +156,7 @@ defmodule AgentCom.DetsBackup do
 
   @impl true
   def handle_call(:compaction_history, _from, state) do
-    {:reply, normalize_compaction_history(state.compaction_history), state}
+    {:reply, state.compaction_history, state}
   end
 
   @impl true
@@ -791,33 +791,6 @@ defmodule AgentCom.DetsBackup do
         %{status: "error", table: to_string(info.table), reason: inspect(info.reason)}
     end)
   end
-
-  defp normalize_compaction_history(history) when is_list(history) do
-    Enum.map(history, fn entry ->
-      %{
-        timestamp: entry.timestamp,
-        results: Enum.map(entry.results, &normalize_compaction_result/1)
-      }
-    end)
-  end
-
-  defp normalize_compaction_history(_), do: []
-
-  defp normalize_compaction_result(r) when is_map(r) do
-    base = %{
-      table: to_string(r.table),
-      status: to_string(r.status)
-    }
-
-    base = if Map.has_key?(r, :duration_ms), do: Map.put(base, :duration_ms, r.duration_ms), else: base
-    base = if Map.has_key?(r, :retried), do: Map.put(base, :retried, r.retried), else: base
-    base = if Map.has_key?(r, :reason), do: Map.put(base, :reason, safe_to_string(r.reason)), else: base
-    base
-  end
-
-  defp safe_to_string(val) when is_atom(val), do: to_string(val)
-  defp safe_to_string(val) when is_binary(val), do: val
-  defp safe_to_string(val), do: inspect(val)
 
   defp table_metrics(table_atom) do
     case :dets.info(table_atom, :type) do

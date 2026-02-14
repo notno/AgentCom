@@ -229,11 +229,7 @@ Plans:
   1. In Contemplating state, hub generates structured feature proposals from codebase analysis and writes them as XML files in a proposals directory
   2. Hub produces a scalability analysis report from existing ETS metrics covering throughput, agent utilization, and bottlenecks
   3. Scalability report recommends whether to add machines vs agents based on current constraint analysis
-**Plans:** 3 plans
-Plans:
-- [ ] 33-01-PLAN.md -- HubFSM 4-state expansion with contemplating transitions and cycle spawn
-- [ ] 33-02-PLAN.md -- Proposal schema enrichment, prompt/response update, contemplation context
-- [ ] 33-03-PLAN.md -- TDD test suite for all contemplation and HubFSM expansion modules
+**Plans**: TBD
 
 ### Phase 34: Tiered Autonomy
 **Goal**: Completed tasks are classified by risk so the system can enforce appropriate review levels

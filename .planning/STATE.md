@@ -9,17 +9,17 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 
 ## Current Position
 
-Phase: 33 of 36 (Contemplation and Scalability)
-Plan: 2/3 complete
-Status: In Progress
-Last activity: 2026-02-14 -- Plan 33-02: Enriched proposal schema and pipeline (2 tasks, 2 commits)
+Phase: 34 of 36 (Tiered Autonomy)
+Plan: 2/2 complete
+Status: Complete
+Last activity: 2026-02-14 -- Plan 34-02: Sidecar risk classification integration (2 tasks, 3 commits incl. direct import refactor)
 
-Progress: [██████████-----] 67% (2/3 plans)
+Progress: [███████████████] 100% (2/2 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 92 (19 v1.0 + 32 v1.1 + 25 v1.2 + 16 v1.3)
+- Total plans completed: 91 (19 v1.0 + 32 v1.1 + 25 v1.2 + 15 v1.3)
 - Average duration: 4 min
 - Total execution time: ~5.5 hours
 
@@ -90,18 +90,11 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - [Phase 34]: Verification report nil treated as passed (no verification = ok by default)
 - [Phase 34]: Protected path matching via String.contains? for prefix-style matching
 - [Phase 34]: require.main guard on agentcom-git.js enables dual CLI/module usage -- direct gatherDiffMeta import eliminates child process overhead
-- [Phase 33]: problem/solution fields optional in Proposal (LLM may not always produce them)
-- [Phase 33]: XML kebab-case (why-now) mapped to Elixir snake_case (why_now) in Proposal schema
-- [Phase 33]: Regex.scan nested list extraction for dependencies/related-files in response parser (lenient, matches existing pattern)
-- [Phase 33]: Dynamic PROJECT.md out-of-scope reading replaces hardcoded string in Contemplation context
 - [Phase 30]: Single pending_async slot ensures one LLM call in-flight at a time (respects ClaudeClient serialization)
 - [Phase 30]: Verification before decomposition priority in GoalOrchestrator tick
 - [Phase 30]: Process.demonitor with :flush prevents stale DOWN messages from Task.async
 - [Phase 31]: WebhookHistory initialized in HubFSM.init alongside History (single startup point)
 - [Phase 31]: GitHub full_name normalized (/ to -) to match RepoRegistry url_to_id convention
-- [Phase 33]: Improving-to-contemplating transition is event-driven (improvement_cycle_complete message), not tick-based
-- [Phase 33]: Contemplating tick predicates are safety nets only (budget exhaustion, goal arrival)
-- [Phase 33]: Defensive catch-all predicate returns :stay for unknown FSM states
 
 ### Research Findings (v1.3)
 
@@ -132,5 +125,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 33-02-PLAN.md -- Enriched proposal schema with problem/solution/why_now/why_not/dependencies (2 tasks, 2 commits)
+Stopped at: Completed 34-02-PLAN.md -- Sidecar risk classification integration (2 tasks, 3 commits incl. direct import refactor)
 Resume file: None

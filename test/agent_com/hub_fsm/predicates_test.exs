@@ -2,9 +2,8 @@ defmodule AgentCom.HubFSM.PredicatesTest do
   @moduledoc """
   Unit tests for pure HubFSM.Predicates transition evaluation.
 
-  Tests all 4-state (resting/executing/improving/contemplating) transition paths
-  including budget gating, goal queue depth, active goal tracking, improving
-  state, and contemplating state safety-net predicates.
+  Tests all 3-state (resting/executing/improving) transition paths including
+  budget gating, goal queue depth, active goal tracking, and improving state.
 
   async: true because all functions are pure with no shared state.
   """
@@ -75,15 +74,14 @@ defmodule AgentCom.HubFSM.PredicatesTest do
   # ---------------------------------------------------------------------------
 
   describe "evaluate/2 when :improving" do
-    test "stays when budget ok and no pending goals (improvement cycle continues)" do
+    test "stays when budget ok (improvement cycle continues)" do
       system_state = %{pending_goals: 0, active_goals: 0, budget_exhausted: false}
       assert :stay = Predicates.evaluate(:improving, system_state)
     end
 
-    test "transitions to :executing when goals submitted while improving" do
+    test "stays when budget ok and goals exist (goals don't affect improving)" do
       system_state = %{pending_goals: 5, active_goals: 2, budget_exhausted: false}
-      assert {:transition, :executing, reason} = Predicates.evaluate(:improving, system_state)
-      assert reason =~ "goals"
+      assert :stay = Predicates.evaluate(:improving, system_state)
     end
 
     test "transitions to :resting when budget exhausted" do
@@ -92,51 +90,9 @@ defmodule AgentCom.HubFSM.PredicatesTest do
       assert reason =~ "budget"
     end
 
-    test "goals take priority over budget when both present" do
+    test "transitions to :resting when budget exhausted even with pending goals" do
       system_state = %{pending_goals: 5, active_goals: 3, budget_exhausted: true}
-      assert {:transition, :executing, _reason} = Predicates.evaluate(:improving, system_state)
-    end
-  end
-
-  # ---------------------------------------------------------------------------
-  # :contemplating state predicates
-  # ---------------------------------------------------------------------------
-
-  describe "evaluate/2 when :contemplating" do
-    test "stays when no pending goals and budget ok (cycle in progress)" do
-      system_state = %{pending_goals: 0, active_goals: 0, budget_exhausted: false}
-      assert :stay = Predicates.evaluate(:contemplating, system_state)
-    end
-
-    test "transitions to :executing when pending goals exist" do
-      system_state = %{pending_goals: 3, active_goals: 0, budget_exhausted: false}
-      assert {:transition, :executing, reason} = Predicates.evaluate(:contemplating, system_state)
-      assert reason =~ "goals"
-    end
-
-    test "transitions to :resting when budget exhausted" do
-      system_state = %{pending_goals: 0, active_goals: 0, budget_exhausted: true}
-      assert {:transition, :resting, reason} = Predicates.evaluate(:contemplating, system_state)
-      assert reason =~ "budget"
-    end
-
-    test "goals take priority over budget when both present" do
-      # When goals are submitted and budget is exhausted, goals submitted check fires first
-      system_state = %{pending_goals: 2, active_goals: 0, budget_exhausted: true}
-      result = Predicates.evaluate(:contemplating, system_state)
-      # Should transition to :executing (goals submitted check is first clause)
-      assert {:transition, :executing, _reason} = result
-    end
-  end
-
-  # ---------------------------------------------------------------------------
-  # Unknown state (defensive catch-all)
-  # ---------------------------------------------------------------------------
-
-  describe "evaluate/2 with unknown state" do
-    test "returns :stay for unknown state (defensive catch-all)" do
-      system_state = %{pending_goals: 0, active_goals: 0, budget_exhausted: false}
-      assert :stay = Predicates.evaluate(:unknown_state, system_state)
+      assert {:transition, :resting, _reason} = Predicates.evaluate(:improving, system_state)
     end
   end
 end

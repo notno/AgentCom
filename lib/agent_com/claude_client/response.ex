@@ -126,20 +126,6 @@ defmodule AgentCom.ClaudeClient.Response do
     end
   end
 
-  defp parse_inner(text, :generate_proposals) do
-    case extract_xml_block(text, "proposals") do
-      {:ok, xml_block} ->
-        proposals =
-          extract_all_elements(xml_block, "proposal")
-          |> Enum.map(&parse_proposal_element/1)
-
-        {:ok, proposals}
-
-      {:error, :not_found} ->
-        {:error, {:parse_error, "no <proposals> block found in response"}}
-    end
-  end
-
   defp parse_inner(_text, unknown_type) do
     {:error, {:parse_error, "unknown prompt type: #{inspect(unknown_type)}"}}
   end
@@ -186,38 +172,6 @@ defmodule AgentCom.ClaudeClient.Response do
       category: extract_child_text(imp_xml, "category") || "",
       effort: extract_child_text(imp_xml, "effort") || "",
       files: files
-    }
-  end
-
-  defp parse_proposal_element(prop_xml) do
-    # Extract dependencies list
-    deps_str = extract_child_text(prop_xml, "dependencies") || ""
-
-    dependencies =
-      Regex.scan(~r/<dependency>\s*(.*?)\s*<\/dependency>/s, deps_str)
-      |> Enum.map(fn [_, content] -> String.trim(content) end)
-      |> Enum.reject(&(&1 == ""))
-
-    # Extract related files list
-    files_str = extract_child_text(prop_xml, "related-files") || ""
-
-    related_files =
-      Regex.scan(~r/<file>\s*(.*?)\s*<\/file>/s, files_str)
-      |> Enum.map(fn [_, content] -> String.trim(content) end)
-      |> Enum.reject(&(&1 == ""))
-
-    %{
-      title: extract_child_text(prop_xml, "title") || "",
-      problem: extract_child_text(prop_xml, "problem") || "",
-      solution: extract_child_text(prop_xml, "solution") || "",
-      description: extract_child_text(prop_xml, "description") || "",
-      rationale: extract_child_text(prop_xml, "rationale") || "",
-      why_now: extract_child_text(prop_xml, "why-now") || "",
-      why_not: extract_child_text(prop_xml, "why-not") || "",
-      impact: extract_child_text(prop_xml, "impact") || "medium",
-      effort: extract_child_text(prop_xml, "effort") || "medium",
-      dependencies: dependencies,
-      related_files: related_files
     }
   end
 
