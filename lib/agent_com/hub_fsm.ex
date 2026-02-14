@@ -1,17 +1,19 @@
 defmodule AgentCom.HubFSM do
   @moduledoc """
-  Singleton GenServer implementing the hub's autonomous brain as a 2-state FSM.
+  Singleton GenServer implementing the hub's autonomous brain as a 3-state FSM.
 
   The HubFSM drives all autonomous hub behavior by evaluating system state
-  on a 1-second tick and transitioning between `:resting` and `:executing`
-  based on goal queue depth and budget availability.
+  on a 1-second tick and transitioning between `:resting`, `:executing`, and
+  `:improving` based on goal queue depth, budget availability, and external
+  repository events.
 
   ## States
 
-  | State       | Meaning                                    |
-  |-------------|--------------------------------------------|
-  | `:resting`  | No pending goals or budget exhausted       |
-  | `:executing`| Actively processing goals from the backlog |
+  | State        | Meaning                                         |
+  |--------------|-------------------------------------------------|
+  | `:resting`   | No pending goals or budget exhausted             |
+  | `:executing` | Actively processing goals from the backlog       |
+  | `:improving` | Processing improvement cycle triggered by webhook |
 
   ## Tick-Based Evaluation
 
@@ -44,8 +46,9 @@ defmodule AgentCom.HubFSM do
   alias AgentCom.HubFSM.{History, Predicates}
 
   @valid_transitions %{
-    resting: [:executing],
-    executing: [:resting]
+    resting: [:executing, :improving],
+    executing: [:resting],
+    improving: [:resting]
   }
 
   @tick_interval_ms 1_000
@@ -153,7 +156,7 @@ defmodule AgentCom.HubFSM do
     # Broadcast initial state
     broadcast_state_change(state)
 
-    # Notify ClaudeClient of initial hub state (safe if not started yet)
+    # Notify ClaudeClient of initial hub state (3-state FSM: resting/executing/improving)
     try do
       AgentCom.ClaudeClient.set_hub_state(:executing)
     catch
@@ -367,9 +370,9 @@ defmodule AgentCom.HubFSM do
       %{from_state: state.fsm_state, to_state: new_state, reason: reason}
     )
 
-    # Update cycle count (resting -> executing = new cycle)
+    # Update cycle count (resting -> executing or resting -> improving = new cycle)
     new_cycle_count =
-      if state.fsm_state == :resting and new_state == :executing do
+      if state.fsm_state == :resting and new_state in [:executing, :improving] do
         state.cycle_count + 1
       else
         state.cycle_count

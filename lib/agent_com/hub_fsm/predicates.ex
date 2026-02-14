@@ -1,10 +1,15 @@
 defmodule AgentCom.HubFSM.Predicates do
   @moduledoc """
-  Pure transition predicate functions for the HubFSM 2-state core.
+  Pure transition predicate functions for the HubFSM 3-state core.
 
   Evaluates the current FSM state against gathered system state (goal queue
   depth, active goal count, budget status) and returns either a transition
   directive or `:stay`.
+
+  The three states are:
+  - `:resting` -- idle, waiting for goals or webhook events
+  - `:executing` -- actively processing goals from the backlog
+  - `:improving` -- processing improvement cycle triggered by webhook
 
   All functions are pure -- no side effects, no process calls. System state
   is gathered by the caller and passed in as a map.
@@ -16,7 +21,7 @@ defmodule AgentCom.HubFSM.Predicates do
 
   ## Parameters
 
-  - `current_state` -- `:resting` or `:executing`
+  - `current_state` -- `:resting`, `:executing`, or `:improving`
   - `system_state` -- map with keys:
     - `:pending_goals` -- integer count of submitted goals in backlog
     - `:active_goals` -- integer count of goals in decomposing/executing/verifying
@@ -45,4 +50,12 @@ defmodule AgentCom.HubFSM.Predicates do
   end
 
   def evaluate(:executing, _system_state), do: :stay
+
+  # :improving transitions to :resting when budget exhausted
+  def evaluate(:improving, %{budget_exhausted: true}) do
+    {:transition, :resting, "budget exhausted"}
+  end
+
+  # :improving stays active (transitions to :resting handled by watchdog or external signal)
+  def evaluate(:improving, _system_state), do: :stay
 end
