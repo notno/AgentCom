@@ -79,6 +79,8 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - rescue in Cli.invoke for System.cmd :enoent -- prevents GenServer crash when CLI binary unavailable
 - [Phase 31]: Both resting->executing and resting->improving increment cycle count (active work cycles)
 - [Phase 31]: :improving exits only via budget exhaustion or watchdog timeout (not goal predicates)
+- [Phase 31]: WebhookHistory initialized in HubFSM.init alongside History (single startup point)
+- [Phase 31]: GitHub full_name normalized (/ to -) to match RepoRegistry url_to_id convention
 
 ### Research Findings (v1.3)
 
@@ -106,5 +108,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 36-01-PLAN.md -- Dashboard Goal & Cost Data Sources
+Stopped at: Completed 31-02-PLAN.md -- Webhook Endpoint + History + Config
 Resume file: None
