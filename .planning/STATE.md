@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 ## Current Position
 
 Phase: 29 of 36 (Hub FSM Core)
-Plan: 1/3 complete
+Plan: 2/3 complete
 Status: In Progress
-Last activity: 2026-02-14 -- Plan 29-01 HubFSM Core Implementation
+Last activity: 2026-02-14 -- Plan 29-02 HubFSM API/Dashboard/Telemetry Integration
 
-Progress: [█████---------] 33% (1/3 plans)
+Progress: [██████████----] 67% (2/3 plans)
 
 ## Performance Metrics
 
@@ -43,6 +43,7 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - [Phase 29]: Tick-based evaluation at 1s intervals (not per-event) for HubFSM transitions
 - [Phase 29]: Pure Predicates module separated from GenServer for testability
 - [Phase 29]: ETS ordered_set with negated timestamps for newest-first History reads
+- [Phase 29]: Hub FSM state/history endpoints unauthenticated (dashboard reads); pause/resume require auth
 
 ### Decisions (v1.3)
 
@@ -101,5 +102,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 29-01-PLAN.md -- HubFSM Core Implementation
+Stopped at: Completed 29-02-PLAN.md -- HubFSM API/Dashboard/Telemetry Integration
 Resume file: None
