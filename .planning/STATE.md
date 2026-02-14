@@ -5,13 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Planning next milestone
+**Current focus:** Milestone v1.4 — Reliable Autonomy
 
 ## Current Position
 
-Phase: 36 of 36 (all complete)
-Status: Milestone v1.3 shipped
-Last activity: 2026-02-14 -- Milestone v1.3 archived
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-14 — Milestone v1.4 started
 
 ## Performance Metrics
 
@@ -49,9 +50,13 @@ v1.3 decisions archived to .planning/milestones/v1.3-ROADMAP.md (50+ decisions a
 - [Tech debt]: Sidecar queue.json atomicity -- fs.writeFileSync has partial-write-on-crash risk
 - [Tech debt]: VAPID keys ephemeral -- push subscriptions lost on hub restart
 - [Tech debt]: GitHub webhook E2E test requires live webhook delivery (ngrok tunnel)
+- [CI]: Unresolved merge conflict markers on remote main (endpoint.ex) — local fix not pushed
+- [Pipeline]: Local LLM output is text-only, not agentic — no tool use, no file editing
+- [Pipeline]: wake_command not configured → tasks silently go to 'working' and hang forever
+- [Pipeline]: No execution timeout on executeWithVerification — tasks can hang indefinitely
 
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Milestone v1.3 completed and archived
+Stopped at: Defining v1.4 requirements
 Resume file: None

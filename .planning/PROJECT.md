@@ -65,7 +65,17 @@ Reliable autonomous work execution: ideas enter a queue and emerge as reviewed, 
 
 <!-- Current scope. Building toward these. -->
 
-(No active milestone — planning next)
+## Current Milestone: v1.4 Reliable Autonomy
+
+**Goal:** Make the autonomous pipeline actually work end-to-end — local LLMs execute agentic tool-calling loops, the hub heals its own infrastructure and code, and the pipeline reliably moves tasks from assignment to completion.
+
+**Target features:**
+- Agentic local LLM execution (tool calling, file/git/shell/hub-API actions)
+- Pipeline reliability fixes (wake failures, execution timeouts, stuck task recovery)
+- Hub FSM "Healing" state (detect and fix stuck agents, dead endpoints, CI failures, compilation issues)
+- Hub FSM LLM calls routed through Ollama instead of `claude -p`
+- Hub FSM integration testing infrastructure
+- CI pipeline fix (push merge conflict resolution, green builds)
 
 ### Out of Scope
 
@@ -156,4 +166,4 @@ Shipped v1.3 on 2026-02-14 (13 phases, 35 plans, 167 commits, +39,920 LOC across
 | Regex-based XML extraction for LLM output | LLM output may not be valid XML; regex is more lenient than Saxy | ✓ Good — fallback plain text parsing when JSON fails |
 
 ---
-*Last updated: 2026-02-14 after v1.3 milestone completion*
+*Last updated: 2026-02-14 after v1.4 milestone start*
