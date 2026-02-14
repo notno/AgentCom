@@ -471,14 +471,20 @@ function gatherDiffMetaCommand() {
 
 const commands = { 'start-task': startTask, 'submit': submit, 'status': status, 'gather-diff-meta': gatherDiffMetaCommand };
 
-try {
-  const command = process.argv[2];
-  if (!commands[command]) {
-    outputError('unknown_command', { command, available: Object.keys(commands) });
+// Export gatherDiffMeta for use by sidecar index.js (risk classification wiring)
+module.exports = { gatherDiffMeta };
+
+// CLI dispatch: only runs when invoked directly (not when required as a module)
+if (require.main === module) {
+  try {
+    const command = process.argv[2];
+    if (!commands[command]) {
+      outputError('unknown_command', { command, available: Object.keys(commands) });
+    }
+    const args = process.argv[3] ? JSON.parse(process.argv[3]) : {};
+    commands[command](args);
+  } catch (err) {
+    // Catch JSON parse errors and any other unexpected errors
+    outputError('unexpected_error', { message: err.message });
   }
-  const args = process.argv[3] ? JSON.parse(process.argv[3]) : {};
-  commands[command](args);
-} catch (err) {
-  // Catch JSON parse errors and any other unexpected errors
-  outputError('unexpected_error', { message: err.message });
 }

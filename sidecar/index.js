@@ -13,6 +13,7 @@ const { initLogger, log, LEVELS } = require('./lib/log');
 const { collectMetrics } = require('./lib/resources');
 const { runVerification } = require('./verification');
 const { WorkspaceManager } = require('./lib/workspace-manager');
+const { gatherDiffMeta } = require('./agentcom-git');
 const os = require('os');
 
 // =============================================================================
@@ -247,15 +248,8 @@ async function handleResult(taskId, filePath, hub) {
     let riskClassification = null;
 
     if (_config.repo_dir && !skipGit) {
-      // Gather diff metadata for risk classification
-      const diffMetaResult = runGitCommand('gather-diff-meta', {});
-      const diffMeta = diffMetaResult.status === 'ok' ? {
-        lines_added: diffMetaResult.lines_added || 0,
-        lines_deleted: diffMetaResult.lines_deleted || 0,
-        files_changed: diffMetaResult.files_changed || [],
-        files_added: diffMetaResult.files_added || [],
-        tests_exist: diffMetaResult.tests_exist || false
-      } : { lines_added: 0, lines_deleted: 0, files_changed: [], files_added: [], tests_exist: false };
+      // Gather diff metadata for risk classification (direct call, no child process)
+      const diffMeta = gatherDiffMeta(_config);
 
       log('info', 'diff_meta_gathered', { task_id: taskId, lines_added: diffMeta.lines_added, lines_deleted: diffMeta.lines_deleted, files: (diffMeta.files_changed || []).length });
 
