@@ -130,6 +130,7 @@ defmodule AgentCom.ClaudeClient do
         result =
           case Task.yield(task, state.timeout_ms) || Task.shutdown(task) do
             {:ok, result} -> result
+            {:exit, reason} -> {:error, {:cli_crash, reason}}
             nil -> {:error, :timeout}
           end
 

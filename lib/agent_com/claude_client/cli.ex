@@ -61,6 +61,14 @@ defmodule AgentCom.ClaudeClient.Cli do
       )
 
       AgentCom.ClaudeClient.Response.parse(output, exit_code, prompt_type)
+    rescue
+      e in ErlangError ->
+        Logger.error("claude_cli_error", error: inspect(e), cli_path: state.cli_path)
+        {:error, {:cli_error, e.original}}
+
+      e ->
+        Logger.error("claude_cli_error", error: inspect(e), cli_path: state.cli_path)
+        {:error, {:cli_error, Exception.message(e)}}
     after
       File.rm(tmp_path)
     end
