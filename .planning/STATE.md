@@ -9,17 +9,17 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 
 ## Current Position
 
-Phase: 34 of 36 (Tiered Autonomy)
-Plan: 2/2 complete
-Status: Complete
-Last activity: 2026-02-14 -- Plan 34-02: Sidecar risk classification integration (2 tasks, 3 commits incl. direct import refactor)
+Phase: 33 of 36 (Contemplation and Scalability)
+Plan: 1/3 complete
+Status: In Progress
+Last activity: 2026-02-14 -- Plan 33-01: HubFSM contemplating state (2 tasks, 2 commits)
 
-Progress: [███████████████] 100% (2/2 plans)
+Progress: [█████----------] 33% (1/3 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 91 (19 v1.0 + 32 v1.1 + 25 v1.2 + 15 v1.3)
+- Total plans completed: 92 (19 v1.0 + 32 v1.1 + 25 v1.2 + 16 v1.3)
 - Average duration: 4 min
 - Total execution time: ~5.5 hours
 
@@ -95,6 +95,9 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - [Phase 30]: Process.demonitor with :flush prevents stale DOWN messages from Task.async
 - [Phase 31]: WebhookHistory initialized in HubFSM.init alongside History (single startup point)
 - [Phase 31]: GitHub full_name normalized (/ to -) to match RepoRegistry url_to_id convention
+- [Phase 33]: Improving-to-contemplating transition is event-driven (improvement_cycle_complete message), not tick-based
+- [Phase 33]: Contemplating tick predicates are safety nets only (budget exhaustion, goal arrival)
+- [Phase 33]: Defensive catch-all predicate returns :stay for unknown FSM states
 
 ### Research Findings (v1.3)
 
@@ -125,5 +128,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 34-02-PLAN.md -- Sidecar risk classification integration (2 tasks, 3 commits incl. direct import refactor)
+Stopped at: Completed 33-01-PLAN.md -- HubFSM contemplating state (2 tasks, 2 commits)
 Resume file: None
