@@ -59,6 +59,7 @@ defmodule AgentCom.Application do
       {AgentCom.GoalBacklog, []},
       {AgentCom.GoalOrchestrator, []},
       {AgentCom.HubFSM, []},
+      {AgentCom.Room, []},
       {Bandit, plug: AgentCom.Endpoint, scheme: :http, port: port()}
     ]
 

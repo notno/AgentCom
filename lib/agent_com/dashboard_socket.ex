@@ -34,6 +34,7 @@ defmodule AgentCom.DashboardSocket do
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "repo_registry")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "hub_fsm")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "goals")
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "room")
 
     # Get initial snapshot
     snapshot = AgentCom.DashboardState.snapshot()
@@ -430,6 +431,13 @@ defmodule AgentCom.DashboardSocket do
       detail: to_string(detail)
     }
 
+    {:ok, %{state | pending_events: [formatted | state.pending_events]}}
+  end
+
+  # -- PubSub: room events ------------------------------------------------------
+
+  def handle_info({:room_message, message}, state) do
+    formatted = %{type: "room_message", data: message}
     {:ok, %{state | pending_events: [formatted | state.pending_events]}}
   end
 

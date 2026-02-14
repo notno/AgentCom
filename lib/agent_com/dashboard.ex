@@ -673,6 +673,49 @@ defmodule AgentCom.Dashboard do
         .tt-step.done .tt-dot { background: #4ade80; }
         .tt-arrow { color: #333; margin: 0 2px; }
         .tt-detail { color: #888; font-size: 0.9em; margin-left: 4px; }
+        /* === Chat Room === */
+        .chat-panel {
+          background: #141420; border: 1px solid #2a2a3a; border-radius: 8px;
+          margin-top: 12px; display: flex; flex-direction: column; max-height: 500px;
+        }
+        .chat-panel-header {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 14px 16px; cursor: pointer; user-select: none;
+          border-bottom: 1px solid #2a2a3a;
+        }
+        .chat-panel-header:hover .panel-title { color: #a0d0f0; }
+        .chat-messages {
+          flex: 1; overflow-y: auto; padding: 10px 16px; min-height: 200px;
+          max-height: 380px; display: flex; flex-direction: column; gap: 4px;
+        }
+        .chat-messages::-webkit-scrollbar { width: 6px; }
+        .chat-messages::-webkit-scrollbar-track { background: #0a0a0f; }
+        .chat-messages::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 3px; }
+        .chat-msg { font-size: 0.85em; line-height: 1.4; padding: 4px 0; }
+        .chat-msg .chat-sender { font-weight: 600; color: #7eb8da; margin-right: 6px; }
+        .chat-msg .chat-time { font-size: 0.75em; color: #555; margin-right: 6px; }
+        .chat-msg .chat-text { color: #e0e0e0; }
+        .chat-msg.system-msg .chat-text { color: #888; font-style: italic; }
+        .chat-msg.roll-msg .chat-text { color: #facc15; }
+        .chat-input-row {
+          display: flex; gap: 8px; padding: 10px 16px;
+          border-top: 1px solid #2a2a3a;
+        }
+        .chat-input {
+          flex: 1; background: #0a0a0f; border: 1px solid #2a2a3a; border-radius: 6px;
+          color: #e0e0e0; padding: 8px 12px; font-size: 0.85em; outline: none;
+          font-family: inherit;
+        }
+        .chat-input:focus { border-color: #7eb8da; }
+        .chat-input::placeholder { color: #555; }
+        .chat-send-btn {
+          background: #7eb8da; color: #0a0a0f; border: none; border-radius: 6px;
+          padding: 8px 16px; font-size: 0.85em; font-weight: 600; cursor: pointer;
+          white-space: nowrap;
+        }
+        .chat-send-btn:hover { background: #a0d0f0; }
+        .chat-send-btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+        .chat-participants { font-size: 0.72em; color: #888; }
       </style>
     </head>
     <body>
@@ -1147,6 +1190,24 @@ defmodule AgentCom.Dashboard do
               Last backup: --
             </div>
             <div class="empty-state" id="dets-empty">No DETS health data</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Room -->
+      <div class="chat-panel" id="panel-chat-room">
+        <div class="chat-panel-header" onclick="toggleChatPanel()">
+          <div class="panel-title">Chat Room <span class="chat-participants" id="chat-participants"></span></div>
+          <span id="chat-toggle-arrow" style="font-size: 0.85em; color: #888;">&#9660;</span>
+        </div>
+        <div id="chat-panel-body">
+          <div class="chat-messages" id="chat-messages">
+            <div class="empty-state" id="chat-empty">No messages yet. Say something!</div>
+          </div>
+          <div class="chat-input-row">
+            <input type="text" class="chat-input" id="chat-input" placeholder="Type a message..."
+                   onkeydown="if(event.key==='Enter')sendChatMessage()">
+            <button class="chat-send-btn" id="chat-send-btn" onclick="sendChatMessage()">Send</button>
           </div>
         </div>
       </div>
@@ -3216,6 +3277,17 @@ defmodule AgentCom.Dashboard do
                   dashConn.ws.send(JSON.stringify({type: 'request_snapshot'}));
                 }
                 break;
+              case 'room_message':
+                renderChatMessage(ev.data);
+                // Update participants
+                fetch('/api/room/participants')
+                  .then(function(r) { return r.json(); })
+                  .then(function(d) {
+                    if (d && d.participants && d.participants.length > 0) {
+                      document.getElementById('chat-participants').textContent = '(' + d.participants.join(', ') + ')';
+                    }
+                  }).catch(function() {});
+                break;
               case 'hub_fsm_state':
                 renderHubFSM(ev.data);
                 prependHubFSMTransition(ev.data);
@@ -3682,6 +3754,94 @@ defmodule AgentCom.Dashboard do
             feedback.textContent = 'Network error: ' + err.message;
           });
         }
+        // =====================================================================
+        // Chat Room
+        // =====================================================================
+        var chatLastSeq = 0;
+
+        function toggleChatPanel() {
+          var body = document.getElementById('chat-panel-body');
+          var arrow = document.getElementById('chat-toggle-arrow');
+          if (body.style.display === 'none') {
+            body.style.display = '';
+            arrow.innerHTML = '&#9660;';
+          } else {
+            body.style.display = 'none';
+            arrow.innerHTML = '&#9654;';
+          }
+        }
+
+        function renderChatMessage(msg) {
+          var container = document.getElementById('chat-messages');
+          var emptyEl = document.getElementById('chat-empty');
+          if (emptyEl) emptyEl.style.display = 'none';
+
+          var div = document.createElement('div');
+          div.className = 'chat-msg' + (msg.type === 'system' ? ' system-msg' : '') + (msg.type === 'roll' ? ' roll-msg' : '');
+
+          var time = new Date(msg.timestamp);
+          var timeStr = time.getHours().toString().padStart(2, '0') + ':' + time.getMinutes().toString().padStart(2, '0');
+
+          div.innerHTML = '<span class="chat-time">' + timeStr + '</span>' +
+                          '<span class="chat-sender">' + escapeHtml(msg.from) + '</span>' +
+                          '<span class="chat-text">' + escapeHtml(msg.text) + '</span>';
+
+          container.appendChild(div);
+          container.scrollTop = container.scrollHeight;
+
+          if (msg.seq && msg.seq > chatLastSeq) chatLastSeq = msg.seq;
+        }
+
+        function loadChatHistory() {
+          fetch('/api/room/messages?limit=50')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+              if (data && data.messages && data.messages.length > 0) {
+                data.messages.forEach(function(msg) { renderChatMessage(msg); });
+              }
+              if (data && data.last_seq) chatLastSeq = data.last_seq;
+              // Load participants
+              fetch('/api/room/participants')
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                  if (d && d.participants && d.participants.length > 0) {
+                    document.getElementById('chat-participants').textContent = '(' + d.participants.join(', ') + ')';
+                  }
+                }).catch(function() {});
+            }).catch(function(e) { console.warn('Chat history load failed:', e); });
+        }
+
+        function sendChatMessage() {
+          var input = document.getElementById('chat-input');
+          var text = input.value.trim();
+          if (!text) return;
+
+          var token = localStorage.getItem('agentcom_token') || '';
+          var btn = document.getElementById('chat-send-btn');
+          btn.disabled = true;
+
+          fetch('/api/room/message/human', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({ from: 'Nathan', text: text, type: 'chat' })
+          }).then(function(r) {
+            btn.disabled = false;
+            if (r.status === 201) {
+              input.value = '';
+            } else if (r.status === 401) {
+              alert('Set your auth token first (Token button above)');
+            }
+          }).catch(function(e) {
+            btn.disabled = false;
+            console.warn('Chat send failed:', e);
+          });
+        }
+
+        // Load history on page load
+        loadChatHistory();
       </script>
     </body>
     </html>

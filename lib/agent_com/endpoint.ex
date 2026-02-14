@@ -1564,6 +1564,68 @@ defmodule AgentCom.Endpoint do
     send_json(conn, 200, %{"history" => formatted, "count" => length(formatted)})
   end
 
+  # --- Room (Chat) API ---
+
+  post "/api/room/message" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
+    if conn.halted do
+      conn
+    else
+      text = conn.body_params["text"]
+      type = conn.body_params["type"] || "chat"
+      agent_id = conn.assigns[:authenticated_agent]
+
+      if is_binary(text) and text != "" do
+        {:ok, message} = AgentCom.Room.send_message(agent_id, text, type: type)
+        send_json(conn, 201, message)
+      else
+        send_json(conn, 422, %{"error" => "text is required"})
+      end
+    end
+  end
+
+  post "/api/room/message/human" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
+    if conn.halted do
+      conn
+    else
+      from = conn.body_params["from"]
+      text = conn.body_params["text"]
+      type = conn.body_params["type"] || "chat"
+
+      if is_binary(from) and from != "" and is_binary(text) and text != "" do
+        {:ok, message} = AgentCom.Room.send_message(from, text, type: type)
+        send_json(conn, 201, message)
+      else
+        send_json(conn, 422, %{"error" => "from and text are required"})
+      end
+    end
+  end
+
+  get "/api/room/messages" do
+    since =
+      case conn.params["since"] do
+        nil -> 0
+        s -> String.to_integer(s)
+      end
+
+    limit =
+      case conn.params["limit"] do
+        nil -> 50
+        l -> String.to_integer(l)
+      end
+
+    {messages, last_seq} = AgentCom.Room.messages(since: since, limit: limit)
+    send_json(conn, 200, %{"messages" => messages, "last_seq" => last_seq})
+  end
+
+  get "/api/room/participants" do
+    participants = AgentCom.Room.participants()
+    send_json(conn, 200, %{"participants" => participants})
+  end
+
   # --- Webhook API ---
 
   # IMPORTANT: GET /history MUST be defined BEFORE POST to avoid path conflicts
