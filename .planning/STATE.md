@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 
 ## Current Position
 
-Phase: 36 of 36 (Dashboard and Observability)
-Plan: 1/2 complete
+Phase: 32 of 36 (Improvement Scanning)
+Plan: 1/4 complete
 Status: In Progress
-Last activity: 2026-02-14 -- Plan 36-01 Dashboard Goal & Cost Data Sources
+Last activity: 2026-02-14 -- Plan 32-01 Data Structures and Persistence
 
-Progress: [███████░░░░░░░] 50% (1/2 plans)
+Progress: [████░░░░░░░░░░] 25% (1/4 plans)
 
 ## Performance Metrics
 
@@ -79,6 +79,7 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - rescue in Cli.invoke for System.cmd :enoent -- prevents GenServer crash when CLI binary unavailable
 - [Phase 31]: Both resting->executing and resting->improving increment cycle count (active work cycles)
 - [Phase 31]: :improving exits only via budget exhaustion or watchdog timeout (not goal predicates)
+- [Phase 32]: @library_tables pattern in DetsBackup for non-GenServer DETS table owners (sync-only compaction, direct close/copy/init restore)
 - [Phase 31]: WebhookHistory initialized in HubFSM.init alongside History (single startup point)
 - [Phase 31]: GitHub full_name normalized (/ to -) to match RepoRegistry url_to_id convention
 
@@ -108,5 +109,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 31-02-PLAN.md -- Webhook Endpoint + History + Config
+Stopped at: Completed 32-01-PLAN.md -- Data Structures and Persistence
 Resume file: None
