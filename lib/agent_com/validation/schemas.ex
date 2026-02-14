@@ -209,6 +209,18 @@ defmodule AgentCom.Validation.Schemas do
         "reason" => :string
       },
       description: "Sidecar reports wake command outcome (success, failed, timeout)."
+    },
+    "state_report" => %{
+      required: %{
+        "type" => :string,
+        "task_id" => :string
+      },
+      optional: %{
+        "status" => :string,
+        "generation" => :integer,
+        "assigned_at" => :number
+      },
+      description: "Sidecar reports current active task state on reconnect."
     }
   }
 

@@ -206,6 +206,14 @@ defmodule AgentCom.Socket do
     {:push, {:text, Jason.encode!(push)}, state}
   end
 
+  def handle_info({:restart_sidecar, reason}, state) do
+    push = %{
+      "type" => "restart_sidecar",
+      "reason" => reason || "hub_commanded"
+    }
+    {:push, {:text, Jason.encode!(push)}, state}
+  end
+
   def handle_info(_msg, state), do: {:ok, state}
 
   @impl true
@@ -506,6 +514,58 @@ defmodule AgentCom.Socket do
     {:ok, state}
   end
 
+  # --- Reconnect state recovery (Phase 39, PIPE-05) ---
+
+  defp handle_msg(%{"type" => "state_report", "task_id" => task_id} = msg, state) do
+    log_task_event(state.agent_id, "state_report", task_id, msg)
+    reported_generation = msg["generation"] || 0
+    reported_status = msg["status"] || "unknown"
+
+    # Reconcile with hub's view of the task
+    action = case AgentCom.TaskQueue.get(task_id) do
+      {:ok, %{status: :assigned, assigned_to: agent_id, generation: gen}} when agent_id == state.agent_id ->
+        if gen == reported_generation do
+          # Task still assigned to this agent with matching generation -- continue
+          AgentCom.TaskQueue.update_progress(task_id)
+          "continue"
+        else
+          # Generation mismatch -- task was requeued and possibly reassigned
+          "abort"
+        end
+
+      {:ok, %{status: :assigned}} ->
+        # Task reassigned to a different agent
+        "abort"
+
+      {:ok, %{status: :completed}} ->
+        # Already completed (maybe by retry)
+        "abort"
+
+      {:ok, %{status: :queued}} ->
+        # Task was reclaimed back to queue
+        "abort"
+
+      _ ->
+        # Not found or dead-lettered
+        "abort"
+    end
+
+    Logger.info("state_report_reconciled",
+      task_id: task_id,
+      agent_id: state.agent_id,
+      reported_status: reported_status,
+      reported_generation: reported_generation,
+      action: action
+    )
+
+    reply = Jason.encode!(%{
+      "type" => "state_report_ack",
+      "task_id" => task_id,
+      "action" => action
+    })
+    {:push, {:text, reply}, state}
+  end
+
   # --- LLM Registry: Sidecar auto-reporting ---
 
   # Sidecar auto-reports local Ollama endpoint
@@ -538,6 +598,14 @@ defmodule AgentCom.Socket do
     AgentCom.LlmRegistry.report_resources(state.agent_id, metrics)
 
     # No reply needed -- fire and forget like task_progress
+    {:ok, state}
+  end
+
+  # Sidecar reports it is about to restart (Phase 42)
+  defp handle_msg(%{"type" => "agent_restarting"} = msg, state) do
+    reason = Map.get(msg, "reason", "unknown")
+    Logger.info("Agent #{state.agent_id} restarting: #{reason}")
+    Presence.update_status(state.agent_id, "restarting")
     {:ok, state}
   end
 
