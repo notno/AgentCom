@@ -14,6 +14,7 @@ const { collectMetrics } = require('./lib/resources');
 const { runVerification } = require('./verification');
 const { WorkspaceManager } = require('./lib/workspace-manager');
 const { gatherDiffMeta } = require('./agentcom-git');
+const pm2Manager = require('./lib/pm2-manager');
 const os = require('os');
 
 // =============================================================================
@@ -344,6 +345,16 @@ async function handleResult(taskId, filePath, hub) {
   _queue.active = null;
   saveQueue(QUEUE_PATH, _queue);
 
+  // Check for pending restart (Phase 42: hub-commanded restart deferred during task)
+  const pendingRestart = pm2Manager.hasPendingRestart();
+  if (pendingRestart) {
+    log('info', 'deferred_restart_executing', { reason: pendingRestart.reason });
+    pm2Manager.clearPendingRestart();
+    hub.send({ type: 'agent_restarting', reason: pendingRestart.reason });
+    setTimeout(() => process.exit(0), 500);
+    return;
+  }
+
   // Clean up result files
   cleanupResultFiles(taskId, _config.results_dir);
 }
@@ -564,6 +575,10 @@ class HubConnection {
     if (this.config.ollama_url) {
       payload.ollama_url = this.config.ollama_url;
     }
+    const pm2Info = pm2Manager.getInfo();
+    if (pm2Info) {
+      payload.pm2_info = pm2Info;
+    }
     this.send(payload);
     log('info', 'identify_sent', { ollama_url: this.config.ollama_url || 'none' });
   }
@@ -593,6 +608,8 @@ class HubConnection {
         log('info', 'identified', { agent_id: msg.agent_id });
         // Report any recovering task to hub after identification
         this.reportRecovery();
+        // PIPE-05: Report current active task state on reconnect
+        this.reportActiveState();
         break;
 
       case 'error':
@@ -621,6 +638,24 @@ class HubConnection {
 
       case 'task_cancelled':
         this.handleTaskCancelled(msg);
+        break;
+
+      case 'state_report_ack':
+        log('info', 'state_report_ack', {
+          task_id: msg.task_id,
+          action: msg.action
+        });
+        if (msg.action === 'abort' && _queue.active && _queue.active.task_id === msg.task_id) {
+          log('warning', 'state_report_abort', { task_id: msg.task_id });
+          _queue.active = null;
+          saveQueue(QUEUE_PATH, _queue);
+          this.taskGenerations.delete(msg.task_id);
+        }
+        break;
+
+      case 'restart_sidecar':
+        log('info', 'restart_commanded', { reason: msg.reason });
+        pm2Manager.gracefulRestart(this, _queue, msg.reason || 'hub_commanded');
         break;
 
       default:
@@ -892,6 +927,16 @@ class HubConnection {
 
     _queue.active = null;
     saveQueue(QUEUE_PATH, _queue);
+
+    // Check for pending restart (Phase 42: hub-commanded restart deferred during task)
+    const pendingRestart = pm2Manager.hasPendingRestart();
+    if (pendingRestart) {
+      log('info', 'deferred_restart_executing', { reason: pendingRestart.reason });
+      pm2Manager.clearPendingRestart();
+      this.send({ type: 'agent_restarting', reason: pendingRestart.reason });
+      setTimeout(() => process.exit(0), 500);
+      return;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -918,6 +963,33 @@ class HubConnection {
     });
 
     log('info', 'recovery_reported', { task_id: task.task_id });
+  }
+
+  /**
+   * PIPE-05: Report current active task state on reconnect.
+   * Unlike reportRecovery() which handles crash recovery (recovering slot),
+   * this handles the case where sidecar was actively working on a task when
+   * the WebSocket disconnected and reconnected.
+   */
+  reportActiveState() {
+    if (!_queue.active) return;
+
+    const task = _queue.active;
+    const generation = this.taskGenerations.get(task.task_id) || task.generation || 0;
+
+    log('info', 'state_report_sending', {
+      task_id: task.task_id,
+      status: task.status,
+      generation: generation
+    });
+
+    this.send({
+      type: 'state_report',
+      task_id: task.task_id,
+      status: task.status,
+      generation: generation,
+      assigned_at: task.assigned_at
+    });
   }
 
   /**
