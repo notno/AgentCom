@@ -190,7 +190,11 @@ Plans:
   1. Hub exposes a GitHub webhook endpoint that receives push and PR merge events with signature verification
   2. Git push or PR merge on an active repo wakes the FSM from Resting to Improving
   3. Goal backlog changes (new goal submitted, goal priority changed) wake the FSM from Resting to Executing
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 31-01-PLAN.md -- Foundation: HubFSM :improving state, CacheBodyReader, WebhookVerifier
+- [ ] 31-02-PLAN.md -- Wiring: Webhook endpoint, event history, config API
+- [ ] 31-03-PLAN.md -- TDD: Comprehensive test suite for webhook handling
 
 ### Phase 32: Improvement Scanning
 **Goal**: The hub autonomously identifies and executes codebase improvements during idle time
