@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 Phase: 44 of 44 (Hub FSM Testing) -- COMPLETE
 Plan: 2 of 2 in current phase
 Status: v1.4 milestone complete -- all 8 phases shipped
-Last activity: 2026-02-14 -- Phase 44 complete (2 plans, 3 task commits, 22 tests)
+Last activity: 2026-02-14 -- Phase 39 plan 04 gap closure (wake_command pre-routing gate)
 
 Progress: [██████████] 100% (v1.4) -- 8/8 phases complete
 
@@ -58,5 +58,5 @@ v1.1-v1.3 decisions archived to respective milestone roadmap files.
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: v1.4 milestone complete (Phase 44, 2 plans, 3 commits, 22 tests)
+Stopped at: Completed 39-04-PLAN.md (gap closure: pre-routing wake_command gate)
 Resume file: None
