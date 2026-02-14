@@ -31,6 +31,7 @@ defmodule AgentCom.DashboardSocket do
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "alerts")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "llm_registry")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "repo_registry")
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "hub_fsm")
 
     # Get initial snapshot
     snapshot = AgentCom.DashboardState.snapshot()
@@ -75,8 +76,11 @@ defmodule AgentCom.DashboardSocket do
       {:ok, %{"type" => "acknowledge_alert", "rule_id" => rule_id}} ->
         result =
           case AgentCom.Alerter.acknowledge(rule_id) do
-            :ok -> %{type: "alert_ack_result", rule_id: rule_id, status: "acknowledged"}
-            {:error, :not_found} -> %{type: "alert_ack_result", rule_id: rule_id, status: "not_found"}
+            :ok ->
+              %{type: "alert_ack_result", rule_id: rule_id, status: "acknowledged"}
+
+            {:error, :not_found} ->
+              %{type: "alert_ack_result", rule_id: rule_id, status: "not_found"}
           end
 
         {:push, {:text, Jason.encode!(result)}, state}
@@ -86,7 +90,12 @@ defmodule AgentCom.DashboardSocket do
         name = body["name"] || "#{host}:#{port}"
 
         result =
-          case AgentCom.LlmRegistry.register_endpoint(%{host: host, port: port, name: name, source: :manual}) do
+          case AgentCom.LlmRegistry.register_endpoint(%{
+                 host: host,
+                 port: port,
+                 name: name,
+                 source: :manual
+               }) do
             {:ok, endpoint} -> %{type: "llm_endpoint_registered", endpoint: endpoint}
             {:error, reason} -> %{type: "llm_endpoint_error", error: to_string(reason)}
           end
@@ -106,12 +115,15 @@ defmodule AgentCom.DashboardSocket do
 
       {:ok, %{"type" => "add_repo", "url" => url} = msg} ->
         name = Map.get(msg, "name", nil)
+
         case AgentCom.RepoRegistry.add_repo(%{url: url, name: name}) do
           {:ok, _repo} ->
             snapshot = AgentCom.DashboardState.snapshot()
             {:push, {:text, Jason.encode!(%{type: "snapshot", data: snapshot})}, state}
+
           {:error, :already_exists} ->
-            {:push, {:text, Jason.encode!(%{type: "repo_error", error: "repo_already_exists"})}, state}
+            {:push, {:text, Jason.encode!(%{type: "repo_error", error: "repo_already_exists"})},
+             state}
         end
 
       {:ok, %{"type" => "remove_repo", "repo_id" => repo_id}} ->
@@ -150,7 +162,10 @@ defmodule AgentCom.DashboardSocket do
   # ProgressEmitter on the sidecar already batches at 100ms, so no additional
   # batching needed here.
   @impl true
-  def handle_info({:task_event, %{event: :execution_progress, task_id: task_id, execution_event: event}}, state) do
+  def handle_info(
+        {:task_event, %{event: :execution_progress, task_id: task_id, execution_event: event}},
+        state
+      ) do
     push = %{
       "type" => "execution_event",
       "task_id" => task_id,
@@ -160,6 +175,7 @@ defmodule AgentCom.DashboardSocket do
       "model" => event["model"] || Map.get(event, :model),
       "timestamp" => event["timestamp"] || Map.get(event, :timestamp)
     }
+
     {:push, {:text, Jason.encode!(push)}, state}
   end
 
@@ -241,14 +257,16 @@ defmodule AgentCom.DashboardSocket do
     formatted = %{
       type: "compaction_complete",
       timestamp: info.timestamp,
-      results: Enum.map(info.results, fn r ->
-        %{
-          table: to_string(r.table),
-          status: to_string(r.status),
-          duration_ms: r[:duration_ms] || 0
-        }
-      end)
+      results:
+        Enum.map(info.results, fn r ->
+          %{
+            table: to_string(r.table),
+            status: to_string(r.status),
+            duration_ms: r[:duration_ms] || 0
+          }
+        end)
     }
+
     {:ok, %{state | pending_events: [formatted | state.pending_events]}}
   end
 
@@ -256,10 +274,12 @@ defmodule AgentCom.DashboardSocket do
     formatted = %{
       type: "compaction_failed",
       timestamp: info.timestamp,
-      failures: Enum.map(info.failures, fn f ->
-        %{table: to_string(f.table), reason: to_string(f[:reason] || "unknown")}
-      end)
+      failures:
+        Enum.map(info.failures, fn f ->
+          %{table: to_string(f.table), reason: to_string(f[:reason] || "unknown")}
+        end)
     }
+
     {:ok, %{state | pending_events: [formatted | state.pending_events]}}
   end
 
@@ -272,6 +292,7 @@ defmodule AgentCom.DashboardSocket do
       backup_used: info[:backup_used],
       record_count: info[:record_count] || 0
     }
+
     {:ok, %{state | pending_events: [formatted | state.pending_events]}}
   end
 
@@ -282,6 +303,7 @@ defmodule AgentCom.DashboardSocket do
       table: to_string(info.table),
       reason: inspect(info[:reason])
     }
+
     {:ok, %{state | pending_events: [formatted | state.pending_events]}}
   end
 
@@ -350,6 +372,23 @@ defmodule AgentCom.DashboardSocket do
     formatted = %{
       type: "llm_registry_update",
       detail: to_string(detail)
+    }
+
+    {:ok, %{state | pending_events: [formatted | state.pending_events]}}
+  end
+
+  # -- PubSub: hub_fsm events ---------------------------------------------------
+
+  def handle_info({:hub_fsm_state_change, info}, state) do
+    formatted = %{
+      type: "hub_fsm_state",
+      data: %{
+        fsm_state: to_string(info.fsm_state),
+        paused: info.paused,
+        last_state_change: info.last_state_change,
+        cycle_count: info.cycle_count,
+        timestamp: info.timestamp
+      }
     }
 
     {:ok, %{state | pending_events: [formatted | state.pending_events]}}

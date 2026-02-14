@@ -76,7 +76,18 @@ defmodule AgentCom.DashboardState do
       rate_limit_violation_counts: %{}
     }
 
-    Logger.info("started", topics: ["tasks", "presence", "backups", "validation", "alerts", "rate_limits", "llm_registry", "repo_registry"])
+    Logger.info("started",
+      topics: [
+        "tasks",
+        "presence",
+        "backups",
+        "validation",
+        "alerts",
+        "rate_limits",
+        "llm_registry",
+        "repo_registry"
+      ]
+    )
 
     {:ok, state}
   end
@@ -129,13 +140,15 @@ defmodule AgentCom.DashboardState do
     formatted_queued_tasks =
       Enum.map(queued_tasks, fn t ->
         complexity = Map.get(t, :complexity)
+
         %{
           id: t.id,
           description: t.description,
           priority: t.priority,
           submitted_by: Map.get(t, :submitted_by),
           created_at: t.created_at,
-          complexity_tier: if(complexity, do: to_string(Map.get(complexity, :effective_tier)), else: nil)
+          complexity_tier:
+            if(complexity, do: to_string(Map.get(complexity, :effective_tier)), else: nil)
         }
       end)
 
@@ -158,17 +171,19 @@ defmodule AgentCom.DashboardState do
       dead_letter: Map.get(queue_stats, :dead_letter, 0)
     }
 
-    dets_health = try do
-      AgentCom.DetsBackup.health_metrics()
-    rescue
-      _ -> nil
-    end
+    dets_health =
+      try do
+        AgentCom.DetsBackup.health_metrics()
+      rescue
+        _ -> nil
+      end
 
-    compaction_history = try do
-      AgentCom.DetsBackup.compaction_history()
-    rescue
-      _ -> []
-    end
+    compaction_history =
+      try do
+        AgentCom.DetsBackup.compaction_history()
+      rescue
+        _ -> []
+      end
 
     validation = %{
       recent_failures: state.validation_failures,
@@ -222,6 +237,13 @@ defmodule AgentCom.DashboardState do
 
     routing_stats = compute_routing_stats(all_tasks)
 
+    hub_fsm =
+      try do
+        AgentCom.HubFSM.get_state()
+      catch
+        :exit, _ -> %{fsm_state: :unknown, paused: false, cycle_count: 0, transition_count: 0}
+      end
+
     snapshot = %{
       uptime_ms: now - state.started_at,
       timestamp: now,
@@ -239,7 +261,8 @@ defmodule AgentCom.DashboardState do
       rate_limits: rate_limits,
       llm_registry: llm_registry,
       repo_registry: repo_registry,
-      routing_stats: routing_stats
+      routing_stats: routing_stats,
+      hub_fsm: hub_fsm
     }
 
     {:reply, snapshot, state}
@@ -286,12 +309,17 @@ defmodule AgentCom.DashboardState do
   def handle_info(:reset_hourly, state) do
     Process.send_after(self(), :reset_hourly, @hourly_reset_interval_ms)
 
-    {:noreply, %{state | hourly_stats: %{
-      completed: 0,
-      failed: 0,
-      total_tokens: 0,
-      completion_times: []
-    }, validation_failure_counts: %{}}}
+    {:noreply,
+     %{
+       state
+       | hourly_stats: %{
+           completed: 0,
+           failed: 0,
+           total_tokens: 0,
+           completion_times: []
+         },
+         validation_failure_counts: %{}
+     }}
   end
 
   # -- PubSub: compaction/recovery events --------------------------------------
@@ -302,7 +330,10 @@ defmodule AgentCom.DashboardState do
   end
 
   def handle_info({:compaction_failed, info}, state) do
-    Logger.warning("compaction_failures_detected", failures: inspect(info[:failures] || info.failures))
+    Logger.warning("compaction_failures_detected",
+      failures: inspect(info[:failures] || info.failures)
+    )
+
     {:noreply, state}
   end
 
@@ -453,10 +484,12 @@ defmodule AgentCom.DashboardState do
 
     # Update hourly stats
     hourly = state.hourly_stats
-    hourly = %{hourly |
-      completed: hourly.completed + 1,
-      total_tokens: hourly.total_tokens + (tokens_used || 0),
-      completion_times: [duration_ms | hourly.completion_times]
+
+    hourly = %{
+      hourly
+      | completed: hourly.completed + 1,
+        total_tokens: hourly.total_tokens + (tokens_used || 0),
+        completion_times: [duration_ms | hourly.completion_times]
     }
 
     %{state | recent_completions: recent, hourly_stats: hourly}
@@ -493,6 +526,7 @@ defmodule AgentCom.DashboardState do
       case state.queue_growth_checks do
         [a, b, c] when a < b and b < c ->
           ["Queue growing: #{a} -> #{b} -> #{c}" | conditions]
+
         _ ->
           conditions
       end
@@ -502,7 +536,10 @@ defmodule AgentCom.DashboardState do
 
     {conditions, has_critical} =
       if total > 0 and state.hourly_stats.failed / total > 0.5 do
-        {["High failure rate: #{state.hourly_stats.failed}/#{total} tasks failed this hour" | conditions], true}
+        {[
+           "High failure rate: #{state.hourly_stats.failed}/#{total} tasks failed this hour"
+           | conditions
+         ], true}
       else
         {conditions, false}
       end
@@ -530,21 +567,25 @@ defmodule AgentCom.DashboardState do
       end
 
     # 5. Stale DETS Backup
-    dets_metrics = try do
-      AgentCom.DetsBackup.health_metrics()
-    rescue
-      _ -> nil
-    end
+    dets_metrics =
+      try do
+        AgentCom.DetsBackup.health_metrics()
+      rescue
+        _ -> nil
+      end
 
     conditions =
       if dets_metrics do
         now_ms = now
+
         case dets_metrics.last_backup_at do
           nil ->
             ["DETS backup: never run" | conditions]
+
           ts when now_ms - ts > 48 * 60 * 60 * 1000 ->
             hours_ago = div(now_ms - ts, 3_600_000)
             ["DETS backup stale: last backup #{hours_ago}h ago" | conditions]
+
           _ ->
             conditions
         end
@@ -555,7 +596,8 @@ defmodule AgentCom.DashboardState do
     # 6. High DETS Fragmentation
     conditions =
       if dets_metrics do
-        high_frag_tables = dets_metrics.tables
+        high_frag_tables =
+          dets_metrics.tables
           |> Enum.filter(fn t -> t.status == :ok and t.fragmentation_ratio > 0.5 end)
           |> Enum.map(fn t -> to_string(t.table) end)
 
@@ -607,6 +649,7 @@ defmodule AgentCom.DashboardState do
   end
 
   defp format_routing_decision_for_dashboard(nil), do: nil
+
   defp format_routing_decision_for_dashboard(rd) when is_map(rd) do
     %{
       effective_tier: to_string(Map.get(rd, :effective_tier)),
@@ -658,6 +701,7 @@ defmodule AgentCom.DashboardState do
       nil
     end
   end
+
   defp extract_execution_meta(_), do: nil
 
   defp compute_routing_stats(tasks) do

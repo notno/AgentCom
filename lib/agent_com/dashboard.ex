@@ -982,6 +982,34 @@ defmodule AgentCom.Dashboard do
         </div>
       </div>
 
+      <!-- Hub FSM -->
+      <div style="margin-top: 12px;">
+        <div class="panel" id="panel-hub-fsm">
+          <div class="panel-title">Hub FSM <span id="hub-fsm-paused-badge" style="background: #ef4444; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; margin-left: 8px; display: none;">PAUSED</span></div>
+          <div class="throughput-cards">
+            <div class="tp-card">
+              <div class="tp-value" id="hub-fsm-state" style="color: #4ade80;">--</div>
+              <div class="tp-label">FSM State</div>
+            </div>
+            <div class="tp-card">
+              <div class="tp-value" id="hub-fsm-cycles">0</div>
+              <div class="tp-label">Cycles</div>
+            </div>
+            <div class="tp-card">
+              <div class="tp-value" id="hub-fsm-transitions">0</div>
+              <div class="tp-label">Transitions</div>
+            </div>
+            <div class="tp-card">
+              <div class="tp-value" id="hub-fsm-last-change">--</div>
+              <div class="tp-label">Last Change</div>
+            </div>
+          </div>
+          <div style="margin-top: 8px; text-align: right;">
+            <button onclick="toggleHubFSMPause()" id="hub-fsm-pause-btn" style="background: #2a2a3a; border: 1px solid #3a3a4a; color: #e0e0e0; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85em;">Pause</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Repo Registry -->
       <div style="margin-top: 12px;">
         <div class="panel" id="panel-repo-registry">
@@ -1705,6 +1733,9 @@ defmodule AgentCom.Dashboard do
           // -- Routing stats --
           renderRoutingStats(data.routing_stats || null);
 
+          // -- Hub FSM --
+          renderHubFSM(data.hub_fsm || null);
+
           // -- Task tracker --
           updateTracker();
 
@@ -2279,6 +2310,63 @@ defmodule AgentCom.Dashboard do
           if (el) el.classList.toggle('visible');
         }
 
+        // =====================================================================
+        // Hub FSM
+        // =====================================================================
+        var hubFsmStateColors = {
+          executing: '#4ade80',
+          resting: '#60a5fa',
+          improving: '#facc15',
+          contemplating: '#a78bfa',
+          unknown: '#6b7280'
+        };
+
+        function renderHubFSM(data) {
+          if (!data) return;
+          var stateEl = document.getElementById('hub-fsm-state');
+          var cyclesEl = document.getElementById('hub-fsm-cycles');
+          var transitionsEl = document.getElementById('hub-fsm-transitions');
+          var lastChangeEl = document.getElementById('hub-fsm-last-change');
+          var pausedBadge = document.getElementById('hub-fsm-paused-badge');
+          var pauseBtn = document.getElementById('hub-fsm-pause-btn');
+
+          var fsmState = data.fsm_state ? String(data.fsm_state) : 'unknown';
+          stateEl.textContent = fsmState;
+          stateEl.style.color = data.paused ? '#ef4444' : (hubFsmStateColors[fsmState] || '#6b7280');
+
+          cyclesEl.textContent = data.cycle_count || 0;
+          transitionsEl.textContent = data.transition_count || 0;
+
+          if (data.last_state_change) {
+            lastChangeEl.textContent = formatRelativeTime(data.last_state_change);
+          }
+
+          pausedBadge.style.display = data.paused ? 'inline' : 'none';
+          pauseBtn.textContent = data.paused ? 'Resume' : 'Pause';
+        }
+
+        function toggleHubFSMPause() {
+          var btn = document.getElementById('hub-fsm-pause-btn');
+          var action = btn.textContent === 'Pause' ? 'pause' : 'resume';
+          fetch('/api/hub/' + action, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (window.hubToken || '')}
+          }).then(function(r) { return r.json(); }).then(function(data) {
+            // Refresh snapshot to reflect the change
+            if (dashConn && dashConn.ws && dashConn.ws.readyState === 1) {
+              dashConn.ws.send(JSON.stringify({type: 'request_snapshot'}));
+            }
+          }).catch(function(e) { console.warn('Hub FSM pause/resume failed:', e); });
+        }
+
+        function formatRelativeTime(ms) {
+          if (!ms) return '--';
+          var elapsed = Date.now() - ms;
+          if (elapsed < 60000) return Math.floor(elapsed / 1000) + 's ago';
+          if (elapsed < 3600000) return Math.floor(elapsed / 60000) + 'm ago';
+          return Math.floor(elapsed / 3600000) + 'h ago';
+        }
+
         function renderRoutingStats(stats) {
           var bar = document.getElementById('routing-stats-bar');
           if (!bar) return;
@@ -2644,6 +2732,9 @@ defmodule AgentCom.Dashboard do
                 if (dashConn && dashConn.ws && dashConn.ws.readyState === 1) {
                   dashConn.ws.send(JSON.stringify({type: 'request_snapshot'}));
                 }
+                break;
+              case 'hub_fsm_state':
+                renderHubFSM(ev.data);
                 break;
             }
           });
