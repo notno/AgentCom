@@ -790,6 +790,28 @@ class HubConnection {
       saveQueue(QUEUE_PATH, _queue);
     }
 
+    // Gap closure: wake_command gates ALL task execution, not just wake path
+    const wakeCmd = _config.wake_command;
+    if (!wakeCmd || (typeof wakeCmd === 'string' && wakeCmd.trim() === '')) {
+      log('error', 'no_wake_command', {
+        task_id: msg.task_id,
+        reason: 'wake_command not configured - rejecting task before execution',
+        routing_target: task.routing_decision?.target_type || 'none'
+      });
+      task.status = 'failed';
+      _queue.active = null;
+      saveQueue(QUEUE_PATH, _queue);
+      this.sendTaskFailed(task.task_id, 'no_wake_command_configured');
+      this.send({
+        type: 'wake_result',
+        task_id: msg.task_id,
+        status: 'failed',
+        attempt: 0,
+        error: 'no_wake_command_configured'
+      });
+      return;
+    }
+
     // Phase 20: Direct execution when routing_decision present
     const routing = task.routing_decision;
     if (routing && routing.target_type && routing.target_type !== 'wake') {
