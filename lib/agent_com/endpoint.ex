@@ -76,6 +76,10 @@ defmodule AgentCom.Endpoint do
   - GET    /api/goals/:goal_id    — Get goal details (auth required)
   - PATCH  /api/goals/:goal_id/transition — Transition goal lifecycle state (auth required)
   - GET    /api/schemas           — Schema discovery (no auth)
+  - POST   /api/hub/pause        — Pause the HubFSM (auth required)
+  - POST   /api/hub/resume       — Resume the HubFSM (auth required)
+  - GET    /api/hub/state        — Get current HubFSM state (no auth -- dashboard)
+  - GET    /api/hub/history      — Get HubFSM transition history (no auth -- dashboard)
   - WS     /ws                   — WebSocket for agent connections
   """
   use Plug.Router
@@ -1153,6 +1157,72 @@ defmodule AgentCom.Endpoint do
         {:error, errors} ->
           send_validation_error(conn, errors)
       end
+    end
+  end
+
+  # --- Hub FSM API ---
+
+  post "/api/hub/pause" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case AgentCom.HubFSM.pause() do
+        :ok -> send_json(conn, 200, %{"status" => "paused"})
+        {:error, :already_paused} -> send_json(conn, 200, %{"status" => "already_paused"})
+      end
+    end
+  end
+
+  post "/api/hub/resume" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case AgentCom.HubFSM.resume() do
+        :ok -> send_json(conn, 200, %{"status" => "resumed"})
+        {:error, :not_paused} -> send_json(conn, 200, %{"status" => "not_paused"})
+      end
+    end
+  end
+
+  get "/api/hub/state" do
+    try do
+      state = AgentCom.HubFSM.get_state()
+      send_json(conn, 200, %{
+        "fsm_state" => to_string(state.fsm_state),
+        "paused" => state.paused,
+        "cycle_count" => state.cycle_count,
+        "transition_count" => state.transition_count,
+        "last_state_change" => state.last_state_change
+      })
+    catch
+      :exit, _ -> send_json(conn, 503, %{"error" => "hub_fsm not available"})
+    end
+  end
+
+  get "/api/hub/history" do
+    limit = case conn.params["limit"] do
+      nil -> 50
+      l ->
+        parsed = String.to_integer(l)
+        min(parsed, 200)
+    end
+
+    try do
+      transitions = AgentCom.HubFSM.history(limit: limit)
+      formatted = Enum.map(transitions, fn t ->
+        %{
+          "from_state" => to_string(t.from_state),
+          "to_state" => to_string(t.to_state),
+          "reason" => to_string(t.reason),
+          "timestamp" => t.timestamp,
+          "cycle_count" => t.cycle_count
+        }
+      end)
+      send_json(conn, 200, %{"transitions" => formatted})
+    catch
+      :exit, _ -> send_json(conn, 503, %{"error" => "hub_fsm not available"})
     end
   end
 

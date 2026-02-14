@@ -104,6 +104,16 @@ defmodule AgentCom.Telemetry do
     measurements: `%{}`
     metadata: `%{hub_state: atom, hourly_count: integer, daily_count: integer}`
 
+  ### Hub FSM
+
+  - `[:agent_com, :hub_fsm, :transition]` - Hub FSM state transition
+    measurements: `%{duration_ms: integer}`
+    metadata: `%{from_state: atom, to_state: atom, reason: string}`
+
+  - `[:agent_com, :hub_fsm, :watchdog_timeout]` - Watchdog timer fired
+    measurements: `%{}`
+    metadata: `%{from_state: atom}`
+
   ### DETS Operations (span events with :start/:stop/:exception)
 
   - `[:agent_com, :dets, :backup, :start/:stop/:exception]` - Backup operation
@@ -168,6 +178,26 @@ defmodule AgentCom.Telemetry do
       &__MODULE__.handle_event/4,
       %{}
     )
+
+    # Hub FSM transition logger (separate handler for structured logging)
+    :telemetry.attach(
+      "hub-fsm-transition-logger",
+      [:agent_com, :hub_fsm, :transition],
+      &__MODULE__.handle_hub_fsm_transition/4,
+      nil
+    )
+  end
+
+  @doc false
+  def handle_hub_fsm_transition(_event, measurements, metadata, _config) do
+    try do
+      Logger.info(
+        "hub_fsm_transition from=#{metadata.from_state} to=#{metadata.to_state} reason=#{metadata.reason} duration_ms=#{measurements[:duration_ms] || 0}"
+      )
+    rescue
+      e ->
+        Logger.error("Hub FSM telemetry handler crashed: #{inspect(e)}")
+    end
   end
 
   @doc false
