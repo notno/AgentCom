@@ -141,12 +141,12 @@ Plans:
   3. Task stuck in working state for >10 minutes with offline agent is automatically requeued
   4. Sidecar reconnecting after disconnect reports its state, and hub either continues waiting or requeues appropriately
   5. Task that exhausts iteration budget saves partial results and reports partial_pass status
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 39-01: Wake failure recovery and no-wake fail-fast
-- [ ] 39-02: Task timeouts, stuck detection, and idempotent requeue
-- [ ] 39-03: Sidecar reconnect state recovery and per-iteration budget checks
+- [ ] 39-01-PLAN.md -- Wake failure recovery and no-wake fail-fast (PIPE-07, PIPE-01)
+- [ ] 39-02-PLAN.md -- Execution timeouts, stuck detection, generation checks, hub wake_result (PIPE-02, PIPE-03, PIPE-04)
+- [ ] 39-03-PLAN.md -- Sidecar reconnect state recovery and validation schemas (PIPE-05)
 
 ### Phase 40: Sidecar Tool Infrastructure
 **Goal**: Sidecar has a sandboxed tool execution layer that LLMs can call -- 5 tools with workspace isolation and structured JSON observations
