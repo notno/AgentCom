@@ -100,13 +100,51 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (To be filled by roadmapper) | | |
+| CI-01 | Phase 37: CI Fix | Pending |
+| CI-02 | Phase 37: CI Fix | Pending |
+| CI-03 | Phase 37: CI Fix | Pending |
+| ROUTE-01 | Phase 38: OllamaClient and Hub LLM Routing | Pending |
+| ROUTE-02 | Phase 38: OllamaClient and Hub LLM Routing | Pending |
+| ROUTE-03 | Phase 38: OllamaClient and Hub LLM Routing | Pending |
+| ROUTE-04 | Phase 38: OllamaClient and Hub LLM Routing | Pending |
+| PIPE-01 | Phase 39: Pipeline Reliability | Pending |
+| PIPE-02 | Phase 39: Pipeline Reliability | Pending |
+| PIPE-03 | Phase 39: Pipeline Reliability | Pending |
+| PIPE-04 | Phase 39: Pipeline Reliability | Pending |
+| PIPE-05 | Phase 39: Pipeline Reliability | Pending |
+| PIPE-06 | Phase 39: Pipeline Reliability | Pending |
+| PIPE-07 | Phase 39: Pipeline Reliability | Pending |
+| AGENT-01 | Phase 40: Sidecar Tool Infrastructure | Pending |
+| AGENT-02 | Phase 40: Sidecar Tool Infrastructure | Pending |
+| AGENT-06 | Phase 40: Sidecar Tool Infrastructure | Pending |
+| AGENT-03 | Phase 41: Agentic Execution Loop | Pending |
+| AGENT-04 | Phase 41: Agentic Execution Loop | Pending |
+| AGENT-05 | Phase 41: Agentic Execution Loop | Pending |
+| AGENT-07 | Phase 41: Agentic Execution Loop | Pending |
+| AGENT-08 | Phase 41: Agentic Execution Loop | Pending |
+| AGENT-09 | Phase 41: Agentic Execution Loop | Pending |
+| AGENT-10 | Phase 41: Agentic Execution Loop | Pending |
+| PM2-01 | Phase 42: Agent Self-Management | Pending |
+| PM2-02 | Phase 42: Agent Self-Management | Pending |
+| PM2-03 | Phase 42: Agent Self-Management | Pending |
+| HEAL-01 | Phase 43: Hub FSM Healing | Pending |
+| HEAL-02 | Phase 43: Hub FSM Healing | Pending |
+| HEAL-03 | Phase 43: Hub FSM Healing | Pending |
+| HEAL-04 | Phase 43: Hub FSM Healing | Pending |
+| HEAL-05 | Phase 43: Hub FSM Healing | Pending |
+| HEAL-06 | Phase 43: Hub FSM Healing | Pending |
+| HEAL-07 | Phase 43: Hub FSM Healing | Pending |
+| HEAL-08 | Phase 43: Hub FSM Healing | Pending |
+| TEST-01 | Phase 44: Hub FSM Testing | Pending |
+| TEST-02 | Phase 44: Hub FSM Testing | Pending |
+| TEST-03 | Phase 44: Hub FSM Testing | Pending |
+| TEST-04 | Phase 44: Hub FSM Testing | Pending |
 
 **Coverage:**
-- v1.4 requirements: 30 total
-- Mapped to phases: 0
-- Unmapped: 30
+- v1.4 requirements: 39 total
+- Mapped to phases: 39
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-14*
-*Last updated: 2026-02-14 after initial definition*
+*Last updated: 2026-02-14 after roadmap creation*
