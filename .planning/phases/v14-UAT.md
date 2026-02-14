@@ -1,9 +1,9 @@
 ---
 status: complete
 phase: v1.4-reliable-autonomy
-source: 38-01-SUMMARY.md, 38-02-SUMMARY.md, 39-01-SUMMARY.md, 39-02-SUMMARY.md, 39-03-SUMMARY.md, 41-01-SUMMARY.md, 41-02-SUMMARY.md, 41-03-SUMMARY.md, 42-01-SUMMARY.md, 43-01-SUMMARY.md, 43-02-SUMMARY.md, 43-03-SUMMARY.md
+source: 38-01-SUMMARY.md, 38-02-SUMMARY.md, 39-01-SUMMARY.md, 39-02-SUMMARY.md, 39-03-SUMMARY.md, 39-04-SUMMARY.md, 41-01-SUMMARY.md, 41-02-SUMMARY.md, 41-03-SUMMARY.md, 42-01-SUMMARY.md, 43-01-SUMMARY.md, 43-02-SUMMARY.md, 43-03-SUMMARY.md
 started: 2026-02-14T22:00:00Z
-updated: 2026-02-14T22:30:00Z
+updated: 2026-02-15T00:00:00Z
 ---
 
 ## Current Test
@@ -22,9 +22,9 @@ result: pass
 
 ### 3. No-wake fail-fast (Phase 39)
 expected: Tasks with missing/empty wake_command immediately fail, not hang in working state
-result: issue
-reported: "whether there is no wake_command set or it is set to empty string, the command reaches the ollama llm and it attempts to complete it"
-severity: major
+result: pass
+retest: true
+original_result: issue (fixed by 39-04 gap closure — pre-routing wake_command gate)
 
 ### 4. Execution timeout (Phase 39)
 expected: Tasks exceeding timeout get killed via Promise.race
@@ -77,24 +77,14 @@ result: pass
 ## Summary
 
 total: 14
-passed: 9
-issues: 1
+passed: 10
+issues: 0
 pending: 0
 skipped: 4
 
 ## Gaps
 
 - truth: "Tasks with missing/empty wake_command immediately fail instead of hanging or reaching LLM"
-  status: failed
-  reason: "User reported: whether there is no wake_command set or it is set to empty string, the command reaches the ollama llm and it attempts to complete it"
-  severity: major
-  test: 3
-  root_cause: "Fail-fast check is only in wakeAgent() (legacy wake path). Tasks with routing_decision.target_type != 'wake' bypass wakeAgent() entirely and go to executeTask(). The scheduler routes trivial/standard tasks to direct execution regardless of wake_command. Fail-fast only guards the complex/wake path."
-  artifacts:
-    - path: "sidecar/index.js"
-      issue: "Lines 793-800: routing_decision check bypasses wakeAgent fail-fast"
-    - path: "lib/agent_com/scheduler.ex"
-      issue: "Lines 677-680: tier_to_target_type routes trivial->sidecar, standard->ollama, only complex->wake"
-  missing:
-    - "Decide if wake_command should gate ALL execution or only legacy wake path"
-  debug_session: ""
+  status: resolved
+  resolution: "39-04 gap closure — added pre-routing wake_command gate in sidecar/index.js before routing decision branch"
+  retest: pass
