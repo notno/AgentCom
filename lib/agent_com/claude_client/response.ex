@@ -32,6 +32,13 @@ defmodule AgentCom.ClaudeClient.Response do
   - `{:error, {:parse_error, string}}` -- XML extraction or element parsing failure
   """
 
+  @doc """
+  Parse Ollama response content. Delegates to `parse/3` with exit_code 0,
+  treating the raw content as successful CLI output.
+  """
+  @spec parse_ollama(String.t(), atom()) :: {:ok, term()} | {:error, term()}
+  def parse_ollama(content, prompt_type), do: parse(content, 0, prompt_type)
+
   @spec parse(String.t(), non_neg_integer(), atom()) :: {:ok, term()} | {:error, term()}
 
   def parse(_raw_output, exit_code, _prompt_type) when exit_code != 0 do

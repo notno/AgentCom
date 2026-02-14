@@ -14,6 +14,7 @@ defmodule AgentCom.Endpoint do
   - GET    /admin/tokens         — List tokens (auth required)
   - DELETE /admin/tokens/:id     — Revoke tokens for an agent (auth required)
   - POST   /api/admin/agents/:agent_id/reset-token — Revoke and reissue token (auth required)
+  - POST   /api/admin/agents/:agent_id/restart — Command agent restart (auth required)
   - GET    /api/channels          — List all channels
   - POST   /api/channels          — Create a channel (auth required)
   - GET    /api/channels/:ch      — Channel info + subscribers
@@ -699,6 +700,30 @@ defmodule AgentCom.Endpoint do
         })
       else
         send_json(conn, 404, %{"error" => "agent_not_found", "agent_id" => agent_id})
+      end
+    end
+  end
+
+  # --- Admin: Command agent restart (Phase 42) ---
+
+  post "/api/admin/agents/:agent_id/restart" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
+    if conn.halted do
+      conn
+    else
+      reason = case conn.body_params do
+        %{"reason" => r} when is_binary(r) -> r
+        _ -> "admin_commanded"
+      end
+
+      case Registry.lookup(AgentCom.AgentRegistry, agent_id) do
+        [{pid, _meta}] ->
+          send(pid, {:restart_sidecar, reason})
+          send_json(conn, 200, %{"status" => "restart_commanded", "agent_id" => agent_id, "reason" => reason})
+
+        [] ->
+          send_json(conn, 404, %{"error" => "agent_not_connected", "agent_id" => agent_id})
       end
     end
   end

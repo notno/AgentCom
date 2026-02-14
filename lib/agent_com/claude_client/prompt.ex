@@ -1,29 +1,27 @@
 defmodule AgentCom.ClaudeClient.Prompt do
   @moduledoc """
-  Prompt template builder for the three core hub LLM operations.
+  Prompt template builder for hub LLM operations.
 
-  Each function clause of `build/2` produces a structured prompt instructing
-  Claude to respond with a specific XML root element:
+  Supports two backends via `build/3`:
 
-  - `:decompose` -- Decomposes a goal into 3-8 executable tasks.
-    Expected response: `<tasks>` root with `<task>` children, each containing
-    `<title>`, `<description>`, `<success-criteria>`, and `<depends-on>`.
+  - `:claude_cli` (default) -- XML-format prompts for Claude Code CLI
+  - `:ollama` -- JSON-format prompts with `/no_think` for Qwen3/local models
 
-  - `:verify` -- Verifies whether a goal has been completed based on results.
-    Expected response: `<verification>` root with `<verdict>` (pass/fail),
-    `<reasoning>`, and `<gaps>` (list of `<gap>` elements with `<description>`
-    and `<severity>`).
+  ## Claude CLI Prompts (XML)
 
-  - `:identify_improvements` -- Identifies codebase improvements from a diff.
-    Expected response: `<improvements>` root with `<improvement>` children,
-    each containing `<title>`, `<description>`, `<category>`, `<effort>`,
-    and `<files>`.
+  Each clause produces a prompt instructing Claude to respond with XML:
+  `:decompose` -> `<tasks>`, `:verify` -> `<verification>`,
+  `:identify_improvements` -> `<improvements>`, `:generate_proposals` -> `<proposals>`.
 
-  All prompts embed input data as XML within the prompt text and end with
-  a clear instruction to respond only with XML.
+  ## Ollama Prompts (JSON)
+
+  Ollama prompts request JSON output (more reliable with smaller models),
+  include explicit step-by-step instructions, and end with `/no_think`
+  to suppress Qwen3 thinking blocks.
   """
 
   @spec build(atom(), map()) :: String.t()
+  @spec build(atom(), map(), atom()) :: String.t()
 
   def build(:decompose, %{goal: goal, context: context}) do
     """
@@ -257,6 +255,11 @@ defmodule AgentCom.ClaudeClient.Prompt do
     Respond ONLY with the XML. Do not include any text before or after the XML.
     """
   end
+
+  # build/3 accepts an optional backend atom (e.g. :ollama, :claude_cli).
+  # Currently delegates to the 2-arity build -- backend-specific prompt
+  # formatting can be added later if needed.
+  def build(prompt_type, params, _backend), do: build(prompt_type, params)
 
   # ---------------------------------------------------------------------------
   # Private helpers
