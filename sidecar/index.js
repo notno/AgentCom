@@ -96,9 +96,21 @@ async function wakeAgent(task, hub) {
   const wakeCommand = _config.wake_command;
 
   if (!wakeCommand) {
-    log('info', 'wake_skipped', { task_id: task.task_id, reason: 'no wake_command configured' });
-    // Update status to working directly (agent expected to self-start)
-    task.status = 'working';
+    log('error', 'no_wake_command', {
+      task_id: task.task_id,
+      reason: 'wake_command not configured and no execution routing available'
+    });
+    task.status = 'failed';
+    saveQueue(QUEUE_PATH, _queue);
+    hub.sendTaskFailed(task.task_id, 'no_wake_command_configured');
+    hub.send({
+      type: 'wake_result',
+      task_id: task.task_id,
+      status: 'failed',
+      attempt: 0,
+      error: 'no_wake_command_configured'
+    });
+    _queue.active = null;
     saveQueue(QUEUE_PATH, _queue);
     return;
   }
@@ -119,6 +131,14 @@ async function wakeAgent(task, hub) {
       const result = await execCommand(interpolatedCommand);
       log('info', 'wake_success', { task_id: task.task_id, attempt, exit_code: 0, stdout: result.stdout.trim() });
 
+      // PIPE-01: Report wake success to hub
+      hub.send({
+        type: 'wake_result',
+        task_id: task.task_id,
+        status: 'success',
+        attempt: attempt
+      });
+
       // Successful wake -- start confirmation timeout
       task.status = 'waking_confirmation';
       saveQueue(QUEUE_PATH, _queue);
@@ -138,6 +158,15 @@ async function wakeAgent(task, hub) {
         log('error', 'wake_failed', { task_id: task.task_id, attempts: attempt, error: err.message });
         task.status = 'failed';
         saveQueue(QUEUE_PATH, _queue);
+
+        // PIPE-01: Report wake failure to hub
+        hub.send({
+          type: 'wake_result',
+          task_id: task.task_id,
+          status: 'failed',
+          attempt: attempt,
+          error: err.message
+        });
 
         hub.sendTaskFailed(task.task_id, 'wake_failed_after_3_attempts');
 
@@ -166,6 +195,14 @@ function startConfirmationTimeout(task, hub) {
     }
 
     log('warning', 'confirmation_timeout', { task_id: task.task_id, timeout_ms: timeout });
+
+    // PIPE-01: Report confirmation timeout to hub
+    hub.send({
+      type: 'wake_result',
+      task_id: task.task_id,
+      status: 'timeout',
+      reason: 'confirmation_timeout'
+    });
 
     // Treat as wake failure -- report to hub
     task.status = 'failed';
