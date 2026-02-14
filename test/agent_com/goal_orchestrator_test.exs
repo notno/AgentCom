@@ -29,7 +29,12 @@ defmodule AgentCom.GoalOrchestratorTest do
     {:ok, pid} = GoalOrchestrator.start_link([])
 
     on_exit(fn ->
-      if Process.alive?(pid), do: GenServer.stop(pid, :normal, 1_000)
+      try do
+        if Process.alive?(pid), do: GenServer.stop(pid, :normal, 1_000)
+      catch
+        :exit, _ -> :ok
+      end
+
       DetsHelpers.full_test_teardown(tmp_dir)
     end)
 

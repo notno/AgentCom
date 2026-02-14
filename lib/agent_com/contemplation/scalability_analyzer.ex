@@ -33,8 +33,13 @@ defmodule AgentCom.Contemplation.ScalabilityAnalyzer do
   `MetricsCollector.snapshot/0`.
   """
   @spec analyze(map() | nil) :: map()
-  def analyze(snapshot \\ nil) do
-    snap = snapshot || fetch_snapshot()
+  def analyze(snapshot \\ :not_provided) do
+    snap =
+      case snapshot do
+        nil -> empty_snapshot()
+        :not_provided -> fetch_snapshot()
+        other -> other
+      end
 
     metrics_summary = summarize_metrics(snap)
     bottlenecks = detect_bottlenecks(snap)
