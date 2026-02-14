@@ -306,6 +306,20 @@ defmodule AgentCom.Dashboard do
           border-color: #ef4444; color: #ef4444;
           background: rgba(239, 68, 68, 0.3);
         }
+        .btn-cancel {
+          background: none; border: 1px solid #666; color: #888;
+          padding: 3px 8px; border-radius: 4px; font-size: 0.72em;
+          cursor: pointer; transition: all 0.2s ease; margin-left: 4px;
+        }
+        .btn-cancel:hover { background: rgba(239, 68, 68, 0.15); border-color: #ef4444; color: #ef4444; }
+        .btn-cancel.success {
+          border-color: #4ade80; color: #4ade80;
+          background: rgba(74, 222, 128, 0.15);
+        }
+        .btn-cancel.failed {
+          border-color: #ef4444; color: #ef4444;
+          background: rgba(239, 68, 68, 0.3);
+        }
 
         /* === Flash Animation === */
         .flash { background-color: rgba(126, 184, 218, 0.3) !important; }
@@ -803,7 +817,7 @@ defmodule AgentCom.Dashboard do
                     <th>Priority</th>
                     <th>Submitted By</th>
                     <th>Created</th>
-                    <th>PR</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody id="queued-tbody"></tbody>
@@ -895,31 +909,6 @@ defmodule AgentCom.Dashboard do
             <span class="exec-tokens-count" id="exec-tokens-count"></span>
           </div>
           <div class="exec-output" id="exec-output"></div>
-        </div>
-      </div>
-
-      <!-- DETS Storage Health -->
-      <div style="margin-top: 12px;">
-        <div class="panel" id="panel-dets">
-          <div class="panel-title">DETS Storage Health</div>
-          <div class="table-wrap">
-            <table id="dets-table">
-              <thead>
-                <tr>
-                  <th>Table</th>
-                  <th>Records</th>
-                  <th>File Size</th>
-                  <th>Fragmentation</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody id="dets-tbody"></tbody>
-            </table>
-          </div>
-          <div style="margin-top: 8px; font-size: 0.8em; color: #888;" id="dets-backup-info">
-            Last backup: --
-          </div>
-          <div class="empty-state" id="dets-empty">No DETS health data</div>
         </div>
       </div>
 
@@ -1101,6 +1090,36 @@ defmodule AgentCom.Dashboard do
             <button class="repo-add-btn" onclick="addRepo()">Add Repo</button>
           </div>
           <div class="empty-state" id="repo-empty">No repositories registered</div>
+        </div>
+      </div>
+
+      <!-- DETS Storage Health (collapsed by default) -->
+      <div style="margin-top: 12px;">
+        <div class="panel" id="panel-dets">
+          <div class="panel-title" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between;" onclick="toggleDetsPanel()">
+            <span>DETS Storage Health <span id="dets-status-dot" style="display: none; margin-left: 6px;"></span></span>
+            <span id="dets-toggle-arrow" style="font-size: 0.85em; color: #888;">&#9654;</span>
+          </div>
+          <div id="dets-panel-body" style="display: none;">
+            <div class="table-wrap">
+              <table id="dets-table">
+                <thead>
+                  <tr>
+                    <th>Table</th>
+                    <th>Records</th>
+                    <th>File Size</th>
+                    <th>Fragmentation</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="dets-tbody"></tbody>
+              </table>
+            </div>
+            <div style="margin-top: 8px; font-size: 0.8em; color: #888;" id="dets-backup-info">
+              Last backup: --
+            </div>
+            <div class="empty-state" id="dets-empty">No DETS health data</div>
+          </div>
         </div>
       </div>
 
@@ -1884,10 +1903,16 @@ defmodule AgentCom.Dashboard do
               }
             }
 
+            var taskCell = taskSnippet;
+            if (a.current_task_id) {
+              taskCell = '<span title="' + escapeHtml(a.current_task_id) + '">' + taskSnippet + '</span>' +
+                ' <button class="btn-cancel" data-task-id="' + escapeHtml(a.current_task_id) + '" onclick="cancelTask(this)" style="padding: 1px 6px; font-size: 0.68em;">✕</button>';
+            }
+
             return '<tr data-agent-id="' + escapeHtml(a.agent_id) + '">' +
               '<td title="' + escapeHtml(a.agent_id) + '">' + name + '</td>' +
               '<td><span class="dot ' + stateStr + '"></span>' + stateStr + '</td>' +
-              '<td title="' + escapeHtml(a.current_task_id || '') + '">' + taskSnippet + '</td>' +
+              '<td>' + taskCell + '</td>' +
               '<td>' + escapeHtml(caps) + '</td>' +
               '<td>' + timeAgo(a.connected_at || a.last_state_change) + '</td>' +
               '<td>' + rlHtml + '</td>' +
@@ -1947,12 +1972,13 @@ defmodule AgentCom.Dashboard do
             return;
           }
           tbody.innerHTML = tasks.map(function(t) {
-            return '<tr data-task-id="' + escapeHtml(t.id || t.task_id) + '">' +
+            var taskId = t.id || t.task_id;
+            return '<tr data-task-id="' + escapeHtml(taskId) + '">' +
               '<td>' + escapeHtml(truncate(t.description, 40)) + '</td>' +
               '<td>' + priorityName(t.priority) + '</td>' +
               '<td>' + escapeHtml(t.submitted_by || '--') + '</td>' +
               '<td>' + timeAgo(t.created_at) + '</td>' +
-              '<td>---</td>' +
+              '<td><button class="btn-cancel" data-task-id="' + escapeHtml(taskId) + '" onclick="cancelTask(this)">Cancel</button></td>' +
               '</tr>';
           }).join('');
         }
@@ -2101,7 +2127,8 @@ defmodule AgentCom.Dashboard do
               '<td title="' + escapeHtml(t.last_error) + '">' + escapeHtml(truncate(t.last_error, 25)) + '</td>' +
               '<td>' + (t.retry_count || 0) + '</td>' +
               '<td>' + timeAgo(t.created_at) + '</td>' +
-              '<td><button class="btn-retry" data-task-id="' + escapeHtml(t.id) + '" onclick="retryTask(this)">Retry</button></td>' +
+              '<td><button class="btn-retry" data-task-id="' + escapeHtml(t.id) + '" onclick="retryTask(this)">Retry</button>' +
+              '<button class="btn-cancel" data-task-id="' + escapeHtml(t.id) + '" onclick="cancelTask(this)">Cancel</button></td>' +
               '</tr>';
           }).join('');
         }
@@ -2115,10 +2142,13 @@ defmodule AgentCom.Dashboard do
           var empty = document.getElementById('dets-empty');
           var backupInfo = document.getElementById('dets-backup-info');
 
+          var statusDotEl = document.getElementById('dets-status-dot');
+
           if (!detsHealth || !detsHealth.tables) {
             tbody.innerHTML = '';
             empty.style.display = 'block';
             backupInfo.textContent = 'Last backup: --';
+            if (statusDotEl) { statusDotEl.style.display = 'none'; }
             return;
           }
           empty.style.display = 'none';
@@ -2143,6 +2173,19 @@ defmodule AgentCom.Dashboard do
               '</tr>';
           }).join('');
 
+          // Show warning dot on collapsed header if any table has issues
+          var hasIssue = detsHealth.tables.some(function(t) {
+            return t.status !== 'ok' && t.status !== 'available' || t.fragmentation_ratio > 0.3;
+          });
+          if (statusDotEl) {
+            if (hasIssue) {
+              statusDotEl.style.display = 'inline-block';
+              statusDotEl.innerHTML = '<span class="dot critical" style="vertical-align: middle;"></span>';
+            } else {
+              statusDotEl.style.display = 'none';
+            }
+          }
+
           if (detsHealth.last_backup_at) {
             backupInfo.textContent = 'Last backup: ' + timeAgo(detsHealth.last_backup_at);
           } else {
@@ -2155,6 +2198,18 @@ defmodule AgentCom.Dashboard do
           if (bytes < 1024) return bytes + ' B';
           if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
           return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        function toggleDetsPanel() {
+          var body = document.getElementById('dets-panel-body');
+          var arrow = document.getElementById('dets-toggle-arrow');
+          if (body.style.display === 'none') {
+            body.style.display = 'block';
+            arrow.innerHTML = '&#9660;';
+          } else {
+            body.style.display = 'none';
+            arrow.innerHTML = '&#9654;';
+          }
         }
 
         // =====================================================================
@@ -2328,6 +2383,50 @@ defmodule AgentCom.Dashboard do
               btn.classList.remove('failed');
             }, 2000);
           }
+        }
+
+        function cancelTask(btn) {
+          var taskId = btn.getAttribute('data-task-id');
+          if (!taskId || !dashConn || !dashConn.ws || dashConn.ws.readyState !== 1) return;
+          if (!confirm('Cancel task ' + taskId.substring(0, 12) + '...? This cannot be undone.')) return;
+          dashConn.ws.send(JSON.stringify({type: 'cancel_task', task_id: taskId}));
+          btn.textContent = 'Cancelling...';
+          btn.disabled = true;
+        }
+
+        function handleCancelResult(data) {
+          // Find all cancel buttons for this task (may appear in multiple tables)
+          var btns = document.querySelectorAll('.btn-cancel[data-task-id="' + data.task_id + '"]');
+          if (!btns.length) return;
+          btns.forEach(function(btn) {
+            btn.disabled = false;
+            if (data.status === 'cancelled') {
+              // If in agent table, just remove the button (row stays for the agent)
+              if (btn.closest('#agent-tbody')) {
+                btn.previousElementSibling && (btn.previousElementSibling.textContent = '--');
+                btn.remove();
+              } else {
+                // Queued or dead letter table — fade out the row
+                var row = btn.closest('tr');
+                if (row) {
+                  row.style.opacity = '0.3';
+                  setTimeout(function() { row.remove(); }, 500);
+                }
+              }
+              // Update dead letter count if applicable
+              var dlCount = document.getElementById('dl-count');
+              if (btn.closest('#dl-tbody') && dlCount) {
+                dlCount.textContent = Math.max(0, parseInt(dlCount.textContent) - 1);
+              }
+            } else {
+              btn.textContent = 'Not Found';
+              btn.classList.add('failed');
+              setTimeout(function() {
+                btn.textContent = btn.textContent === 'Not Found' ? '✕' : 'Cancel';
+                btn.classList.remove('failed');
+              }, 2000);
+            }
+          });
         }
 
         // =====================================================================
@@ -3184,6 +3283,9 @@ defmodule AgentCom.Dashboard do
                   break;
                 case 'retry_result':
                   handleRetryResult(msg);
+                  break;
+                case 'cancel_result':
+                  handleCancelResult(msg);
                   break;
                 case 'metrics_snapshot':
                   updateMetricsDisplay(msg.data);

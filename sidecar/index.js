@@ -487,6 +487,10 @@ class HubConnection {
         this.handleTaskContinue(msg);
         break;
 
+      case 'task_cancelled':
+        this.handleTaskCancelled(msg);
+        break;
+
       default:
         log('debug', 'unhandled_message', { type: msg.type });
         break;
@@ -745,6 +749,28 @@ class HubConnection {
    * Hub is taking the recovering task back (default Phase 1 behavior).
    * Clear recovering slot so sidecar is idle and ready for new tasks.
    */
+  handleTaskCancelled(msg) {
+    const taskId = msg.task_id;
+    log('info', 'task_cancelled_by_hub', { task_id: taskId });
+
+    // Clear active task if it matches
+    if (_queue.active && _queue.active.task_id === taskId) {
+      _queue.active = null;
+      saveQueue(QUEUE_PATH, _queue);
+      log('info', 'active_task_cleared', { task_id: taskId, reason: 'cancelled' });
+    }
+
+    // Clear recovering task if it matches
+    if (_queue.recovering && _queue.recovering.task_id === taskId) {
+      _queue.recovering = null;
+      saveQueue(QUEUE_PATH, _queue);
+      log('info', 'recovering_task_cleared', { task_id: taskId, reason: 'cancelled' });
+    }
+
+    // Clean up generation tracking
+    this.taskGenerations.delete(taskId);
+  }
+
   handleTaskReassign(msg) {
     const taskId = msg.task_id;
     log('info', 'recovery_reassigned', { task_id: taskId });

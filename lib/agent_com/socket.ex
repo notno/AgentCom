@@ -197,6 +197,15 @@ defmodule AgentCom.Socket do
     {:push, {:text, Jason.encode!(push)}, state}
   end
 
+  def handle_info({:task_cancelled, task_id}, state) do
+    push = %{
+      "type" => "task_cancelled",
+      "task_id" => task_id,
+      "timestamp" => System.system_time(:millisecond)
+    }
+    {:push, {:text, Jason.encode!(push)}, state}
+  end
+
   def handle_info(_msg, state), do: {:ok, state}
 
   @impl true

@@ -37,6 +37,7 @@ defmodule AgentCom.TaskQueue do
   - `update_progress/1` -- Touch `updated_at` to prevent overdue sweep
   - `recover_task/1` -- Check task state for sidecar recovery
   - `retry_dead_letter/1` -- Move a dead-letter task back to the queue
+  - `cancel_dead_letter/1` -- Permanently remove a dead-letter task
   - `tasks_assigned_to/1` -- All tasks assigned to an agent
   - `stats/0` -- Queue statistics by status and priority
   """
@@ -136,6 +137,19 @@ defmodule AgentCom.TaskQueue do
   @doc "Move a dead-letter task back to the queue with reset retry count."
   def retry_dead_letter(task_id) do
     GenServer.call(__MODULE__, {:retry_dead_letter, task_id})
+  end
+
+  @doc "Permanently remove a dead-letter task. Returns {:ok, task} or {:error, :not_found}."
+  def cancel_dead_letter(task_id) do
+    GenServer.call(__MODULE__, {:cancel_dead_letter, task_id})
+  end
+
+  @doc """
+  Cancel any task regardless of status. Works on queued, assigned, and dead-letter tasks.
+  Removes from whichever DETS table it lives in. Returns {:ok, task} or {:error, :not_found}.
+  """
+  def cancel_task(task_id) do
+    GenServer.call(__MODULE__, {:cancel_task, task_id})
   end
 
   @doc "Return all tasks currently assigned to the given agent."
@@ -667,6 +681,83 @@ defmodule AgentCom.TaskQueue do
 
       {:error, :not_found} ->
         {:reply, {:error, :not_found}, state}
+    end
+  end
+
+  # -- cancel_dead_letter ------------------------------------------------------
+
+  @impl true
+  def handle_call({:cancel_dead_letter, task_id}, _from, state) do
+    case lookup_dead_letter(task_id) do
+      {:ok, task} ->
+        :dets.delete(@dead_letter_table, task_id)
+        :dets.sync(@dead_letter_table)
+
+        broadcast_task_event(:task_cancelled, task)
+
+        :telemetry.execute(
+          [:agent_com, :task, :cancel],
+          %{},
+          %{task_id: task_id, previous_status: :dead_letter}
+        )
+
+        Logger.info("[TaskQueue] Cancelled dead-letter task #{task_id}")
+        {:reply, {:ok, task}, state}
+
+      {:error, :not_found} ->
+        {:reply, {:error, :not_found}, state}
+    end
+  end
+
+  # -- cancel_task (any status) ------------------------------------------------
+
+  @impl true
+  def handle_call({:cancel_task, task_id}, _from, state) do
+    case lookup_task(task_id) do
+      {:ok, task} ->
+        :dets.delete(@tasks_table, task_id)
+        :dets.sync(@tasks_table)
+
+        new_index =
+          if task.status == :queued do
+            remove_from_priority_index(state.priority_index, task_id)
+          else
+            state.priority_index
+          end
+
+        broadcast_task_event(:task_cancelled, task)
+
+        # Notify assigned agent's WebSocket and FSM
+        if task.assigned_to do
+          case Registry.lookup(AgentCom.AgentRegistry, task.assigned_to) do
+            [{pid, _}] -> send(pid, {:task_cancelled, task_id})
+            [] -> :ok
+          end
+          AgentCom.AgentFSM.task_cancelled(task.assigned_to)
+        end
+
+        :telemetry.execute(
+          [:agent_com, :task, :cancel],
+          %{},
+          %{task_id: task_id, previous_status: task.status}
+        )
+
+        Logger.info("[TaskQueue] Cancelled task #{task_id} (was #{task.status})")
+        {:reply, {:ok, task}, %{state | priority_index: new_index}}
+
+      {:error, :not_found} ->
+        # Try dead-letter table
+        case lookup_dead_letter(task_id) do
+          {:ok, task} ->
+            :dets.delete(@dead_letter_table, task_id)
+            :dets.sync(@dead_letter_table)
+            broadcast_task_event(:task_cancelled, task)
+            Logger.info("[TaskQueue] Cancelled dead-letter task #{task_id}")
+            {:reply, {:ok, task}, state}
+
+          {:error, :not_found} ->
+            {:reply, {:error, :not_found}, state}
+        end
     end
   end
 

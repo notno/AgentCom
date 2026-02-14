@@ -145,6 +145,14 @@ defmodule AgentCom.AgentFSM do
     end
   end
 
+  @doc "Mark the current task as cancelled. Transitions working/assigned -> idle."
+  def task_cancelled(agent_id) do
+    case lookup_fsm(agent_id) do
+      {:ok, pid} -> GenServer.cast(pid, :task_cancelled)
+      {:error, :not_found} -> {:error, :not_found}
+    end
+  end
+
   @doc "Mark the current task as failed. Transitions working -> idle."
   def task_failed(agent_id) do
     case lookup_fsm(agent_id) do
@@ -346,6 +354,38 @@ defmodule AgentCom.AgentFSM do
       )
 
       {:noreply, state}
+    end
+  end
+
+  # -- task_cancelled ----------------------------------------------------------
+
+  def handle_cast(:task_cancelled, state) do
+    if state.fsm_state in [:working, :assigned, :acceptance_pending] do
+      cancel_timer(state.acceptance_timer_ref)
+
+      case transition(state, :idle) do
+        {:ok, new_state} ->
+          updated = %{new_state |
+            current_task_id: nil,
+            acceptance_timer_ref: nil
+          }
+
+          Logger.info("fsm_task_cancelled", task_id: state.current_task_id)
+          broadcast_agent_idle(state.agent_id)
+          {:noreply, updated}
+
+        {:error, {:invalid_transition, from, to}} ->
+          Logger.warning("fsm_invalid_transition",
+            from_state: from,
+            to_state: to,
+            trigger: :task_cancelled
+          )
+          {:noreply, state}
+      end
+    else
+      # Not in a task state — just clear task_id if present
+      updated = %{state | current_task_id: nil}
+      {:noreply, updated}
     end
   end
 

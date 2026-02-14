@@ -222,69 +222,46 @@ Open `http://localhost:4000/dashboard` in a browser. You should see the dashboar
 
 ## 5. Agent Onboarding
 
-An agent in AgentCom consists of three parts: a registration (token + identity on the hub), a sidecar process (persistent WebSocket relay), and optionally an agent process (like OpenClaw) that the sidecar wakes to execute tasks. Onboarding creates the first two.
+An agent in AgentCom has three parts:
 
-### Option A: Automated Onboarding (Recommended)
+1. **Registration** — a token + identity on the hub
+2. **Sidecar** — a persistent WebSocket relay (Node.js process)
+3. **Agent process** — the AI that executes tasks (e.g., OpenClaw)
 
-The `add-agent.js` script handles the entire flow in one command:
+The sidecar maintains the WebSocket connection to the hub, receives task assignments, and wakes the agent process to do the actual work.
+
+### Architecture: How the Pieces Connect
+
+```
+Hub (Elixir)  <--WebSocket-->  Sidecar (Node.js)  --wake_command-->  Agent (OpenClaw)
+                                    |                                      |
+                              Accepts tasks,                         Executes tasks,
+                              manages queue                          reports results
+```
+
+The sidecar is the bridge. It holds the persistent connection so the agent process doesn't have to. When the hub assigns a task, the sidecar runs the configured `wake_command` to wake the agent, then monitors for completion.
+
+### Quick Start: Automated Onboarding
+
+The `add-agent.js` script handles the entire flow:
 
 ```
 node sidecar/add-agent.js --hub http://localhost:4000 --name my-agent
 ```
 
-This runs 7 steps automatically:
+This registers the agent, generates a token, creates the sidecar config, installs dependencies, starts the sidecar via pm2, and runs a smoke test. If you omit `--name`, it auto-generates a Culture ship name.
 
-1. **Pre-flight checks** -- Verifies Node.js >= 18, pm2, git, and hub reachability
-2. **Register agent** -- Calls `POST /api/onboard/register` to create the agent and get a token
-3. **Clone repository** -- Clones the project repo into `~/.agentcom/<agent-name>/repo/`
-4. **Generate sidecar config** -- Creates `config.json` with agent_id, token, hub WebSocket URL, and wake command
-5. **Install dependencies** -- Runs `npm install` in the sidecar directory
-6. **Start pm2 process** -- Creates a pm2 ecosystem config and starts the sidecar as a managed process
-7. **Verify with test task** -- Submits a test task and waits up to 30 seconds for completion
-
-If you omit `--name`, the script auto-generates a name from Iain M. Banks Culture ship names (like `gcu-sleeper-service` or `gsu-falling-outside`).
-
-**Where things live after automated onboarding:**
-- Agent directory: `~/.agentcom/<agent-name>/`
-- Sidecar config: `~/.agentcom/<agent-name>/repo/sidecar/config.json`
-- Sidecar logs (pm2): `~/.agentcom/<agent-name>/logs/`
-- pm2 process name: `agentcom-<agent-name>`
-
-**If a step fails**, the script saves progress to `~/.agentcom/<agent-name>/.onboard-progress.json`. Resume with:
+**Resume a failed onboarding:**
 ```
 node sidecar/add-agent.js --hub http://localhost:4000 --name my-agent --resume
 ```
 
-### Reconnecting an Existing Agent
-
-If an agent needs to be re-provisioned (machine reimaged, config lost, moved to a new machine), you can rejoin with the existing identity instead of re-registering. This avoids the 409 "already registered" error and reuses the agent's existing token.
-
+**Rejoin on a new machine (reuse existing identity):**
 ```
 node sidecar/add-agent.js --hub http://localhost:4000 --name my-agent --rejoin --token <token>
 ```
 
-This runs all onboarding steps (pre-flight, clone, config, deps, pm2, verify) but **skips registration** — it uses the provided token instead of requesting a new one from the hub.
-
-**Where to find your token:**
-- **TOOLS.md** in your agent's working directory (per-agent OpenClaw config)
-- **Progress file:** `~/.agentcom/<agent-name>/.onboard-progress.json` (if it still exists)
-- **Admin API:** `GET /admin/tokens` on the hub
-
-If the progress file from a previous onboarding still exists, you can omit `--token` and the script will load it automatically:
-
-```
-node sidecar/add-agent.js --hub http://localhost:4000 --name my-agent --rejoin
-```
-
-**`--rejoin` vs `--resume`:**
-- `--resume` continues an **incomplete** onboarding from where it left off (same machine, partial progress)
-- `--rejoin` does a **fresh** setup with an existing agent identity (new machine or lost config, skips registration)
-
-These flags are mutually exclusive.
-
-### Option B: Manual Onboarding
-
-If you prefer to control each step, or if `add-agent.js` does not fit your setup:
+### Manual Onboarding
 
 **Step 1: Register the agent**
 
@@ -294,28 +271,16 @@ curl -X POST http://localhost:4000/api/onboard/register ^
   -d "{\"agent_id\":\"my-agent\"}"
 ```
 
-Response:
-```json
-{
-  "agent_id": "my-agent",
-  "token": "generated-token-here",
-  "hub_ws_url": "ws://localhost:4000/ws",
-  "hub_api_url": "http://localhost:4000"
-}
-```
-
-Save the `token` value -- you will need it for the sidecar config and all authenticated API calls.
-
-The registration endpoint (`POST /api/onboard/register`) is intentionally unauthenticated. A new agent has no token yet, so requiring one would create a chicken-and-egg problem. See the [Architecture Overview](architecture.md) for more on the authentication model.
+Save the `token` from the response — you need it for everything.
 
 **Step 2: Create sidecar config**
 
-Create `sidecar/config.json` (or anywhere your sidecar will run from):
+Create `sidecar/config.json`:
 
 ```json
 {
   "agent_id": "my-agent",
-  "token": "generated-token-here",
+  "token": "<token-from-step-1>",
   "hub_url": "ws://localhost:4000/ws",
   "hub_api_url": "http://localhost:4000",
   "repo_dir": "",
@@ -329,52 +294,67 @@ Create `sidecar/config.json` (or anywhere your sidecar will run from):
 }
 ```
 
-**Sidecar configuration fields:**
-
-| Field | Required | Default | Purpose |
-|-------|----------|---------|---------|
-| `agent_id` | Yes | -- | Agent identifier, must match registration |
-| `token` | Yes | -- | Auth token from registration |
-| `hub_url` | Yes | -- | WebSocket URL (`ws://host:port/ws`) |
-| `hub_api_url` | No | -- | HTTP API URL for REST calls |
-| `repo_dir` | No | `""` | Working repository path for git operations |
-| `reviewer` | No | `""` | Reviewer agent ID for PR submissions |
-| `wake_command` | No | -- | Command to invoke agent process. Supports `${TASK_ID}` and `${TASK_JSON}` interpolation. |
-| `capabilities` | No | `[]` | Declared capabilities for scheduler matching (e.g., `["code", "review"]`) |
-| `confirmation_timeout_ms` | No | `30000` | How long the sidecar waits for the agent process to accept a task (milliseconds) |
-| `results_dir` | No | `./results` | Directory where agent process writes result files |
-| `log_file` | No | `./sidecar.log` | Path to structured JSON log file |
-| `log_level` | No | `info` | Minimum log level (`debug`, `info`, `warn`, `error`) |
-
-The `wake_command` is what makes an agent actually execute tasks. When the sidecar receives a task assignment, it spawns this command with the task ID and full task JSON interpolated. If `wake_command` is empty, the sidecar accepts tasks but cannot execute them -- useful for testing the connection flow.
+| Field | Required | Purpose |
+|-------|----------|---------|
+| `agent_id` | Yes | Must match registration |
+| `token` | Yes | Auth token from registration |
+| `hub_url` | Yes | WebSocket URL (`ws://host:port/ws`) |
+| `hub_api_url` | No | HTTP API URL for REST calls |
+| `repo_dir` | No | Working repository path for git operations |
+| `reviewer` | No | Reviewer agent ID for PR submissions |
+| `wake_command` | No | Command to invoke agent process (see below) |
+| `capabilities` | No | Declared capabilities for scheduler matching |
+| `confirmation_timeout_ms` | No | How long to wait for agent to accept a task (default: 30s) |
 
 **Step 3: Start the sidecar**
 
-Directly:
-```
-cd sidecar
-node index.js
-```
-
-Or via pm2 for process management:
 ```
 cd sidecar
 pm2 start index.js --name agentcom-my-agent
 pm2 save
 ```
 
+### Configuring the Wake Command
+
+The `wake_command` is how the sidecar tells the agent process to work on a task. It supports variable interpolation:
+
+- `${TASK_ID}` — the task identifier
+- `${TASK_DESCRIPTION}` — the task description text
+- `${TASK_JSON}` — the full task object as JSON
+
+**For OpenClaw agents (recommended):**
+
+```json
+"wake_command": "openclaw system event --text \"AgentCom Task ${TASK_ID}: ${TASK_DESCRIPTION}\" --mode now"
+```
+
+This injects a system event into the agent's main session, waking it with full context (memory, tools, personality). The agent sees the task in its normal conversation flow and can execute it with all its capabilities.
+
+**Important:** Do NOT use `openclaw agent --session-id ${TASK_ID}` — this creates an isolated session with no context, no tools, and no memory. The agent won't know who it is or what to do.
+
+**For non-OpenClaw agents:**
+
+Any command that accepts the task and triggers execution works:
+
+```json
+"wake_command": "python my_agent.py --task-id ${TASK_ID} --task '${TASK_JSON}'"
+```
+
+If `wake_command` is empty, the sidecar accepts tasks but cannot execute them — useful for testing the connection.
+
+### Adding an OpenClaw Agent to an Existing Machine
+
+If you're adding a new Mind to a machine that already has OpenClaw running, see [Adding Agents](adding-agents.md) for the full walkthrough including OpenClaw workspace setup, identity files (SOUL.md, IDENTITY.md), heartbeat configuration, and git identity.
+
 ### Verification
 
-After onboarding (either method), verify the agent is connected:
+After onboarding, verify the agent is connected:
 
-1. **Dashboard:** Open `http://localhost:4000/dashboard` -- the agent should appear with "idle" status
-2. **API:** `curl http://localhost:4000/api/agents` should list the agent:
-   ```json
-   [{"agent_id":"my-agent","status":"idle","capabilities":["code"]}]
-   ```
-3. **Hub logs:** Check for an `agent_com.agent.connect` event in the log output, confirming the WebSocket handshake completed
+1. **Dashboard:** `http://localhost:4000/dashboard` — agent should appear with "idle" status
+2. **API:** `curl http://localhost:4000/api/agents` should list the agent
+3. **Hub logs:** Look for `agent_com.agent.connect` event
 
-If the agent does not appear, check the sidecar logs (`pm2 logs agentcom-my-agent` or the log file at the configured `log_file` path) for connection errors. Common issues: wrong token, wrong hub URL, hub not running. See the [Troubleshooting Guide](troubleshooting.md) for detailed diagnosis.
+If the agent doesn't appear, check sidecar logs (`pm2 logs agentcom-my-agent`). Common issues: wrong token, wrong hub URL, hub not running. See the [Troubleshooting Guide](troubleshooting.md).
 
 ## 6. Smoke Test Walkthrough
 

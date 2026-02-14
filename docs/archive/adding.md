@@ -1,11 +1,11 @@
 # Adding a New Agent to an Existing Machine
 
-Step-by-step process for onboarding a new agent onto a machine that already has an OpenClaw Mind running.
+Step-by-step process for onboarding a new agent onto a machine that already has an OpenClaw Mind running. This covers the OpenClaw side — for hub registration and sidecar setup, see the [Setup Guide](setup.md#5-agent-onboarding).
 
 ## Prerequisites
 
 - An existing OpenClaw installation running on the machine
-- Access to the AgentCom hub (running on 100.126.22.86:4000)
+- Access to the AgentCom hub
 - Someone with an existing AgentCom token (to register the new one)
 
 ## Step 1: Create the Agent in OpenClaw
@@ -93,7 +93,26 @@ Create HEARTBEAT.md in the new workspace:
 - Update Last Seq in TOOLS.md after processing
 ```
 
-## Step 6: Set Up Heartbeat Cron
+## Step 6: Set Up the Sidecar
+
+The sidecar maintains the persistent WebSocket connection to the hub and wakes the agent when tasks arrive. See the [Setup Guide](setup.md#configuring-the-wake-command) for full sidecar configuration details.
+
+Quick version:
+
+```bash
+# From the AgentCom repo
+node sidecar/add-agent.js --hub http://<hub-ip>:4000 --name <agent-id> --rejoin --token <token-from-step-3>
+```
+
+Or manually create `sidecar/config.json` with the agent's credentials and set the wake command:
+
+```json
+"wake_command": "openclaw system event --text \"AgentCom Task ${TASK_ID}: ${TASK_DESCRIPTION}\" --mode now"
+```
+
+Start with pm2: `pm2 start sidecar/index.js --name agentcom-<agent-id>`
+
+## Step 7: Set Up Heartbeat Cron
 
 On the target machine:
 
@@ -107,7 +126,7 @@ Verify:
 openclaw cron list
 ```
 
-## Step 7: Set Git Identity
+## Step 8: Set Git Identity
 
 On the first session (via TUI or heartbeat), the agent should run:
 
@@ -117,14 +136,14 @@ git config user.name "<Agent Name>"
 git config user.email "<agent-id>@agentcom.local"
 ```
 
-## Step 8: Notify Flere-Imsaho
+## Step 9: Notify Flere-Imsaho
 
 Send a message to Flere-Imsaho via AgentCom confirming the agent is online. Flere-Imsaho will:
 - Send the full onboarding briefing (team, repo, norms, first tasks)
 - Add the agent to BACKLOG.md tracking
 - Assign initial work
 
-## Step 9: Verify
+## Step 10: Verify
 
 Confirm the agent is working:
 1. Check hub presence: `GET /api/agents` — new agent should appear

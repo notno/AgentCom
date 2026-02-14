@@ -1237,6 +1237,26 @@ defmodule AgentCom.Endpoint do
     end
   end
 
+  post "/api/tasks/:task_id/cancel" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
+    if conn.halted do
+      conn
+    else
+      case AgentCom.TaskQueue.cancel_task(task_id) do
+        {:ok, task} ->
+          send_json(conn, 200, %{
+            "status" => "cancelled",
+            "task_id" => task.id,
+            "previous_status" => to_string(task.status)
+          })
+
+        {:error, :not_found} ->
+          send_json(conn, 404, %{"error" => "task_not_found", "task_id" => task_id})
+      end
+    end
+  end
+
   # --- Goal Backlog API (auth required) ---
 
   # IMPORTANT: /stats MUST be defined BEFORE /:goal_id to avoid "stats" being captured as :goal_id

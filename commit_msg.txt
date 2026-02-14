@@ -1,4 +1,25 @@
-Add personality profiles doc
+Fix task routing, queue summary, and add agent targeting dropdown
 
-SOUL.md working style additions for each Mind.
-Pragmatist, systems thinker, experimentalist.
+Hub changes:
+- Complexity classifier: short descriptions without trivial keywords
+  now classify as standard (not trivial). Prevents natural language
+  tasks from being routed to shell execution.
+- TaskQueue.stats: by_priority now only counts queued tasks, fixing
+  dashboard queue summary showing completed tasks in urgent count.
+- Endpoint: pass assign_to param through to task queue.
+- TaskQueue: store assign_to on task struct for operator targeting.
+- Scheduler: respect assign_to field — if set, target that specific
+  agent regardless of routing tier.
+- Dashboard: add agent targeting dropdown next to task input,
+  populated live from connected agents with state indicators.
+
+Sidecar changes:
+- ShellExecutor: no longer falls back to task.description as a shell
+  command. Only executes explicit metadata.shell_command.
+- Dispatcher: sidecar tasks without shell_command fail gracefully
+  with clear error instead of running description as bash.
+
+Backlog:
+- Added token roles / auth separation item to inbox.
+
+Authored-by: Flere-Imsaho <flere-imsaho@agentcom.local>

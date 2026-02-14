@@ -11,6 +11,7 @@ defmodule AgentCom.DashboardSocket do
   Client messages:
   - `{"type": "request_snapshot"}` -- triggers a fresh full snapshot push
   - `{"type": "retry_task", "task_id": "..."}` -- retries a dead-letter task
+  - `{"type": "cancel_task", "task_id": "..."}` -- permanently removes a dead-letter task
   - `{"type": "acknowledge_alert", "rule_id": "..."}` -- acknowledges an active alert
 
   Event batching prevents PubSub message floods from overwhelming the browser.
@@ -70,6 +71,15 @@ defmodule AgentCom.DashboardSocket do
           case AgentCom.TaskQueue.retry_dead_letter(task_id) do
             {:ok, _task} -> %{type: "retry_result", task_id: task_id, status: "requeued"}
             {:error, :not_found} -> %{type: "retry_result", task_id: task_id, status: "not_found"}
+          end
+
+        {:push, {:text, Jason.encode!(result)}, state}
+
+      {:ok, %{"type" => "cancel_task", "task_id" => task_id}} ->
+        result =
+          case AgentCom.TaskQueue.cancel_task(task_id) do
+            {:ok, _task} -> %{type: "cancel_result", task_id: task_id, status: "cancelled"}
+            {:error, :not_found} -> %{type: "cancel_result", task_id: task_id, status: "not_found"}
           end
 
         {:push, {:text, Jason.encode!(result)}, state}
