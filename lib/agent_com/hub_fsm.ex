@@ -1,11 +1,11 @@
 defmodule AgentCom.HubFSM do
   @moduledoc """
-  Singleton GenServer implementing the hub's autonomous brain as a 4-state FSM.
+  Singleton GenServer implementing the hub's autonomous brain as a 5-state FSM.
 
   The HubFSM drives all autonomous hub behavior by evaluating system state
   on a 1-second tick and transitioning between `:resting`, `:executing`,
-  `:improving`, and `:contemplating` based on goal queue depth, budget
-  availability, and external repository events.
+  `:improving`, `:contemplating`, and `:healing` based on goal queue depth,
+  budget availability, health signals, and external repository events.
 
   ## States
 
@@ -15,6 +15,7 @@ defmodule AgentCom.HubFSM do
   | `:executing`     | Actively processing goals from the backlog            |
   | `:improving`     | Processing improvement cycle triggered by webhook     |
   | `:contemplating` | Generating feature proposals and analyzing scalability |
+  | `:healing`       | Remediating infrastructure issues (stuck tasks, endpoints) |
 
   ## Tick-Based Evaluation
 
@@ -47,10 +48,11 @@ defmodule AgentCom.HubFSM do
   alias AgentCom.HubFSM.{History, Predicates}
 
   @valid_transitions %{
-    resting: [:executing, :improving],
-    executing: [:resting],
-    improving: [:resting, :executing, :contemplating],
-    contemplating: [:resting, :executing]
+    resting: [:executing, :improving, :healing],
+    executing: [:resting, :healing],
+    improving: [:resting, :executing, :contemplating, :healing],
+    contemplating: [:resting, :executing, :healing],
+    healing: [:resting]
   }
 
   @tick_interval_ms 1_000
@@ -63,7 +65,10 @@ defmodule AgentCom.HubFSM do
     :watchdog_ref,
     cycle_count: 0,
     paused: false,
-    transition_count: 0
+    transition_count: 0,
+    healing_cooldown_until: 0,
+    healing_attempts: 0,
+    healing_attempts_window_start: 0
   ]
 
   # ---------------------------------------------------------------------------
@@ -324,7 +329,7 @@ defmodule AgentCom.HubFSM do
   # -- tick (active) -----------------------------------------------------------
 
   def handle_info(:tick, state) do
-    system_state = gather_system_state()
+    system_state = gather_system_state(state)
 
     updated =
       case Predicates.evaluate(state.fsm_state, system_state) do
@@ -434,6 +439,37 @@ defmodule AgentCom.HubFSM do
     end
   end
 
+  # -- healing cycle complete ---------------------------------------------------
+
+  def handle_info({:healing_cycle_complete, result}, state) do
+    Logger.info("healing_cycle_complete", result: inspect(result))
+
+    if state.fsm_state == :healing do
+      now = System.system_time(:millisecond)
+
+      # Track attempts within 10-minute rolling window
+      {new_attempts, window_start} =
+        if now - state.healing_attempts_window_start > 600_000 do
+          # Window expired, reset
+          {1, now}
+        else
+          {state.healing_attempts + 1, state.healing_attempts_window_start}
+        end
+
+      updated = do_transition(state, :resting, "healing cycle complete")
+
+      updated = %{updated |
+        healing_cooldown_until: now + 300_000,
+        healing_attempts: new_attempts,
+        healing_attempts_window_start: window_start
+      }
+
+      {:noreply, updated}
+    else
+      {:noreply, state}
+    end
+  end
+
   # -- PubSub events (catch-all) -----------------------------------------------
 
   def handle_info({:goal_event, _payload}, state) do
@@ -454,7 +490,7 @@ defmodule AgentCom.HubFSM do
   # Private Functions
   # ---------------------------------------------------------------------------
 
-  defp gather_system_state do
+  defp gather_system_state(state \\ nil) do
     # Gather GoalBacklog stats (safe if not started)
     goal_stats =
       try do
@@ -495,12 +531,42 @@ defmodule AgentCom.HubFSM do
         :exit, _ -> false
       end
 
+    # Gather health report for healing evaluation
+    health =
+      try do
+        AgentCom.HealthAggregator.assess()
+      rescue
+        _ -> %{healthy: true, issues: [], critical_count: 0}
+      catch
+        _, _ -> %{healthy: true, issues: [], critical_count: 0}
+      end
+
+    now_ms = System.system_time(:millisecond)
+
+    healing_cooldown_active =
+      if state do
+        now_ms < state.healing_cooldown_until
+      else
+        false
+      end
+
+    healing_attempts_exhausted =
+      if state do
+        state.healing_attempts >= 3 and
+          (now_ms - state.healing_attempts_window_start) <= 600_000
+      else
+        false
+      end
+
     %{
       pending_goals: pending_goals,
       active_goals: active_goals,
       budget_exhausted: budget_exhausted,
       improving_budget_available: improving_budget_available,
-      contemplating_budget_available: contemplating_budget_available
+      contemplating_budget_available: contemplating_budget_available,
+      health_report: health,
+      healing_cooldown_active: healing_cooldown_active,
+      healing_attempts_exhausted: healing_attempts_exhausted
     }
   end
 
@@ -515,7 +581,7 @@ defmodule AgentCom.HubFSM do
     History.record(state.fsm_state, new_state, reason, new_transition_count)
 
     # Update ClaudeClient hub state (safe if not started)
-    # :resting is NOT a valid ClaudeClient hub state, only notify for active states
+    # :resting and :healing are NOT valid ClaudeClient hub states, only notify for active states
     if new_state in [:executing, :improving, :contemplating] do
       try do
         AgentCom.ClaudeClient.set_hub_state(new_state)
@@ -566,6 +632,18 @@ defmodule AgentCom.HubFSM do
       Task.start(fn ->
         result = AgentCom.SelfImprovement.run_improvement_cycle()
         send(pid, {:improvement_cycle_complete, result})
+      end)
+    end
+
+    # Spawn async healing cycle when entering :healing
+    if new_state == :healing do
+      pid = self()
+
+      Task.start(fn ->
+        # Healing.run_healing_cycle/0 will be implemented in Plan 02
+        # For now, return immediately with placeholder result
+        result = %{actions_taken: 0, issues_found: 0, placeholder: true}
+        send(pid, {:healing_cycle_complete, result})
       end)
     end
 
