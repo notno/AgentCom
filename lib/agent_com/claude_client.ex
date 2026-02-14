@@ -84,6 +84,21 @@ defmodule AgentCom.ClaudeClient do
   end
 
   @doc """
+  Generate feature proposals from codebase analysis during contemplation.
+
+  Returns `{:ok, proposals}` where proposals is a list of proposal maps,
+  or `{:error, reason}`.
+  """
+  @spec generate_proposals(map()) :: {:ok, list(map())} | {:error, term()}
+  def generate_proposals(context) do
+    GenServer.call(
+      __MODULE__,
+      {:invoke, :generate_proposals, %{context: context}},
+      call_timeout()
+    )
+  end
+
+  @doc """
   Update the hub state used for CostLedger budget checks.
 
   Called by HubFSM on state transitions. Valid states:

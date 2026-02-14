@@ -79,9 +79,10 @@ defmodule AgentCom.HubFSM.PredicatesTest do
       assert :stay = Predicates.evaluate(:improving, system_state)
     end
 
-    test "stays when budget ok and goals exist (goals don't affect improving)" do
+    test "transitions to :executing when goals submitted while improving" do
       system_state = %{pending_goals: 5, active_goals: 2, budget_exhausted: false}
-      assert :stay = Predicates.evaluate(:improving, system_state)
+      assert {:transition, :executing, reason} = Predicates.evaluate(:improving, system_state)
+      assert reason =~ "goals"
     end
 
     test "transitions to :resting when budget exhausted" do
@@ -90,9 +91,40 @@ defmodule AgentCom.HubFSM.PredicatesTest do
       assert reason =~ "budget"
     end
 
-    test "transitions to :resting when budget exhausted even with pending goals" do
+    test "goals take priority over budget when both present while improving" do
       system_state = %{pending_goals: 5, active_goals: 3, budget_exhausted: true}
-      assert {:transition, :resting, _reason} = Predicates.evaluate(:improving, system_state)
+      assert {:transition, :executing, _reason} = Predicates.evaluate(:improving, system_state)
+    end
+  end
+
+  describe "evaluate/2 when :contemplating" do
+    test "stays when no pending goals and budget ok (cycle in progress)" do
+      system_state = %{pending_goals: 0, active_goals: 0, budget_exhausted: false}
+      assert :stay = Predicates.evaluate(:contemplating, system_state)
+    end
+
+    test "transitions to :executing when pending goals exist" do
+      system_state = %{pending_goals: 3, active_goals: 0, budget_exhausted: false}
+      assert {:transition, :executing, reason} = Predicates.evaluate(:contemplating, system_state)
+      assert reason =~ "goals"
+    end
+
+    test "transitions to :resting when budget exhausted" do
+      system_state = %{pending_goals: 0, active_goals: 0, budget_exhausted: true}
+      assert {:transition, :resting, reason} = Predicates.evaluate(:contemplating, system_state)
+      assert reason =~ "budget"
+    end
+
+    test "goals take priority over budget when both present" do
+      system_state = %{pending_goals: 2, active_goals: 0, budget_exhausted: true}
+      assert {:transition, :executing, _reason} = Predicates.evaluate(:contemplating, system_state)
+    end
+  end
+
+  describe "evaluate/2 with unknown state" do
+    test "returns :stay for unknown state (defensive catch-all)" do
+      system_state = %{pending_goals: 0, active_goals: 0, budget_exhausted: false}
+      assert :stay = Predicates.evaluate(:unknown_state, system_state)
     end
   end
 end
