@@ -249,7 +249,10 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Dashboard shows Hub FSM state, goal progress bars, and goal backlog depth with real-time updates
   2. Dashboard shows hub-side API cost tracking (CostLedger data) displayed separately from task execution costs (sidecar costs)
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 36-01-PLAN.md -- Backend data integration: GoalBacklog and CostLedger data in DashboardState snapshot, goals PubSub in DashboardSocket
+- [ ] 36-02-PLAN.md -- Frontend panels: Goal Progress panel, Cost Tracking panel, Hub FSM state duration enhancement
 
 ## Progress
 
