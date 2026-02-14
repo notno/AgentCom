@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 
 ## Current Position
 
-Phase: 31 of 36 (Hub Event Wiring)
-Plan: 1/3 complete
+Phase: 36 of 36 (Dashboard and Observability)
+Plan: 1/2 complete
 Status: In Progress
-Last activity: 2026-02-14 -- Plan 31-01 FSM Improving State + Webhook Infrastructure
+Last activity: 2026-02-14 -- Plan 36-01 Dashboard Goal & Cost Data Sources
 
-Progress: [████░░░░░░░░░░] 33% (1/3 plans)
+Progress: [███████░░░░░░░] 50% (1/2 plans)
 
 ## Performance Metrics
 
@@ -106,5 +106,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 31-01-PLAN.md -- FSM Improving State + Webhook Infrastructure
+Stopped at: Completed 36-01-PLAN.md -- Dashboard Goal & Cost Data Sources
 Resume file: None
