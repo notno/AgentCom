@@ -203,12 +203,12 @@ Plans:
   3. Healing attempts Ollama endpoint recovery with backoff retries and falls back to Claude routing if recovery fails
   4. Healing detects merge conflicts and compilation failures and produces actionable diagnostics
   5. Healing state force-transitions to :resting after 5-minute watchdog timeout with critical alert
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 43-01: Healing state and health aggregator
-- [ ] 43-02: Stuck task and endpoint remediation
-- [ ] 43-03: CI/compilation healing, watchdog, and audit logging
+- [ ] 43-01-PLAN.md -- HealthAggregator module and :healing FSM state with predicates
+- [ ] 43-02-PLAN.md -- Stuck task remediation, endpoint recovery, and FSM wiring
+- [ ] 43-03-PLAN.md -- CI/compilation healing, watchdog timer, and audit logging
 
 ### Phase 44: Hub FSM Testing
 **Goal**: Integration tests validate all 5 FSM states, healing cycles, and HTTP control endpoints
