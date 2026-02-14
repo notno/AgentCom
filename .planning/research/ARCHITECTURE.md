@@ -1,980 +1,1048 @@
-# Architecture: Hub FSM Autonomous Brain
+# Architecture: Agentic Tool Calling, Hub FSM Healing State, and Hub-to-Ollama LLM Routing
 
-**Domain:** Autonomous hub orchestration with LLM-powered goal decomposition, codebase self-improvement, pipeline DAG scheduling, and pre-publication cleanup for existing Elixir/BEAM distributed agent coordination system
-**Researched:** 2026-02-12
-**Confidence:** HIGH (grounded in direct analysis of all source files in shipped v1.2 codebase)
-
----
-
-## Current System Inventory (Post-v1.2)
-
-### Supervision Tree (23 children, :one_for_one)
-
-```
-AgentCom.Supervisor
-  |-- Phoenix.PubSub
-  |-- Registry (AgentCom.AgentRegistry)
-  |-- AgentCom.Config
-  |-- AgentCom.Auth
-  |-- AgentCom.Mailbox
-  |-- AgentCom.Channels
-  |-- AgentCom.Presence
-  |-- AgentCom.Analytics
-  |-- AgentCom.Threads
-  |-- AgentCom.MessageHistory
-  |-- AgentCom.Reaper
-  |-- Registry (AgentCom.AgentFSMRegistry)
-  |-- AgentCom.AgentSupervisor (DynamicSupervisor for per-agent FSMs)
-  |-- AgentCom.Verification.Store
-  |-- AgentCom.TaskQueue
-  |-- AgentCom.Scheduler
-  |-- AgentCom.MetricsCollector
-  |-- AgentCom.Alerter
-  |-- AgentCom.RateLimiter.Sweeper
-  |-- AgentCom.LlmRegistry
-  |-- AgentCom.RepoRegistry
-  |-- AgentCom.DashboardState
-  |-- AgentCom.DashboardNotifier
-  |-- AgentCom.DetsBackup
-  |-- Bandit
-```
-
-### DETS Tables (10 tables, managed by DetsBackup)
-
-| Table | Owner | Purpose |
-|-------|-------|---------|
-| :task_queue | TaskQueue | Active tasks (queued/assigned/completed) |
-| :task_dead_letter | TaskQueue | Failed tasks exhausting retries |
-| :agent_mailbox | Mailbox | Agent message storage |
-| :message_history | MessageHistory | Historical messages |
-| :agent_channels | Channels | Channel definitions |
-| :channel_history | Channels | Channel message history |
-| :agentcom_config | Config | Hub-wide key-value settings |
-| :thread_messages | Threads | Thread data |
-| :thread_replies | Threads | Thread reply data |
-| :repo_registry | RepoRegistry | Priority-ordered repo list |
-
-Plus non-backup-managed tables:
-- :llm_registry (DETS, LlmRegistry -- endpoint registrations)
-- :llm_resource_metrics (ETS, LlmRegistry -- ephemeral host metrics)
-- :validation_backoff (ETS -- validation backoff tracking)
-- :rate_limit_buckets (ETS -- token bucket state)
-- :rate_limit_overrides (ETS -- per-agent overrides)
-- verification_reports (DETS, Verification.Store -- unique atom per instance)
-
-### PubSub Topics
-
-| Topic | Publishers | Subscribers |
-|-------|-----------|-------------|
-| "tasks" | TaskQueue (7 events) | Scheduler |
-| "presence" | AgentFSM (idle/joined/left) | Scheduler |
-| "llm_registry" | LlmRegistry (endpoint_changed) | Scheduler |
-| "repo_registry" | RepoRegistry (changed) | -- |
-| "backups" | DetsBackup (backup/compaction/recovery) | DashboardNotifier |
-
-### Key Existing Patterns
-
-1. **DETS + sync for persistence** -- every mutation calls `:dets.sync/1`
-2. **PubSub for event distribution** -- loose coupling, Scheduler reacts to events
-3. **ETS for hot-path ephemeral data** -- metrics, rate limits, validation backoff
-4. **GenServer for serialized state** -- each service owns its state
-5. **DynamicSupervisor for per-connection processes** -- AgentFSM per agent
-6. **Process.send_after for periodic work** -- sweeps, health checks, backup timers
-7. **Hub decides, sidecar executes** -- routing decisions made centrally
+**Domain:** Agentic local LLM execution, self-healing FSM, pipeline reliability for existing Elixir/BEAM distributed agent coordination system
+**Researched:** 2026-02-14
+**Confidence:** HIGH (grounded in direct analysis of shipped v1.3 codebase: HubFSM, ClaudeClient, Scheduler, GoalOrchestrator, AgentFSM)
 
 ---
 
-## New Component: AgentCom.HubFSM
+## Current System Inventory (Post-v1.3)
 
-### Why a New GenServer
+### Relevant Existing Components
 
-The Hub FSM is the "autonomous brain" of the system. It operates independently from the existing task pipeline, which is reactive (submit task -> schedule -> execute). The Hub FSM is proactive: it generates goals, decomposes them into tasks, monitors system state, and decides what work to do next.
+| Component | Type | Key Behavior |
+|-----------|------|-------------|
+| **HubFSM** | GenServer | 4-state tick-driven FSM (resting/executing/improving/contemplating). 1s tick, 2h watchdog. Spawns async Task for improvement/contemplation cycles. |
+| **ClaudeClient** | GenServer | Wraps `claude -p` CLI via `ClaudeClient.Cli`. Serial GenServer queue. CostLedger budget check before every invocation. |
+| **ClaudeClient.Cli** | Module | Writes prompt to temp .md file, spawns `claude -p --output-format json`, parses JSON output. CLAUDECODE env var unset to avoid nesting. |
+| **GoalOrchestrator** | GenServer | Tick-driven by HubFSM. One async op at a time (decompose or verify). Decomposer and Verifier sub-modules. |
+| **Scheduler** | GenServer | PubSub-driven. Tier-aware routing via TaskRouter. Capability matching. Fallback timers. Stuck sweep (30s). TTL sweep (60s). |
+| **TaskRouter** | Module (pure) | Routes by tier: trivial -> sidecar, standard -> ollama, complex -> claude. LoadScorer ranks endpoints. |
+| **AgentFSM** | GenServer | Per-agent: idle -> assigned -> working -> idle. Acceptance timeout (60s). Process monitors WebSocket pid. |
+| **CostLedger** | GenServer | DETS + ETS dual-layer. Per-state budget enforcement. check_budget/1 reads ETS (no GenServer.call). |
 
-This cannot be bolted onto an existing module because:
-- **Scheduler** is reactive (event-driven matching). The Hub FSM is proactive (generates work).
-- **TaskQueue** is a data store. The Hub FSM is a decision engine.
-- **Config** is key-value storage. The Hub FSM maintains complex state (current phase, goal backlog, scan results).
-
-### FSM State Machine Design
-
-**Use GenServer, not GenStateMachine.** The existing codebase uses GenServer for all processes including the existing AgentFSM. GenStateMachine (gen_state_machine v3.0.0 on hex) wraps :gen_statem and provides state timeouts and state_enter callbacks, but the Hub FSM's 4 states are simple enough that GenServer with Process.send_after handles them cleanly. Adding a new dependency and a different OTP behaviour pattern would create cognitive overhead for a 4-state machine. The existing AgentFSM already demonstrates the pattern: store `fsm_state` as an atom in GenServer state, validate transitions explicitly.
-
-**The four states:**
+### Current Data Flow for LLM Calls
 
 ```
-                    +--> Improving --+
-                    |                |
-  Executing <-------+                +-------> Contemplating
-      ^             |                |              |
-      |             +--> Resting <---+              |
-      |                                             |
-      +---------------------------------------------+
+Hub-side LLM (goal decomposition, verification, improvement, contemplation):
+  HubFSM/GoalOrchestrator -> ClaudeClient GenServer -> ClaudeClient.Cli
+    -> writes temp .md file
+    -> System.cmd("claude", ["-p", "Read...", "--output-format", "json"])
+    -> parses JSON output
+    -> File.rm(tmp_path)
+
+Sidecar-side LLM (task execution):
+  Scheduler assigns task via WebSocket -> Sidecar receives task_data
+    -> Sidecar dispatches to OllamaExecutor or ClaudeExecutor
+    -> OllamaExecutor: HTTP POST to Ollama /api/chat, streams NDJSON, returns text
+    -> ClaudeExecutor: spawns claude -p process
 ```
 
-| State | Behavior | Transition Trigger |
-|-------|----------|-------------------|
-| **Executing** | Decompose top goal, submit tasks to TaskQueue, monitor completion | All goal's tasks completed OR all agents idle with empty queue |
-| **Improving** | Run self-improvement scanner on repos, generate improvement tasks | Scan complete, improvement tasks submitted |
-| **Contemplating** | Evaluate system state, prioritize goal backlog, decide next action | Decision made (which goal to execute next, or rest) |
-| **Resting** | Idle timer. No work generation. Allows system to settle. | Timer expires (configurable, default 5 minutes) |
+---
 
-**Valid transitions:**
+## Integration Challenge Analysis
+
+### Challenge 1: OllamaExecutor Returns Text, Not Tool Calls
+
+**Current state:** OllamaExecutor sends a single HTTP POST to `/api/chat`, streams NDJSON response lines, concatenates content, returns plain text. No awareness of `tool_calls` in the response.
+
+**Required state:** OllamaExecutor must support an agentic loop: send request with `tools` definitions -> receive response with `tool_calls` -> execute tool locally -> send tool result back -> repeat until model produces final text.
+
+**Integration point:** This is entirely within the sidecar. The hub does not need to change for sidecar-side tool calling. The sidecar receives `task_data` via WebSocket (already includes `routing_decision` with `target_type: :ollama`). The sidecar's OllamaExecutor handles the multi-turn loop internally.
+
+### Challenge 2: ClaudeClient.Cli Spawns `claude -p`, Needs Ollama HTTP
+
+**Current state:** `ClaudeClient.Cli.invoke/3` builds a prompt, writes to temp file, runs `System.cmd("claude", ["-p", ...])`, parses JSON output. This is the ONLY path for hub-side LLM calls.
+
+**Required state:** Hub needs an alternative LLM backend that calls Ollama's `/api/chat` HTTP endpoint directly from Elixir, without shelling out to a CLI.
+
+**Integration point:** Create `AgentCom.OllamaClient` as a new module (parallel to `ClaudeClient.Cli`) and modify `ClaudeClient` GenServer to route to either backend based on configuration/task requirements. The existing CostLedger integration, budget checks, and telemetry in ClaudeClient GenServer remain unchanged.
+
+### Challenge 3: Hub FSM Needs 5th State (Healing)
+
+**Current state:** 4 states with transitions defined in `@valid_transitions`:
+```elixir
+@valid_transitions %{
+  resting: [:executing, :improving],
+  executing: [:resting],
+  improving: [:resting, :executing, :contemplating],
+  contemplating: [:resting, :executing]
+}
+```
+
+**Required state:** A 5th `:healing` state reachable from any active state when system health degrades. Healing runs detection -> diagnosis -> fix -> verify cycle. Returns to previous state or resting.
+
+**Integration point:** Modify `HubFSM` to add `:healing` to `@valid_transitions` map. Add healing-specific fields to GenServer state struct. Add healing detection to `gather_system_state/0` and healing predicates to `HubFSM.Predicates`. Spawn async healing cycle (same pattern as improvement/contemplation cycles).
+
+### Challenge 4: Sidecar Tool Definitions and Execution Sandbox
+
+**Current state:** Sidecar dispatches to executors that return text results. No tool infrastructure.
+
+**Required state:** Sidecar must define tool schemas (file ops, git, shell, hub API), execute tools safely in sandboxed context, and feed results back into the Ollama tool-calling loop.
+
+**Integration point:** New sidecar-side `ToolRegistry` defining available tools, `ToolExecutor` for sandboxed execution, and modifications to `OllamaExecutor` to orchestrate the agentic loop.
+
+### Challenge 5: Pipeline Reliability
+
+**Current state:** Scheduler has 30s stuck sweep, 60s TTL sweep. ClaudeClient has configurable timeout (default 120s). GoalOrchestrator has one-at-a-time async guard. No explicit wake failure handling or execution timeout enforcement at the sidecar level.
+
+**Required state:** Execution timeouts at sidecar level, wake failure detection and recovery, stuck task recovery with exponential backoff.
+
+**Integration point:** Extend Scheduler sweeps, add timeout enforcement to task_data sent to sidecar, add health signals to WebSocket protocol.
+
+---
+
+## Recommended Architecture
+
+### Component Map: New vs Modified
+
+```
+NEW COMPONENTS (build from scratch):
+  [Hub-side]
+  AgentCom.OllamaClient          -- HTTP client for Ollama /api/chat
+  AgentCom.OllamaClient.ToolLoop -- Agentic tool-calling loop logic
+  AgentCom.HubFSM.Healer        -- Healing cycle detection/diagnosis/fix/verify
+  AgentCom.HubFSM.HealthCheck   -- System health signal gathering
+
+  [Sidecar-side]
+  ToolRegistry                   -- Tool definitions (schemas)
+  ToolExecutor                   -- Sandboxed tool execution
+  ToolSandbox                    -- Filesystem/process isolation
+
+MODIFIED COMPONENTS:
+  AgentCom.HubFSM               -- Add :healing state, health detection in gather_system_state
+  AgentCom.HubFSM.Predicates    -- Add healing predicates
+  AgentCom.ClaudeClient          -- Route to OllamaClient or Cli based on config
+  AgentCom.Scheduler             -- Enhanced stuck detection, timeout propagation
+  OllamaExecutor (sidecar)       -- Agentic tool-calling loop
+```
+
+### Component Boundaries
+
+| Component | Responsibility | Communicates With |
+|-----------|---------------|-------------------|
+| **OllamaClient** | HTTP client for Ollama /api/chat. Request building, NDJSON streaming, response parsing. No tool execution logic. | ClaudeClient (called by), Ollama HTTP server |
+| **OllamaClient.ToolLoop** | Hub-side agentic loop: send with tools -> receive tool_calls -> execute -> send results -> repeat. Max iteration guard. | OllamaClient (HTTP calls), ToolRegistry (schemas), ToolExecutor (execution) |
+| **HubFSM.Healer** | Stateless healing cycle module. Detection -> diagnosis -> fix -> verify. Returns healing report. | HubFSM (called by), OllamaClient or ClaudeClient (LLM calls), system health signals |
+| **HubFSM.HealthCheck** | Gathers health signals: agent connectivity, task throughput, error rates, Ollama endpoint health, DETS integrity. Pure function, no side effects. | AgentFSM.list_all, TaskQueue.stats, LlmRegistry, DETS tables |
+| **ToolRegistry (sidecar)** | Defines available tools as JSON schemas. Static definitions. | OllamaExecutor (reads schemas) |
+| **ToolExecutor (sidecar)** | Executes tool calls in sandboxed context. Enforces timeouts, path restrictions, output limits. | ToolRegistry (validates calls), filesystem/git/shell |
+| **ToolSandbox (sidecar)** | Workspace isolation: chroot-like path restriction, process timeout, output truncation. | ToolExecutor (wraps execution) |
+
+---
+
+## Detailed Architecture: Agentic Tool-Calling Loop
+
+### Where the Loop Lives: Sidecar AND Hub (Different Purposes)
+
+**Sidecar agentic loop** (primary, for task execution):
+The sidecar's OllamaExecutor manages the tool-calling loop for task execution. This is where the bulk of agentic work happens. The sidecar has filesystem access to the target repo, can run git commands, and execute shell operations.
+
+**Hub agentic loop** (secondary, for healing/diagnosis):
+The hub's OllamaClient.ToolLoop manages a simpler loop for healing operations. The hub has access to system state (DETS, ETS, PubSub) but not to repo filesystems. Hub tools are system-introspection tools (check agent status, query task queue, read logs, check endpoint health).
+
+### Sidecar Tool-Calling Loop Architecture
+
+```
+OllamaExecutor receives task_data from WebSocket
+  |
+  v
+Build initial messages: system prompt + task description
+Attach tool definitions from ToolRegistry.tools_for_task(task_data)
+  |
+  v
+LOOP (max_iterations: 10, timeout: task_timeout_ms):
+  |
+  POST /api/chat {model, messages, tools, stream: false}
+  |
+  v
+  Response has tool_calls?
+    YES:
+      For each tool_call:
+        ToolExecutor.execute(tool_call.function.name, tool_call.function.arguments)
+          -> ToolSandbox.run(fn -> ... end, timeout: 30_000)
+          -> Returns {:ok, result} or {:error, reason}
+      Append assistant message (with tool_calls) to messages
+      Append tool result messages to messages
+      CONTINUE LOOP
+    NO:
+      Extract final content
+      BREAK -> return content as task result
+  |
+  v
+  Iteration limit or timeout reached?
+    -> Return partial result with warning
+```
+
+**Critical design decision: `stream: false` for tool calling.** Ollama's streaming tool call support is inconsistent and incomplete (GitHub issue #12557). Use non-streaming for tool-calling turns. This simplifies parsing -- a single JSON response per turn rather than NDJSON chunks. The latency trade-off is acceptable because tool-calling turns are short (model decides which tool to call, not generating long text).
+
+### Sidecar Tool Definitions
+
+```javascript
+// ToolRegistry.js
+const TOOLS = {
+  read_file: {
+    type: "function",
+    function: {
+      name: "read_file",
+      description: "Read contents of a file in the workspace",
+      parameters: {
+        type: "object",
+        required: ["path"],
+        properties: {
+          path: { type: "string", description: "Relative path from workspace root" }
+        }
+      }
+    }
+  },
+  write_file: {
+    type: "function",
+    function: {
+      name: "write_file",
+      description: "Write contents to a file in the workspace",
+      parameters: {
+        type: "object",
+        required: ["path", "content"],
+        properties: {
+          path: { type: "string", description: "Relative path from workspace root" },
+          content: { type: "string", description: "File content to write" }
+        }
+      }
+    }
+  },
+  run_shell: {
+    type: "function",
+    function: {
+      name: "run_shell",
+      description: "Run a shell command in the workspace directory",
+      parameters: {
+        type: "object",
+        required: ["command"],
+        properties: {
+          command: { type: "string", description: "Shell command to execute" },
+          timeout_ms: { type: "integer", description: "Command timeout in ms (default 30000)" }
+        }
+      }
+    }
+  },
+  git_diff: {
+    type: "function",
+    function: {
+      name: "git_diff",
+      description: "Get git diff of current changes",
+      parameters: {
+        type: "object",
+        properties: {
+          staged: { type: "boolean", description: "Show staged changes only" }
+        }
+      }
+    }
+  },
+  list_files: {
+    type: "function",
+    function: {
+      name: "list_files",
+      description: "List files matching a glob pattern in workspace",
+      parameters: {
+        type: "object",
+        required: ["pattern"],
+        properties: {
+          pattern: { type: "string", description: "Glob pattern (e.g. 'lib/**/*.ex')" }
+        }
+      }
+    }
+  },
+  search_content: {
+    type: "function",
+    function: {
+      name: "search_content",
+      description: "Search file contents with regex pattern",
+      parameters: {
+        type: "object",
+        required: ["pattern"],
+        properties: {
+          pattern: { type: "string", description: "Regex pattern to search for" },
+          glob: { type: "string", description: "File glob to restrict search" }
+        }
+      }
+    }
+  },
+  hub_api: {
+    type: "function",
+    function: {
+      name: "hub_api",
+      description: "Call the hub's REST API",
+      parameters: {
+        type: "object",
+        required: ["method", "path"],
+        properties: {
+          method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE"] },
+          path: { type: "string", description: "API path (e.g. /api/tasks)" },
+          body: { type: "object", description: "Request body for POST/PUT" }
+        }
+      }
+    }
+  }
+};
+```
+
+### Tool Execution Sandbox
+
+```javascript
+// ToolSandbox.js
+class ToolSandbox {
+  constructor(workspacePath, options = {}) {
+    this.workspacePath = path.resolve(workspacePath);
+    this.timeout = options.timeout || 30_000;
+    this.maxOutputBytes = options.maxOutputBytes || 1_000_000; // 1MB
+    this.allowedPaths = [this.workspacePath]; // No path traversal
+  }
+
+  validatePath(relativePath) {
+    const resolved = path.resolve(this.workspacePath, relativePath);
+    if (!resolved.startsWith(this.workspacePath)) {
+      throw new Error(`Path traversal blocked: ${relativePath}`);
+    }
+    return resolved;
+  }
+
+  async execute(toolName, args) {
+    const startMs = Date.now();
+    try {
+      const result = await Promise.race([
+        this._dispatch(toolName, args),
+        this._timeoutPromise()
+      ]);
+      return { ok: true, result: this._truncate(result), duration_ms: Date.now() - startMs };
+    } catch (err) {
+      return { ok: false, error: err.message, duration_ms: Date.now() - startMs };
+    }
+  }
+}
+```
+
+---
+
+## Detailed Architecture: Hub FSM Healing State
+
+### State Transition Map (5-State)
+
+```
+                        +--> Improving --+
+                        |                |
+  Executing <-----------+                +-------> Contemplating
+      ^                 |                |              |
+      |                 +--> Resting <---+              |
+      |                 |                               |
+      +-----+-----------+-------------------------------+
+            |
+            v
+        Healing <-- (reachable from executing, improving, contemplating)
+```
+
+### Updated Valid Transitions
 
 ```elixir
 @valid_transitions %{
-  executing: [:contemplating, :resting],
-  improving: [:contemplating, :resting],
-  contemplating: [:executing, :improving, :resting],
-  resting: [:contemplating]
+  resting:       [:executing, :improving],
+  executing:     [:resting, :healing],
+  improving:     [:resting, :executing, :contemplating, :healing],
+  contemplating: [:resting, :executing, :healing],
+  healing:       [:resting, :executing]
 }
 ```
 
-**Rationale for transition rules:**
-- Executing and Improving always go through Contemplating before choosing the next action. This prevents rapid oscillation between executing and improving without evaluation.
-- Contemplating is the decision point. It can choose to execute a goal, run improvement scans, or rest.
-- Resting always returns to Contemplating. It never directly starts work.
+**Transition rationale:**
+- `:healing` is reachable from any active state (executing, improving, contemplating) but NOT from resting. If the system is resting, there is nothing to heal.
+- `:healing` exits to `:resting` (if healing completed but system should cool down) or `:executing` (if healing fixed the issue and there is pending work).
+- `:healing` does NOT transition to `:improving` or `:contemplating` to prevent healing -> contemplating -> healing oscillation.
 
-### GenServer State Structure
+### Healing Trigger Detection
+
+Add health signals to `gather_system_state/0`:
 
 ```elixir
-defstruct [
-  :fsm_state,           # :executing | :improving | :contemplating | :resting
-  :current_goal_id,     # Goal being executed (nil when not executing)
-  :rest_timer_ref,      # Process.send_after ref for rest -> contemplating
-  :last_state_change,   # Timestamp
-  :cycle_count,         # How many full loops completed
-  :last_scan_at,        # When self-improvement last ran
-  :paused,              # Manual pause flag (human override)
-  :pause_reason,        # Why paused
-  config: %{
-    rest_duration_ms: 300_000,       # 5 minutes default
-    scan_interval_ms: 3_600_000,     # 1 hour minimum between scans
-    max_concurrent_goals: 1,         # Start with 1, can increase later
-    auto_start: false                # Don't auto-start on hub boot
+defp gather_system_state do
+  # ... existing goal/budget gathering ...
+
+  # NEW: Health signals for healing detection
+  health = gather_health_signals()
+
+  %{
+    # existing fields...
+    pending_goals: pending_goals,
+    active_goals: active_goals,
+    budget_exhausted: budget_exhausted,
+    # NEW fields
+    health_degraded: health.degraded,
+    health_signals: health.signals
   }
-]
-```
+end
 
-### Placement in Supervision Tree
+defp gather_health_signals do
+  signals = []
 
-```
-AgentCom.Supervisor (:one_for_one)
-  |-- ...existing children...
-  |-- AgentCom.RepoRegistry
-  |-- AgentCom.GoalBacklog           # NEW -- before HubFSM
-  |-- AgentCom.ClaudeClient          # NEW -- before HubFSM
-  |-- AgentCom.SelfImprovement       # NEW -- before HubFSM
-  |-- AgentCom.HubFSM               # NEW -- after all its dependencies
-  |-- AgentCom.DashboardState
-  |-- AgentCom.DashboardNotifier
-  |-- AgentCom.DetsBackup
-  |-- Bandit
-```
+  # Signal 1: Agent connectivity (all agents offline)
+  agents = try_safe(fn -> AgentCom.AgentFSM.list_all() end, [])
+  online_agents = Enum.count(agents, fn a -> a.fsm_state != :offline end)
+  signals = if online_agents == 0 and length(agents) > 0,
+    do: [{:no_agents_online, %{total: length(agents)}} | signals],
+    else: signals
 
-**Placement rationale:**
-- GoalBacklog before HubFSM because HubFSM reads/writes goals
-- ClaudeClient before HubFSM because HubFSM calls Claude for decomposition
-- SelfImprovement before HubFSM because HubFSM triggers scans
-- HubFSM before DashboardState so dashboard can query HubFSM state
-- All new GenServers before DetsBackup so their DETS tables get backed up
+  # Signal 2: Task throughput collapse (tasks stuck for extended period)
+  stuck_tasks = try_safe(fn ->
+    AgentCom.TaskQueue.list(status: :assigned)
+    |> Enum.count(fn t ->
+      System.system_time(:millisecond) - t.updated_at > 600_000  # 10 min
+    end)
+  end, 0)
+  signals = if stuck_tasks > 3,
+    do: [{:tasks_stuck, %{count: stuck_tasks}} | signals],
+    else: signals
 
-### Integration Points
+  # Signal 3: Ollama endpoint health (all endpoints unhealthy)
+  endpoints = try_safe(fn -> AgentCom.LlmRegistry.list_endpoints() end, [])
+  healthy = Enum.count(endpoints, fn ep -> ep.status == :healthy end)
+  signals = if length(endpoints) > 0 and healthy == 0,
+    do: [{:all_endpoints_unhealthy, %{total: length(endpoints)}} | signals],
+    else: signals
 
-| Existing Module | How HubFSM Integrates |
-|----------------|----------------------|
-| **TaskQueue** | HubFSM calls `TaskQueue.submit/1` to inject decomposed tasks. Subscribes to PubSub "tasks" to monitor completion of its goal's tasks. |
-| **Scheduler** | No direct interaction. HubFSM submits tasks; Scheduler schedules them. Decoupled via TaskQueue + PubSub. |
-| **AgentFSM** | HubFSM reads `AgentFSM.list_all/0` to check agent utilization during Contemplating state. No writes. |
-| **RepoRegistry** | HubFSM reads `RepoRegistry.list_repos/0` to know which repos to scan for improvement. |
-| **LlmRegistry** | HubFSM reads `LlmRegistry.list_endpoints/0` to understand available compute during Contemplating. |
-| **Config** | HubFSM reads configuration (rest duration, scan interval) from Config. Stores runtime config there too. |
-| **PubSub** | Subscribes to "tasks" (task completion), "presence" (agent availability). Publishes on "hub_fsm" (state changes for dashboard). |
-| **DashboardState** | Dashboard queries HubFSM.snapshot/0 for current state, goal progress, cycle history. |
-| **DetsBackup** | GoalBacklog DETS table added to DetsBackup's @tables list. |
+  # Signal 4: Repeated goal failures
+  recent_failures = try_safe(fn ->
+    AgentCom.GoalBacklog.stats()
+    |> Map.get(:by_status, %{})
+    |> Map.get(:failed, 0)
+  end, 0)
+  signals = if recent_failures > 3,
+    do: [{:excessive_goal_failures, %{count: recent_failures}} | signals],
+    else: signals
 
-### PubSub Events (new "hub_fsm" topic)
-
-```elixir
-# HubFSM publishes:
-{:hub_fsm_event, %{event: :state_changed, from: :contemplating, to: :executing, goal_id: "goal-xxx"}}
-{:hub_fsm_event, %{event: :goal_started, goal_id: "goal-xxx", task_count: 3}}
-{:hub_fsm_event, %{event: :goal_completed, goal_id: "goal-xxx", results: %{}}}
-{:hub_fsm_event, %{event: :scan_started, repos: ["repo1", "repo2"]}}
-{:hub_fsm_event, %{event: :scan_complete, findings_count: 5}}
-{:hub_fsm_event, %{event: :paused, reason: "manual"}}
-{:hub_fsm_event, %{event: :resumed}}
-
-# HubFSM subscribes to:
-"tasks"     -- monitors :task_completed, :task_dead_letter for its goals' tasks
-"presence"  -- monitors agent availability for scheduling decisions
-```
-
----
-
-## New Component: AgentCom.GoalBacklog
-
-### Why a Separate GenServer (not TaskQueue extension)
-
-Goals and tasks are fundamentally different entities:
-
-| Aspect | Goal | Task |
-|--------|------|------|
-| Lifecycle | Created -> Decomposed -> Executing -> Completed/Failed | Queued -> Assigned -> Working -> Completed/Failed |
-| Granularity | High-level objective ("Add authentication to API") | Atomic work unit ("Create auth plug module") |
-| Decomposition | Contains sub-tasks (1:N relationship) | Atomic, no children |
-| Priority | Strategic ordering, human-managed | Execution-time priority (urgent/high/normal/low) |
-| Owner | HubFSM (proactive) | Any submitter (reactive) |
-| Persistence | Survives across multiple execution cycles | Completed tasks are historical |
-
-Cramming goals into TaskQueue would:
-- Pollute TaskQueue's scheduling index with non-schedulable entities
-- Require complex status filtering (is this a goal or a task?)
-- Break TaskQueue's clean generation-fencing model (goals don't have generations)
-- Mix two different priority systems (strategic ordering vs execution priority)
-
-### State Design
-
-```elixir
-# DETS table: :goal_backlog
-# Key: goal_id (string)
-# Value: goal map
-
-%{
-  id: "goal-abc123",
-  title: "Add rate limiting to Claude API calls",
-  description: "Implement per-minute and per-hour rate limits...",
-  status: :pending,            # :pending | :decomposing | :ready | :executing |
-                               # :completed | :failed | :blocked
-  priority: 0,                 # Lower = higher priority (same as task queue)
-  source: :manual,             # :manual | :self_improvement | :llm_generated
-  created_at: 1707660000000,
-  created_by: "admin",         # or "hub_fsm" for auto-generated goals
-  decomposition: nil,          # Populated after Claude decomposes
-  task_ids: [],                # Task IDs created from this goal
-  task_results: %{},           # task_id => :completed | :failed
-  metadata: %{},               # Arbitrary context
-  parent_goal_id: nil,         # For hierarchical goals (future)
-  repo: "https://github.com/...",  # Target repo
-  completed_at: nil,
-  error: nil
-}
-```
-
-**Decomposition structure** (populated by Claude):
-
-```elixir
-%{
-  tasks: [
-    %{
-      description: "Create AgentCom.RateLimit.Claude module",
-      priority: "normal",
-      complexity_tier: "standard",
-      repo: "https://github.com/...",
-      file_hints: ["lib/agent_com/rate_limit/claude.ex"],
-      success_criteria: ["Module compiles", "Tests pass"],
-      verification_steps: [
-        %{name: "compile", command: "mix compile", expect: "exit_0"},
-        %{name: "test", command: "mix test test/rate_limit/claude_test.exs", expect: "exit_0"}
-      ],
-      depends_on: []            # Indices into this tasks list
-    },
-    # ...more tasks
-  ],
-  reasoning: "Split into 3 tasks because...",
-  estimated_total_complexity: "standard",
-  decomposed_at: 1707660100000
-}
-```
-
-### Public API
-
-```elixir
-defmodule AgentCom.GoalBacklog do
-  def add_goal(params)           # Add a new goal
-  def get_goal(goal_id)          # Retrieve by ID
-  def list_goals(opts \\ [])     # List with filters (status, source)
-  def update_goal(goal_id, updates)  # Update fields
-  def reorder(goal_id, new_position) # Change priority ordering
-  def next_pending()             # Get highest-priority pending goal
-  def mark_decomposed(goal_id, decomposition)
-  def mark_executing(goal_id, task_ids)
-  def mark_completed(goal_id)
-  def mark_failed(goal_id, error)
-  def record_task_result(goal_id, task_id, result)
-  def snapshot()                 # Dashboard summary
-  def stats()                    # Counts by status
+  %{
+    degraded: length(signals) > 0,
+    signals: signals
+  }
 end
 ```
 
-### Persistence
+### Healing Predicates
 
-DETS table `:goal_backlog`, same pattern as other DETS GenServers. Add to DetsBackup's @tables list. Priority ordering stored as an integer field (same pattern as TaskQueue).
+Add to `HubFSM.Predicates`:
 
----
+```elixir
+# From any active state, transition to healing if health degraded
+def evaluate(:executing, %{health_degraded: true, health_signals: signals}) do
+  {:transition, :healing, "health degraded: #{format_signals(signals)}"}
+end
 
-## New Component: AgentCom.ClaudeClient
+def evaluate(:improving, %{health_degraded: true, health_signals: signals}) do
+  {:transition, :healing, "health degraded: #{format_signals(signals)}"}
+end
 
-### Why a Separate GenServer
+def evaluate(:contemplating, %{health_degraded: true, health_signals: signals}) do
+  {:transition, :healing, "health degraded: #{format_signals(signals)}"}
+end
 
-The Hub FSM needs to call the Claude Messages API directly from the Elixir hub for goal decomposition and self-improvement analysis. This is different from the sidecar's ClaudeExecutor (which shells out to `claude` CLI). The hub needs:
+# Healing: stay while cycle running (async Task pattern, same as improving)
+def evaluate(:healing, _system_state), do: :stay
+```
 
-1. **Programmatic API access** -- structured JSON request/response, not CLI spawning
-2. **Rate limiting** -- the hub must not exceed API rate limits across all its own calls
-3. **Shared configuration** -- API key, default model, max tokens managed centrally
-4. **Telemetry** -- track hub-side LLM usage separately from agent task execution
+### Healing Cycle (HubFSM.Healer)
 
-### Architecture Decision: GenServer with Req
+```elixir
+defmodule AgentCom.HubFSM.Healer do
+  @moduledoc """
+  Stateless healing cycle module. Called by HubFSM when entering :healing state.
 
-**Use a dedicated GenServer wrapping the Req HTTP client.** Not a library like Anthropix because:
+  Four-phase cycle: detect -> diagnose -> fix -> verify.
+  Uses deterministic checks first, LLM diagnosis only if deterministic checks
+  are inconclusive.
+  """
 
-1. The hub makes ~10-50 Claude API calls per hour (goal decomposition, self-improvement analysis). This is low-volume, bursty work.
-2. Anthropix (v0.6.2) uses Req internally, so we would be wrapping a wrapper. Direct Req usage gives full control over retries, timeouts, and error handling.
-3. The GenServer serializes requests to enforce rate limiting. With only the hub making calls (not agents), a single process with a simple token bucket is sufficient.
-4. Req needs to be added as a dependency anyway (it is not currently in mix.exs).
+  @max_fix_attempts 3
 
-**Alternative considered and rejected:** Using the existing sidecar ClaudeExecutor pattern (spawn `claude` CLI). Rejected because: the hub is Elixir, spawning a Node.js CLI from Elixir adds unnecessary process management. Direct HTTP is simpler, faster, and more observable.
+  def run(health_signals) do
+    with {:ok, diagnosis} <- diagnose(health_signals),
+         {:ok, fix_result} <- apply_fixes(diagnosis),
+         {:ok, verification} <- verify(fix_result) do
+      {:ok, %{
+        signals: health_signals,
+        diagnosis: diagnosis,
+        fix_result: fix_result,
+        verification: verification,
+        healed_at: System.system_time(:millisecond)
+      }}
+    else
+      {:error, reason} ->
+        {:error, %{signals: health_signals, failure_reason: reason}}
+    end
+  end
 
-**Alternative considered and rejected:** No GenServer, just a module with functions that call Req directly. Rejected because: rate limiting state, API key management, and request queuing require process state.
+  defp diagnose(signals) do
+    # Deterministic diagnosis first (no LLM needed for most cases)
+    diagnoses = Enum.map(signals, fn
+      {:no_agents_online, _meta} ->
+        %{signal: :no_agents_online, action: :wait_for_reconnect, severity: :high}
 
-### State Design
+      {:tasks_stuck, %{count: count}} ->
+        %{signal: :tasks_stuck, action: :reclaim_and_requeue, severity: :medium,
+          detail: "#{count} tasks stuck >10min"}
+
+      {:all_endpoints_unhealthy, _meta} ->
+        %{signal: :all_endpoints_unhealthy, action: :restart_health_checks, severity: :high}
+
+      {:excessive_goal_failures, %{count: count}} ->
+        %{signal: :excessive_goal_failures, action: :pause_goal_processing, severity: :medium,
+          detail: "#{count} recent failures"}
+    end)
+
+    {:ok, diagnoses}
+  end
+
+  defp apply_fixes(diagnoses) do
+    results = Enum.map(diagnoses, fn diagnosis ->
+      case diagnosis.action do
+        :wait_for_reconnect ->
+          # Cannot fix externally, just wait. Set a reconnect deadline.
+          {:deferred, :waiting_for_agents, 120_000}
+
+        :reclaim_and_requeue ->
+          # Reclaim all stuck assigned tasks
+          reclaimed = reclaim_stuck_tasks()
+          {:fixed, :tasks_reclaimed, reclaimed}
+
+        :restart_health_checks ->
+          # Trigger immediate health check cycle on all endpoints
+          trigger_endpoint_health_checks()
+          {:fixed, :health_checks_triggered, nil}
+
+        :pause_goal_processing ->
+          # Don't submit new goals until failures investigated
+          {:fixed, :goal_processing_paused, nil}
+      end
+    end)
+
+    {:ok, results}
+  end
+
+  defp verify(fix_results) do
+    # Wait briefly (5s) then re-check health signals
+    Process.sleep(5_000)
+    # Re-gather signals and check if situation improved
+    {:ok, %{re_checked: true, timestamp: System.system_time(:millisecond)}}
+  end
+end
+```
+
+### HubFSM Integration for Healing
+
+In `do_transition/3`, add healing cycle spawn (same pattern as improving/contemplating):
+
+```elixir
+# Spawn async healing cycle when entering :healing
+if new_state == :healing do
+  pid = self()
+  signals = Map.get(state, :health_signals, [])
+
+  Task.start(fn ->
+    result = AgentCom.HubFSM.Healer.run(signals)
+    send(pid, {:healing_cycle_complete, result})
+  end)
+end
+```
+
+Add `handle_info` for healing completion:
+
+```elixir
+def handle_info({:healing_cycle_complete, result}, state) do
+  Logger.info("healing_cycle_complete", result: inspect(result))
+
+  if state.fsm_state == :healing do
+    system_state = gather_system_state()
+
+    {new_state, reason} =
+      if system_state.pending_goals > 0 and not system_state.health_degraded do
+        {:executing, "healed, pending goals"}
+      else
+        {:resting, "healing cycle complete"}
+      end
+
+    updated = do_transition(state, new_state, reason)
+    {:noreply, updated}
+  else
+    {:noreply, state}
+  end
+end
+```
+
+### State Struct Extension
+
+Add to `HubFSM` defstruct:
 
 ```elixir
 defstruct [
-  :api_key,
-  :default_model,           # "claude-sonnet-4-5" or configurable
-  :max_tokens,              # Default max output tokens
-  :requests_this_minute,    # Simple counter for rate limiting
-  :minute_reset_at,         # When to reset counter
-  :total_input_tokens,      # Lifetime tracking
-  :total_output_tokens,     # Lifetime tracking
-  :total_requests           # Lifetime tracking
+  # existing fields...
+  :fsm_state,
+  :last_state_change,
+  :tick_ref,
+  :watchdog_ref,
+  cycle_count: 0,
+  paused: false,
+  transition_count: 0,
+  # NEW fields for healing
+  health_signals: [],        # Latest health signals from gather_system_state
+  healing_attempts: 0,       # Count of healing cycles since last healthy state
+  last_healed_at: nil        # Timestamp of last healing completion
 ]
 ```
 
-### Public API
+---
+
+## Detailed Architecture: Hub-to-Ollama LLM Routing
+
+### Architecture Decision: OllamaClient Module, Not Replace ClaudeClient
+
+**Do not replace ClaudeClient.** Create `AgentCom.OllamaClient` as a parallel backend module. ClaudeClient continues to work for Claude CLI calls. A routing layer in ClaudeClient chooses which backend to use.
+
+**Rationale:**
+1. Claude CLI is the proven backend for complex operations (goal decomposition, semantic verification). Ollama models may not match quality for these tasks.
+2. Hub needs both backends: Claude for high-quality reasoning, Ollama for fast/cheap operations (healing diagnosis, simple triage).
+3. CostLedger already gates ClaudeClient. OllamaClient is free (local compute), so it bypasses CostLedger budget checks.
+
+### OllamaClient Module Design
 
 ```elixir
-defmodule AgentCom.ClaudeClient do
-  @doc "Send a messages request. Returns {:ok, response} or {:error, reason}."
-  def chat(messages, opts \\ [])
+defmodule AgentCom.OllamaClient do
+  @moduledoc """
+  HTTP client for Ollama /api/chat endpoint.
 
-  @doc "Convenience: single user message, get text response."
-  def ask(prompt, opts \\ [])
+  Direct HTTP calls to locally-running Ollama. No GenServer wrapper needed
+  because:
+  1. Ollama handles concurrency internally
+  2. No rate limiting needed (local compute)
+  3. No API key management
+  4. No cost tracking (free)
 
-  @doc "Structured output: ask Claude to respond in JSON matching a schema."
-  def ask_json(prompt, schema_description, opts \\ [])
+  Functions are called by ClaudeClient or HubFSM.Healer directly.
+  """
 
-  @doc "Get usage statistics."
-  def usage_stats()
-end
-```
+  @default_url "http://localhost:11434"
+  @default_model "qwen3:8b"
+  @default_timeout_ms 120_000
 
-### Rate Limiting Strategy
+  @doc """
+  Send a chat request to Ollama. Returns {:ok, response} or {:error, reason}.
 
-Simple counter per minute. The Claude API uses RPM (requests per minute), ITPM (input tokens per minute), and OTPM (output tokens per minute). For the hub's low volume, tracking RPM is sufficient:
+  Options:
+  - :model - model name (default: #{@default_model})
+  - :url - Ollama base URL (default: #{@default_url})
+  - :tools - list of tool definitions for tool calling
+  - :timeout_ms - request timeout (default: #{@default_timeout_ms})
+  """
+  @spec chat(list(map()), keyword()) :: {:ok, map()} | {:error, term()}
+  def chat(messages, opts \\ []) do
+    url = Keyword.get(opts, :url, ollama_url())
+    model = Keyword.get(opts, :model, ollama_model())
+    tools = Keyword.get(opts, :tools, [])
+    timeout = Keyword.get(opts, :timeout_ms, @default_timeout_ms)
 
-```elixir
-defp check_rate_limit(state) do
-  now = System.system_time(:millisecond)
-  if now >= state.minute_reset_at do
-    # New minute window
-    {:ok, %{state | requests_this_minute: 0, minute_reset_at: now + 60_000}}
-  else
-    if state.requests_this_minute >= max_rpm() do
-      wait_ms = state.minute_reset_at - now
-      {:rate_limited, wait_ms, state}
-    else
-      {:ok, state}
+    body = %{
+      model: model,
+      messages: messages,
+      stream: false
+    }
+
+    body = if tools != [], do: Map.put(body, :tools, tools), else: body
+
+    case http_post("#{url}/api/chat", body, timeout) do
+      {:ok, %{status: 200, body: resp_body}} ->
+        {:ok, resp_body}
+
+      {:ok, %{status: status, body: resp_body}} ->
+        {:error, {:http_error, status, resp_body}}
+
+      {:error, reason} ->
+        {:error, {:connection_error, reason}}
+    end
+  end
+
+  @doc """
+  Check if Ollama is reachable and the target model is loaded.
+  """
+  @spec health_check(keyword()) :: :ok | {:error, term()}
+  def health_check(opts \\ []) do
+    url = Keyword.get(opts, :url, ollama_url())
+    model = Keyword.get(opts, :model, ollama_model())
+
+    case http_get("#{url}/api/tags") do
+      {:ok, %{status: 200, body: %{"models" => models}}} ->
+        if Enum.any?(models, fn m -> String.starts_with?(m["name"], model) end) do
+          :ok
+        else
+          {:error, {:model_not_found, model}}
+        end
+
+      {:ok, %{status: status}} ->
+        {:error, {:unhealthy, status}}
+
+      {:error, reason} ->
+        {:error, {:unreachable, reason}}
+    end
+  end
+
+  defp ollama_url, do: Application.get_env(:agent_com, :ollama_url, @default_url)
+  defp ollama_model, do: Application.get_env(:agent_com, :ollama_model, @default_model)
+
+  defp http_post(url, body, timeout) do
+    # Use :httpc (already available, no new deps) for simple HTTP POST
+    # Req is an option but :httpc avoids adding dependency for simple JSON POST
+    headers = [{'content-type', 'application/json'}]
+    json_body = Jason.encode!(body)
+
+    case :httpc.request(:post,
+      {String.to_charlist(url), headers, 'application/json', json_body},
+      [{:timeout, timeout}, {:connect_timeout, 5_000}],
+      [{:body_format, :binary}]
+    ) do
+      {:ok, {{_, status, _}, _headers, resp_body}} ->
+        {:ok, %{status: status, body: Jason.decode!(resp_body)}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp http_get(url) do
+    case :httpc.request(:get,
+      {String.to_charlist(url), []},
+      [{:timeout, 5_000}, {:connect_timeout, 3_000}],
+      [{:body_format, :binary}]
+    ) do
+      {:ok, {{_, status, _}, _headers, resp_body}} ->
+        {:ok, %{status: status, body: Jason.decode!(resp_body)}}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 end
 ```
 
-When rate limited, the GenServer returns `{:error, {:rate_limited, wait_ms}}`. Callers (HubFSM) handle backoff by scheduling a retry via Process.send_after.
+**HTTP client decision: Use `:httpc` (built-in), not Req.** The hub already uses `:httpc` for LlmRegistry health probes. OllamaClient makes simple JSON POST requests. Adding Req for this would be overkill -- `:httpc` is already available with no additional dependencies. If the hub needs Req for Claude API calls later (replacing CLI), it can be added then.
 
-### HTTP Client: Req
+### ClaudeClient Routing Layer
 
-Add `{:req, "~> 0.5"}` to mix.exs. Req brings Finch (connection pooling) as a transitive dependency. This is appropriate now because:
-- The hub is making real HTTP calls to the Claude API (not just :httpc health probes)
-- Req provides built-in retry, JSON encoding/decoding, and error handling
-- Finch provides connection pooling for keep-alive to api.anthropic.com
-
-**No connection pooling tuning needed.** Default Finch pool (10 connections) is far more than the hub's ~1 request per minute average.
-
-### Telemetry Events
+Modify `ClaudeClient` to support routing between backends:
 
 ```elixir
-[:agent_com, :claude_client, :request]   # duration_ms, model, input_tokens, output_tokens
-[:agent_com, :claude_client, :error]     # error_type, status_code
-[:agent_com, :claude_client, :rate_limit] # wait_ms
-```
-
----
-
-## New Component: AgentCom.SelfImprovement
-
-### Architecture
-
-A library module (not a GenServer) called by HubFSM during the Improving state. Stateless analysis functions that return findings.
-
-**Why not a GenServer:** Self-improvement scanning is triggered by HubFSM and runs synchronously within its context. There is no persistent state to maintain between scans. Results are returned to HubFSM, which decides what to do with them.
-
-### Analysis Strategy: LLM-Based Code Review (not AST parsing)
-
-**Use Claude to analyze code, not Elixir's AST parser or static analysis.** Rationale:
-
-1. **AST parsing is limited to Elixir.** The codebase includes Node.js sidecar code, configuration files, and documentation. AST-based analysis would miss most of the codebase.
-2. **Credo/Dialyzer already exist.** If we wanted static analysis, we would just run those tools. The self-improvement scanner should find higher-level issues: architectural concerns, missing error handling patterns, inconsistent conventions, documentation gaps, dead code.
-3. **LLM analysis can reason about intent.** "This module duplicates logic from X" or "This error path silently swallows failures" requires understanding of the codebase, not just syntax.
-
-### Scan Workflow
-
-```
-HubFSM enters :improving
-  |
-  v
-SelfImprovement.scan(repos, claude_client)
-  |
-  | For each repo in RepoRegistry (active only):
-  |   1. Git diff since last scan (or last N days)
-  |   2. If no changes, skip repo
-  |   3. Gather changed files + surrounding context
-  |   4. Send to Claude with analysis prompt
-  |   5. Parse structured response into findings
-  |
-  v
-Returns: [%Finding{severity, category, file, description, suggested_fix}]
-  |
-  v
-HubFSM filters findings by severity/category
-  |
-  v
-High-severity findings -> GoalBacklog.add_goal()
-Low-severity findings -> logged for dashboard visibility
-```
-
-### Scan Input Strategy
-
-**Git diff analysis, not full codebase scan.** Scanning the entire codebase on every cycle would:
-- Cost excessive Claude API tokens
-- Produce repetitive findings
-- Take too long (blocking HubFSM in Improving state)
-
-Instead, scan only files changed since the last scan:
-
-```elixir
-defmodule AgentCom.SelfImprovement do
-  @doc "Scan repos for improvement opportunities based on recent changes."
-  def scan(repos, last_scan_at, claude_client) do
-    repos
-    |> Enum.filter(fn repo -> repo.status == :active end)
-    |> Enum.flat_map(fn repo ->
-      case get_changes_since(repo, last_scan_at) do
-        {:ok, changes} when changes != [] ->
-          analyze_changes(repo, changes, claude_client)
-        _ ->
-          []
-      end
-    end)
-  end
-
-  defp get_changes_since(repo, since_timestamp) do
-    # Shell out to git diff --name-only --since=...
-    # Returns list of changed file paths
-  end
-
-  defp analyze_changes(repo, changed_files, claude_client) do
-    # Read file contents, build context, send to Claude
-    # Parse response into Finding structs
-  end
-end
-```
-
-### Finding Structure
-
-```elixir
-%{
-  id: "finding-abc123",
-  repo: "https://github.com/...",
-  severity: :high,              # :high | :medium | :low | :info
-  category: :error_handling,    # :error_handling | :duplication | :convention |
-                                # :documentation | :performance | :security | :dead_code
-  file: "lib/agent_com/scheduler.ex",
-  line_range: {258, 280},       # approximate
-  description: "The try_schedule_all/2 function silently ignores...",
-  suggested_fix: "Add explicit error handling for...",
-  auto_goalable: true,          # Can this be converted to a goal automatically?
-  found_at: 1707660000000
-}
-```
-
----
-
-## Pipeline DAG Scheduling
-
-### How DAG Awareness Changes the Existing Scheduler
-
-The existing Scheduler is a **flat priority queue matcher**: it takes all queued tasks, sorts by priority, and matches each against idle agents. Tasks have no dependency relationships.
-
-Pipeline DAG scheduling adds **dependency edges** between tasks within a goal. A task cannot be scheduled until all its dependencies are completed.
-
-### Architecture Decision: Extend TaskQueue, Don't Replace Scheduler
-
-The DAG is a property of goals, not of the scheduling algorithm. The Scheduler's matching logic (capability check, tier routing, endpoint selection) remains unchanged. What changes is **which tasks are eligible for scheduling**.
-
-**Implementation:**
-
-1. **Task struct extension:** Add `depends_on: [task_id]` and `goal_id: goal_id` fields to the task map in TaskQueue. These are optional (nil for tasks not part of a goal).
-
-2. **Scheduling eligibility filter:** In Scheduler's `try_schedule_all/2`, after filtering paused repos, add a dependency check:
-
-```elixir
-# After filtering paused repos, filter out tasks with unmet dependencies
-schedulable_tasks =
-  schedulable_tasks
-  |> Enum.filter(fn task ->
-    deps = Map.get(task, :depends_on, [])
-    deps == [] or Enum.all?(deps, fn dep_id ->
-      case AgentCom.TaskQueue.get(dep_id) do
-        {:ok, %{status: :completed}} -> true
-        _ -> false
-      end
-    end)
-  end)
-```
-
-3. **No DAG library needed.** The dependency structure is a simple list of predecessor task IDs per task. Topological ordering happens at decomposition time (ClaudeClient produces tasks in dependency order). The Scheduler only needs to check "are my predecessors completed?" -- a simple filter, not a graph traversal.
-
-**Why not use the `dag` hex package:** The DAG is never traversed as a graph. Each task knows its predecessors. The check is O(d) where d is the number of dependencies per task (typically 0-3). A graph library adds complexity with no performance benefit.
-
-### Pipeline State Tracking
-
-Goals track their tasks and pipeline progress:
-
-```elixir
-# In GoalBacklog, when goal enters :executing:
-%{
-  goal_id: "goal-abc",
-  task_ids: ["task-1", "task-2", "task-3"],
-  dependency_graph: %{
-    "task-2" => ["task-1"],      # task-2 depends on task-1
-    "task-3" => ["task-1", "task-2"]  # task-3 depends on both
-  },
-  task_results: %{
-    "task-1" => :completed,
-    "task-2" => :executing,
-    "task-3" => :blocked          # Waiting on task-2
-  }
-}
-```
-
-HubFSM monitors task completion events and updates goal progress. When a dependency-predecessor completes, its dependents become eligible for scheduling (they are already in TaskQueue with status :queued, the Scheduler's dependency filter now lets them through).
-
----
-
-## Data Flow: Complete Goal-to-Completion Pipeline
-
-```
-1. GOAL CREATION
-   Manual: POST /api/goals {title, description, repo}
-   Auto:   SelfImprovement finding -> GoalBacklog.add_goal()
-     |
-     v
-   GoalBacklog stores goal with status: :pending
-   PubSub broadcast {:hub_fsm_event, :goal_added}
-
-2. CONTEMPLATION (HubFSM in :contemplating)
-   HubFSM.contemplate():
-     - Read GoalBacklog.next_pending()
-     - Read AgentFSM.list_all() -- how many agents idle?
-     - Read LlmRegistry.list_endpoints() -- compute available?
-     - Read TaskQueue.stats() -- queue depth?
-     - Decision: execute goal, scan for improvements, or rest
-     |
-     v
-   Transition to :executing, :improving, or :resting
-
-3. GOAL DECOMPOSITION (HubFSM enters :executing)
-   HubFSM.start_execution(goal_id):
-     - GoalBacklog.get_goal(goal_id)
-     - ClaudeClient.ask_json(decomposition_prompt, schema)
-       |
-       | Claude API call: "Decompose this goal into tasks..."
-       | Input: goal description, repo context, codebase structure
-       | Output: structured task list with dependencies
-       |
-     - GoalBacklog.mark_decomposed(goal_id, decomposition)
-     |
-     v
-   For each task in decomposition.tasks:
-     TaskQueue.submit(%{
-       description: task.description,
-       priority: task.priority,
-       repo: goal.repo,
-       depends_on: [resolved_task_ids],  # Map decomposition indices to real IDs
-       goal_id: goal_id,
-       file_hints: task.file_hints,
-       success_criteria: task.success_criteria,
-       verification_steps: task.verification_steps,
-       complexity_tier: task.complexity_tier
-     })
-     |
-     v
-   GoalBacklog.mark_executing(goal_id, task_ids)
-   PubSub {:hub_fsm_event, :goal_started}
-
-4. TASK SCHEDULING (Existing pipeline, minimal changes)
-   TaskQueue broadcasts :task_submitted
-     |
-     v
-   Scheduler.try_schedule_all()
-     - Filter paused repos (existing)
-     - Filter unmet dependencies (NEW)
-     - Capability match (existing)
-     - Tier routing (existing)
-     - Assign to agent (existing)
-     |
-     v
-   Socket pushes task_assign to sidecar (existing)
-   Sidecar executes (existing 3-executor architecture)
-
-5. COMPLETION MONITORING (HubFSM subscribes to "tasks")
-   HubFSM.handle_info({:task_event, %{event: :task_completed, task_id: tid}})
-     - GoalBacklog.record_task_result(goal_id, tid, :completed)
-     - Check: all goal tasks completed?
-       YES -> GoalBacklog.mark_completed(goal_id)
-              HubFSM transitions to :contemplating
-       NO  -> Continue monitoring
-
-   HubFSM.handle_info({:task_event, %{event: :task_dead_letter, task_id: tid}})
-     - GoalBacklog.record_task_result(goal_id, tid, :failed)
-     - Policy: one failed task fails the goal? Or continue with others?
-     - Default: continue with independent tasks, mark goal :partial on completion
-
-6. VERIFICATION COMPLETION
-   Existing self-verification loop in sidecar handles task-level verification.
-   HubFSM adds goal-level verification: after all tasks complete, optionally
-   run a validation check (e.g., full test suite on repo).
-```
-
----
-
-## Pre-Publication Repo Cleanup
-
-### Architecture
-
-A library module `AgentCom.RepoCleanup` called by HubFSM before or after goal execution. Performs mechanical cleanup operations:
-
-1. **Merge stale branches** -- branches with merged PRs that weren't deleted
-2. **Delete dead branches** -- branches with no recent commits and no open PR
-3. **Clean build artifacts** -- `_build/`, `node_modules/`, `deps/` in DETS data dirs
-4. **DETS compaction** -- trigger DetsBackup.compact_all() during quiet periods
-5. **Log rotation** -- prune old log files beyond retention policy
-
-This is NOT an LLM task. These are mechanical git and filesystem operations that can be scripted deterministically.
-
-### Integration
-
-HubFSM calls `RepoCleanup.run(repos)` during the Resting or Contemplating state. Results are logged. Cleanup failures don't affect FSM state transitions.
-
----
-
-## Updated Supervision Tree (Post-v1.3)
-
-```
-AgentCom.Supervisor (:one_for_one)
-  |-- Phoenix.PubSub
-  |-- Registry (AgentCom.AgentRegistry)
-  |-- AgentCom.Config
-  |-- AgentCom.Auth
-  |-- AgentCom.Mailbox
-  |-- AgentCom.Channels
-  |-- AgentCom.Presence
-  |-- AgentCom.Analytics
-  |-- AgentCom.Threads
-  |-- AgentCom.MessageHistory
-  |-- AgentCom.Reaper
-  |-- Registry (AgentCom.AgentFSMRegistry)
-  |-- AgentCom.AgentSupervisor
-  |-- AgentCom.Verification.Store
-  |-- AgentCom.TaskQueue                    # MODIFIED (depends_on, goal_id fields)
-  |-- AgentCom.Scheduler                    # MODIFIED (dependency filter)
-  |-- AgentCom.MetricsCollector
-  |-- AgentCom.Alerter
-  |-- AgentCom.RateLimiter.Sweeper
-  |-- AgentCom.LlmRegistry
-  |-- AgentCom.RepoRegistry
-  |-- AgentCom.GoalBacklog                  # NEW
-  |-- AgentCom.ClaudeClient                 # NEW
-  |-- AgentCom.HubFSM                      # NEW (depends on GoalBacklog, ClaudeClient,
-  |                                        #   TaskQueue, Scheduler, RepoRegistry, Config)
-  |-- AgentCom.DashboardState               # MODIFIED (includes HubFSM state)
-  |-- AgentCom.DashboardNotifier
-  |-- AgentCom.DetsBackup                   # MODIFIED (adds :goal_backlog table)
-  |-- Bandit
-```
-
----
-
-## Integration Matrix
-
-### New Components (build from scratch)
-
-| Component | Type | Location | Lines (est.) | Depends On |
-|-----------|------|----------|-------------|------------|
-| **HubFSM** | GenServer | lib/agent_com/hub_fsm.ex | ~400 | GoalBacklog, ClaudeClient, TaskQueue, RepoRegistry, Config, PubSub |
-| **GoalBacklog** | GenServer | lib/agent_com/goal_backlog.ex | ~250 | DETS, PubSub |
-| **ClaudeClient** | GenServer | lib/agent_com/claude_client.ex | ~300 | Req (new dep), Config |
-| **SelfImprovement** | Module | lib/agent_com/self_improvement.ex | ~200 | ClaudeClient, RepoRegistry, git (shell) |
-| **RepoCleanup** | Module | lib/agent_com/repo_cleanup.ex | ~150 | RepoRegistry, git (shell) |
-
-### Modified Components
-
-| Component | File | Change Summary | Risk |
-|-----------|------|----------------|------|
-| **TaskQueue** | task_queue.ex | +2 optional fields (depends_on, goal_id) in submit. Nil defaults. | LOW |
-| **Scheduler** | scheduler.ex | Add dependency filter in try_schedule_all after repo filter. ~15 lines. | LOW |
-| **DetsBackup** | dets_backup.ex | Add :goal_backlog to @tables. Add table_owner clause. | LOW |
-| **DashboardState** | dashboard_state.ex | Include HubFSM.snapshot() in state aggregation. | LOW |
-| **Application** | application.ex | Add 3 new children (GoalBacklog, ClaudeClient, HubFSM). | LOW |
-| **Endpoint/Router** | endpoint.ex, router.ex | Add /api/goals CRUD routes, /api/hub-fsm status endpoint. | LOW |
-| **Telemetry** | telemetry.ex | Add claude_client and hub_fsm event handlers. | LOW |
-| **mix.exs** | mix.exs | Add {:req, "~> 0.5"} dependency. | LOW |
-
----
-
-## Patterns to Follow
-
-### Pattern 1: HubFSM as Orchestrator, Not Executor
-
-The HubFSM never executes tasks directly. It creates goals, decomposes them into tasks via Claude, submits tasks to TaskQueue, and monitors completion via PubSub. This preserves the existing task pipeline's integrity and means all tasks (whether human-submitted or HubFSM-generated) flow through the same scheduling, routing, and verification infrastructure.
-
-### Pattern 2: Process.send_after for State Timeouts
-
-```elixir
-# Entering :resting state
-defp enter_resting(state) do
-  timer_ref = Process.send_after(self(), :rest_complete, state.config.rest_duration_ms)
-  %{state | fsm_state: :resting, rest_timer_ref: timer_ref}
-end
-
-# Timer fires
-def handle_info(:rest_complete, state) do
-  {:noreply, transition(state, :contemplating)}
-end
-```
-
-This matches the existing codebase pattern (Scheduler uses Process.send_after for stuck sweep and TTL sweep, TaskQueue for overdue sweep, LlmRegistry for health checks).
-
-### Pattern 3: Manual Pause Override
-
-```elixir
-def pause(reason \\ "manual") do
-  GenServer.call(__MODULE__, {:pause, reason})
-end
-
-def resume() do
-  GenServer.call(__MODULE__, :resume)
-end
-
-# In any state handler, check paused first:
-defp maybe_act(state) do
-  if state.paused do
-    {:noreply, state}  # Do nothing while paused
+# In ClaudeClient.handle_call({:invoke, prompt_type, params}, ...)
+defp select_backend(prompt_type, state) do
+  ollama_enabled = Application.get_env(:agent_com, :ollama_hub_enabled, false)
+  ollama_types = Application.get_env(:agent_com, :ollama_prompt_types, [:diagnose, :triage])
+
+  if ollama_enabled and prompt_type in ollama_types do
+    :ollama
   else
-    do_act(state)
+    :claude_cli
   end
 end
 ```
 
-The human (Nathan) must always be able to pause the autonomous brain. This is a safety valve, not a normal operation.
+This allows gradual migration: start with Claude CLI for everything, enable Ollama for specific low-stakes operations (healing diagnosis, triage), expand as confidence grows.
 
-### Pattern 4: Goal-Task Linking via goal_id
+---
 
-Tasks submitted by HubFSM carry a `goal_id` field. This enables:
-- HubFSM filtering task events to only its goals' tasks
-- Dashboard showing goal progress (X of Y tasks completed)
-- GoalBacklog tracking which tasks belong to which goal
-- No modification to existing task lifecycle (goal_id is just metadata)
+## Detailed Architecture: Pipeline Reliability
 
-### Pattern 5: Idempotent State Transitions
+### Execution Timeout Enforcement
+
+**Current gap:** Task timeout is set in ClaudeClient (120s default) but not propagated to sidecar execution.
+
+**Fix:** Include `execution_timeout_ms` in task_data sent via WebSocket. Sidecar enforces this timeout on OllamaExecutor/ClaudeExecutor.
 
 ```elixir
-defp transition(state, to) do
-  from = state.fsm_state
-  allowed = Map.get(@valid_transitions, from, [])
+# In Scheduler.do_assign, add to task_data:
+task_data = %{
+  # ... existing fields ...
+  execution_timeout_ms: Map.get(assigned_task, :execution_timeout_ms,
+    default_timeout_for_tier(routing_decision.effective_tier))
+}
 
-  if to in allowed do
-    now = System.system_time(:millisecond)
-    broadcast_state_change(from, to)
-    %{state | fsm_state: to, last_state_change: now}
-  else
-    Logger.warning("hub_fsm_invalid_transition", from: from, to: to)
-    state  # Return unchanged state, don't crash
+defp default_timeout_for_tier(:trivial), do: 30_000
+defp default_timeout_for_tier(:standard), do: 300_000  # 5 min for agentic loop
+defp default_timeout_for_tier(:complex), do: 600_000   # 10 min
+defp default_timeout_for_tier(_), do: 300_000
+```
+
+### Wake Failure Handling
+
+**Current gap:** When a task is routed to `:claude` (wake/complex tier) and the Claude CLI fails to start, the task sits in assigned state until the 30s stuck sweep catches it.
+
+**Fix:** Sidecar reports execution start/failure back to hub within 10 seconds. If no start acknowledgment received, Scheduler reclaims immediately.
+
+```
+WebSocket protocol extension:
+  Hub -> Sidecar: {:push_task, task_data}         (existing)
+  Sidecar -> Hub: {:task_started, task_id}         (NEW - within 10s)
+  Sidecar -> Hub: {:task_start_failed, task_id, reason}  (NEW)
+
+If neither received within 10s, Scheduler reclaims task.
+```
+
+### Stuck Task Recovery with Backoff
+
+**Current gap:** Scheduler reclaims stuck tasks after 5 minutes, but the task may be reassigned to the same failing agent/endpoint.
+
+**Fix:** Track reclaim count per task. After N reclaims, either dead-letter or change routing strategy.
+
+```elixir
+# In Scheduler stuck sweep, check reclaim history:
+defp handle_stuck_task(task) do
+  reclaim_count = Map.get(task, :reclaim_count, 0)
+
+  cond do
+    reclaim_count >= 3 ->
+      # Dead-letter after 3 reclaims
+      AgentCom.TaskQueue.dead_letter(task.id, "stuck 3x")
+
+    reclaim_count >= 1 ->
+      # On second reclaim, try different routing
+      AgentCom.TaskQueue.reclaim_task(task.id)
+      AgentCom.TaskQueue.update(task.id, %{
+        reclaim_count: reclaim_count + 1,
+        routing_hint: :force_fallback
+      })
+
+    true ->
+      AgentCom.TaskQueue.reclaim_task(task.id)
+      AgentCom.TaskQueue.update(task.id, %{reclaim_count: reclaim_count + 1})
   end
 end
 ```
 
-Invalid transitions are logged and ignored, not crashes. This matches AgentFSM's existing pattern.
+---
+
+## Data Flow: Agentic Task Execution (End-to-End)
+
+```
+1. TASK ASSIGNMENT (existing, no changes)
+   Scheduler routes task via TaskRouter
+   TaskRouter returns decision: {target_type: :ollama, model: "qwen3:8b", endpoint: "host1:11434"}
+   Scheduler sends {:push_task, task_data} via WebSocket to sidecar
+
+2. SIDECAR RECEIVES TASK
+   WebSocket handler receives task_data
+   Dispatches to OllamaExecutor based on routing_decision.target_type
+   Sidecar sends {:task_started, task_id} back to hub (NEW)
+
+3. AGENTIC TOOL-CALLING LOOP (NEW - inside OllamaExecutor)
+   a. Build system prompt from task description + context
+   b. Load tool definitions: ToolRegistry.tools_for_task(task_data)
+   c. POST /api/chat {model, messages, tools, stream: false}
+   d. Parse response:
+      - If response.message.tool_calls exists:
+          For each tool_call:
+            result = ToolExecutor.execute(tool_call)
+          Append assistant message + tool results to messages
+          GOTO (c) [max 10 iterations]
+      - If response.message.content (no tool_calls):
+          Final answer reached. BREAK.
+   e. Return final content as task result
+
+4. VERIFICATION (existing, enhanced)
+   If task has verification_steps:
+     Run mechanical checks (compile, test, etc.)
+     If verification fails and retries remain:
+       Feed failure back into agentic loop as new context
+       GOTO 3 with failure context appended to messages
+
+5. TASK COMPLETION (existing, no changes)
+   Sidecar sends task_completed/task_failed event
+   Hub Scheduler/GoalOrchestrator receives via PubSub
+```
+
+---
+
+## Data Flow: Hub FSM Healing Cycle
+
+```
+1. DETECTION (in gather_system_state, every 1s tick)
+   Predicates.evaluate returns {:transition, :healing, reason}
+   HubFSM transitions to :healing
+   Captures health_signals in GenServer state
+
+2. HEALING CYCLE (async Task, same pattern as improving/contemplating)
+   Task.start(fn -> Healer.run(health_signals) end)
+
+3. DIAGNOSIS (in Healer.run)
+   Deterministic first: map signals to known fix actions
+   If inconclusive and Ollama available:
+     OllamaClient.chat([system: "You are a system diagnostician...", user: signal_context])
+     Parse LLM suggestion for fix actions
+
+4. FIX APPLICATION (in Healer.apply_fixes)
+   :reclaim_and_requeue -> TaskQueue.reclaim_task for each stuck task
+   :restart_health_checks -> LlmRegistry.trigger_health_check
+   :wait_for_reconnect -> set deadline, check again in 120s
+   :pause_goal_processing -> set flag in HubFSM state
+
+5. VERIFICATION (in Healer.verify)
+   Wait 5s, re-gather health signals
+   If health_degraded still true: log, return partial success
+   If health restored: return full success
+
+6. COMPLETION (back in HubFSM)
+   handle_info({:healing_cycle_complete, result})
+   If pending goals and health restored -> transition to :executing
+   Otherwise -> transition to :resting
+```
+
+---
+
+## Suggested Build Order
+
+```
+Phase A: OllamaClient (Hub-side HTTP client)
+  - AgentCom.OllamaClient module (:httpc-based, no new deps)
+  - health_check/1, chat/2
+  - Config keys: :ollama_url, :ollama_model
+  - Tests: unit with mock HTTP
+  DEPENDS ON: nothing new
+  RISK: LOW (simple HTTP wrapper)
+
+Phase B: Hub FSM Healing State
+  - HubFSM.HealthCheck module (gather_health_signals)
+  - HubFSM.Healer module (diagnose/fix/verify cycle)
+  - Modify HubFSM: add :healing to @valid_transitions
+  - Modify HubFSM.Predicates: add healing predicates
+  - Modify HubFSM struct: health_signals, healing_attempts, last_healed_at
+  - Healing cycle: async Task pattern (existing pattern)
+  DEPENDS ON: Phase A (for Ollama-assisted diagnosis, optional)
+  RISK: MEDIUM (modifying core FSM, but follows existing patterns)
+
+Phase C: Sidecar Tool Infrastructure
+  - ToolRegistry.js (tool schema definitions)
+  - ToolSandbox.js (path validation, timeout, output limits)
+  - ToolExecutor.js (dispatch to tool implementations)
+  - Individual tool implementations (read_file, write_file, run_shell, etc.)
+  DEPENDS ON: nothing (sidecar-side, parallel with hub work)
+  RISK: MEDIUM (security-sensitive: sandbox must prevent path traversal)
+
+Phase D: Sidecar Agentic Tool-Calling Loop
+  - Modify OllamaExecutor: multi-turn loop with tool calling
+  - Non-streaming tool-call turns (stream: false)
+  - Max iteration guard (10 turns default)
+  - Timeout enforcement (execution_timeout_ms from task_data)
+  DEPENDS ON: Phase C (needs ToolRegistry + ToolExecutor)
+  RISK: MEDIUM-HIGH (most complex new behavior, parsing tool_calls)
+
+Phase E: Hub-to-Ollama Routing
+  - Modify ClaudeClient: backend selection (select_backend/2)
+  - Config: :ollama_hub_enabled, :ollama_prompt_types
+  - OllamaClient.ToolLoop for hub-side tool calling (healing tools)
+  - CostLedger: skip budget check for Ollama calls
+  DEPENDS ON: Phase A + Phase B
+  RISK: LOW (routing is config-driven, defaults to Claude CLI)
+
+Phase F: Pipeline Reliability
+  - Execution timeout propagation in task_data
+  - Wake failure detection (task_started/task_start_failed WebSocket msgs)
+  - Stuck task recovery with backoff (reclaim_count tracking)
+  - Dead-letter after N reclaims
+  DEPENDS ON: Phase D (sidecar needs to send task_started)
+  RISK: LOW-MEDIUM (extending existing sweeps and protocols)
+```
+
+### Build Order Rationale
+
+1. **OllamaClient first** because it is a standalone module with no dependencies on other new components. Both Healing and Hub-to-Ollama routing need it.
+2. **Healing State second** because it modifies the FSM core, which is the highest-risk change. Better to stabilize this before adding sidecar complexity. Healing can work with deterministic-only diagnosis initially (no LLM needed).
+3. **Sidecar Tool Infrastructure third** because it is sidecar-side and can be built in parallel with hub-side phases A and B. No hub changes needed.
+4. **Agentic Loop fourth** because it depends on tool infrastructure being in place. This is the most complex new behavior.
+5. **Hub-to-Ollama Routing fifth** because it is config-driven and low risk. Defaults to Claude CLI, gradually enabled.
+6. **Pipeline Reliability last** because it extends existing mechanisms (sweeps, timeouts) and benefits from all other phases being testable.
+
+### Parallelization Opportunity
+
+Phases A+B (hub-side) can run in parallel with Phase C (sidecar-side). They share no code. This reduces critical path from 6 serial phases to approximately 4.
+
+```
+Timeline:
+  [A: OllamaClient] -> [B: Healing] -> [E: Hub Routing] -> [F: Reliability]
+  [C: Tool Infra]    -> [D: Agentic Loop] ----------------/
+```
 
 ---
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: HubFSM Bypassing TaskQueue
+### Anti-Pattern 1: Streaming Tool Calls
 
-The HubFSM must NOT directly assign tasks to agents or communicate with sidecars. All task submission goes through `TaskQueue.submit/1`. All scheduling goes through `Scheduler`. This ensures generation fencing, priority ordering, capability matching, and verification all apply equally to HubFSM-generated tasks.
+**What:** Using `stream: true` with Ollama tool calling.
+**Why bad:** Ollama's streaming tool call support is inconsistent. Tool call chunks may arrive incomplete or in unexpected format. GitHub issue #12557 documents this.
+**Instead:** Use `stream: false` for tool-calling turns. Use streaming only for final text generation (no tools).
 
-### Anti-Pattern 2: Synchronous Claude Calls in GenServer Callbacks
+### Anti-Pattern 2: Hub Executing Tools Directly
 
-Claude API calls take 5-30 seconds. Making them in `handle_call` or `handle_info` blocks the HubFSM GenServer, preventing it from handling pause requests, state queries, or PubSub events.
+**What:** Having the hub's OllamaClient.ToolLoop execute file/git/shell tools on the hub machine.
+**Why bad:** The hub is a coordinator, not an executor. It should not have filesystem access to target repos. Mixing execution with coordination violates the existing "hub decides, sidecar executes" pattern.
+**Instead:** Hub tools are limited to system introspection: query TaskQueue, check agent status, read metrics. File/git/shell tools exist only in sidecar.
 
-**Solution:** Use `Task.async` for Claude calls, handle results via `handle_info`:
+### Anti-Pattern 3: Healing State That Never Exits
 
-```elixir
-def handle_info(:start_decomposition, state) do
-  goal = GoalBacklog.get_goal(state.current_goal_id)
-  task = Task.async(fn -> ClaudeClient.ask_json(build_prompt(goal), schema()) end)
-  {:noreply, %{state | pending_decomposition: task.ref}}
-end
+**What:** Healing cycle runs indefinitely because health signals never fully clear (e.g., agent that will never reconnect).
+**Why bad:** System stays in :healing forever, preventing all other work.
+**Instead:** Healing has a max attempt count (3) and a timeout (watchdog still applies at 2 hours). After max attempts, transition to :resting with logged warning. Do not retry healing until a state change occurs (e.g., agent reconnects, endpoint comes healthy).
 
-def handle_info({ref, result}, %{pending_decomposition: ref} = state) do
-  Process.demonitor(ref, [:flush])
-  handle_decomposition_result(result, state)
-end
-```
+### Anti-Pattern 4: Unbounded Tool-Calling Iterations
 
-### Anti-Pattern 3: Full Codebase Scan Every Cycle
+**What:** Agentic loop runs 50+ iterations because model keeps calling tools without converging.
+**Why bad:** Consumes Ollama compute, delays task completion, may indicate model confusion.
+**Instead:** Hard cap at 10 iterations. If not converged, return partial result with "max iterations reached" warning. Log the full conversation for debugging.
 
-Scanning every file in every repo on every improvement cycle wastes Claude API tokens and time. Use git diff to identify changes since the last scan, and only analyze changed files plus their immediate dependencies.
+### Anti-Pattern 5: Tool Calls Without Sandbox
 
-### Anti-Pattern 4: Goals That Generate Goals Recursively
-
-A self-improvement finding should not trigger a goal that triggers another scan that finds more issues. Limit: one level of auto-generation. Self-improvement findings create goals with `source: :self_improvement`. Goals with this source do NOT trigger additional scans on completion. Only `:manual` goals can trigger the full improvement cycle.
-
-### Anti-Pattern 5: HubFSM State in ETS
-
-The HubFSM's state is low-read, low-write. Dashboard queries it once per refresh (~5s). There is no hot-path reason to use ETS. Keep state in the GenServer process. GoalBacklog uses DETS because goals must survive restarts. HubFSM's transient state (which state am I in, what timer is running) is reconstructed from GoalBacklog on restart.
-
----
-
-## Restart and Recovery
-
-### HubFSM Recovery on Hub Restart
-
-When the hub restarts, HubFSM starts in :resting state (safe default, configurable via `auto_start`). It then:
-
-1. Reads GoalBacklog for any goals with status :executing
-2. If found, checks TaskQueue for those goals' tasks
-3. If tasks are still queued/assigned, resumes monitoring (transition to :executing)
-4. If all tasks completed/failed during downtime, marks goal accordingly, transitions to :contemplating
-
-This is crash-safe because:
-- GoalBacklog is DETS-persisted
-- TaskQueue is DETS-persisted
-- The only lost state is the in-memory timer ref (reconstructed)
-
-### ClaudeClient Recovery
-
-Stateless beyond usage counters. On restart, counters reset to 0 (usage is tracked per-session, not persisted). API key is read from config/environment.
-
----
-
-## Build Order (Dependency-Constrained)
-
-```
-Phase 1: ClaudeClient
-  New GenServer wrapping Req + Anthropic Messages API
-  Add {:req, "~> 0.5"} to mix.exs
-  Rate limiting, telemetry, usage tracking
-  Tests: unit tests with mock HTTP
-  |
-  v
-Phase 2: GoalBacklog
-  New GenServer with DETS persistence
-  CRUD operations, status lifecycle, priority ordering
-  DetsBackup integration
-  Tests: unit tests with DETS isolation
-  |
-  v
-Phase 3: HubFSM Core
-  4-state GenServer with transition logic
-  PubSub subscriptions (tasks, presence)
-  Process.send_after timers for resting
-  Manual pause/resume
-  Integration with GoalBacklog (read/write goals)
-  Integration with ClaudeClient (decomposition)
-  Integration with TaskQueue (submit tasks)
-  |
-  v
-Phase 4: Pipeline Dependencies
-  TaskQueue: add depends_on, goal_id fields
-  Scheduler: add dependency filter
-  HubFSM: dependency-aware task submission
-  |
-  v
-Phase 5: Self-Improvement Scanner
-  SelfImprovement module (git diff + Claude analysis)
-  Wire into HubFSM :improving state
-  |
-  v
-Phase 6: Repo Cleanup + Dashboard Integration
-  RepoCleanup module
-  Dashboard: HubFSM state, goal progress, cycle history
-  API endpoints for goals and HubFSM control
-  |
-  v
-Phase 7: Integration Testing
-  End-to-end: goal -> decompose -> schedule -> execute -> verify -> complete
-  Stress test: rapid goal submission, agent disconnects during goal execution
-```
-
-**Phase ordering rationale:**
-- ClaudeClient first: HubFSM and SelfImprovement both depend on it
-- GoalBacklog second: HubFSM reads/writes goals, cannot function without it
-- HubFSM Core third: the orchestrator that ties everything together
-- Pipeline Dependencies fourth: extending existing modules is lower risk when the new modules exist to test against
-- Self-Improvement fifth: requires HubFSM + ClaudeClient working together
-- Cleanup + Dashboard sixth: nice-to-have, not blocking core functionality
-- Integration testing last: requires all components to exist
+**What:** Executing `run_shell` tool calls without path restriction or timeout.
+**Why bad:** Model could execute destructive commands (rm -rf), access files outside workspace, or run indefinitely.
+**Instead:** ToolSandbox validates all paths are under workspace root. Shell commands have 30s default timeout. Dangerous commands (rm -rf /, shutdown, etc.) are blocklisted.
 
 ---
 
 ## Scalability Considerations
 
-| Concern | At 5 agents (current) | At 20 agents | At 50 agents |
-|---------|----------------------|-------------|-------------|
-| Claude API calls (hub-side) | ~10-20/hour (decomposition + scans) | ~20-40/hour | ~30-60/hour |
-| Goal decomposition latency | 5-15s per goal (Claude API round trip) | Same | Same |
-| GoalBacklog DETS size | <100 goals, trivial | <500 goals, trivial | <2000 goals, still trivial |
-| Dependency filter in Scheduler | O(t*d) where t=tasks, d=deps per task | Same | Monitor, but deps are typically 0-3 |
-| Self-improvement scan cost | ~$0.10-0.50 per scan (diff-based) | Same per repo | More repos = more scans, but throttled by scan_interval_ms |
-| HubFSM cycle rate | ~2-4 cycles/hour | Same (limited by agent throughput) | Same |
+| Concern | At 5 agents | At 20 agents | At 50 agents |
+|---------|------------|-------------|-------------|
+| Ollama tool-call turns per task | 3-5 avg, 10 max | Same | Same |
+| Hub-side Ollama calls (healing) | ~0-2/hour | ~0-5/hour | ~0-10/hour |
+| Healing cycle frequency | Rare (< 1/day) | Occasional (1-3/day) | More frequent as system complexity grows |
+| Tool execution latency | 1-5s per tool call | Same | Same |
+| Sidecar memory for tool loop | ~50MB (message history) | Same per sidecar | Same per sidecar |
+| WebSocket protocol overhead | Negligible (+2 msg types) | Same | Same |
 
-No architectural changes needed at realistic scale. The bottleneck is Claude API latency for decomposition and LLM inference time for task execution, not hub coordination overhead.
+**Bottleneck:** Ollama inference speed for tool-calling turns. Each tool-calling turn requires a full model forward pass. With 5 turns per task, a 7B model on GPU takes ~2-5s per turn = 10-25s total tool-calling overhead per task. This is acceptable for standard-tier tasks.
 
 ---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- AgentCom v1.2 shipped codebase -- all source files in lib/agent_com/ and sidecar/ (direct analysis, 2026-02-12)
-- [GenStateMachine v3.0.0 documentation](https://hexdocs.pm/gen_state_machine/GenStateMachine.html) -- evaluated and rejected in favor of GenServer
-- [Anthropix v0.6.2 documentation](https://hexdocs.pm/anthropix/Anthropix.html) -- Elixir Claude API client using Req
-- [Claude API Rate Limits](https://docs.claude.com/en/api/rate-limits) -- RPM, ITPM, OTPM rate limiting model
+- AgentCom v1.3 shipped codebase -- HubFSM, ClaudeClient, ClaudeClient.Cli, GoalOrchestrator, Scheduler, AgentFSM, CostLedger, TaskRouter (direct analysis, 2026-02-14)
+- [Ollama Tool Calling Documentation](https://docs.ollama.com/capabilities/tool-calling) -- API format for /api/chat with tools, response format, tool result format
+- [Ollama Streaming Tool Calls Blog](https://ollama.com/blog/streaming-tool) -- Streaming tool call support and limitations
+- [Ollama API Documentation](https://github.com/ollama/ollama/blob/main/docs/api.md) -- Full API reference
 
 ### Secondary (MEDIUM confidence)
-- [State Timeouts with gen_statem (DockYard)](https://dockyard.com/blog/2020/01/31/state-timeouts-with-gen_statem) -- gen_statem timer patterns
-- [GenServer periodic work patterns](https://hexdocs.pm/elixir/GenServer.html) -- Process.send_after for self-scheduling
-- [Elixir DAG library (arjan/dag)](https://github.com/arjan/dag/) -- evaluated and rejected (simple dependency list sufficient)
-- [Anthropic API pricing and tiers](https://www.aifreeapi.com/en/posts/claude-api-quota-tiers-limits) -- tier-based rate limit structure
+- [ollama-ex Elixir library](https://github.com/lebrunel/ollama-ex) -- Elixir Ollama client with tool support
+- [Ollama hex package v0.9.0](https://hexdocs.pm/ollama/Ollama.html) -- Elixir Ollama client documentation
+- [LangChain Elixir](https://github.com/brainlid/langchain) -- Elixir LangChain with Ollama agentic support
+- [GenServer state recovery patterns](https://www.bounga.org/elixir/2020/02/29/genserver-supervision-tree-and-state-recovery-after-crash/) -- State recovery after crash
+- [Ollama streaming issue #12557](https://github.com/ollama/ollama/issues/12557) -- Streaming tool call inconsistencies
 
 ### Tertiary (LOW confidence)
-- [Runic DAG workflow library](https://github.com/zblanco/runic) -- alternative DAG approach (not adopted)
-- [anthropic_community Elixir library](https://hexdocs.pm/anthropic_community/Anthropic.html) -- alternative Claude client (not adopted)
+- [Ollama models for function calling guide](https://collabnix.com/best-ollama-models-for-function-calling-tools-complete-guide-2025/) -- Model comparison for tool calling quality
+- [IBM Ollama tool calling tutorial](https://www.ibm.com/think/tutorials/local-tool-calling-ollama-granite) -- Granite model tool calling patterns
 
 ---
 
-*Architecture research for: Hub FSM Autonomous Brain (v1.3) integration into AgentCom v1.2 system*
-*Researched: 2026-02-12*
-*Based on: shipped v1.2 codebase with 23+ supervision tree children, 10+ DETS tables, 22+ telemetry events*
+*Architecture research for: Agentic Tool Calling, Hub FSM Healing, Hub-to-Ollama Routing*
+*Researched: 2026-02-14*
+*Based on: shipped v1.3 codebase with 4-state HubFSM, ClaudeClient CLI wrapper, tier-aware TaskRouter, GoalOrchestrator, CostLedger*
