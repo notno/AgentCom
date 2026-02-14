@@ -244,11 +244,35 @@ async function handleResult(taskId, filePath, hub) {
 
     // Only do git workflow if verification passed or was skipped/auto-passed
     const skipGit = verificationReport.status === 'fail' || verificationReport.status === 'error';
+    let riskClassification = null;
+
     if (_config.repo_dir && !skipGit) {
+      // Gather diff metadata for risk classification
+      const diffMetaResult = runGitCommand('gather-diff-meta', {});
+      const diffMeta = diffMetaResult.status === 'ok' ? {
+        lines_added: diffMetaResult.lines_added || 0,
+        lines_deleted: diffMetaResult.lines_deleted || 0,
+        files_changed: diffMetaResult.files_changed || [],
+        files_added: diffMetaResult.files_added || [],
+        tests_exist: diffMetaResult.tests_exist || false
+      } : { lines_added: 0, lines_deleted: 0, files_changed: [], files_added: [], tests_exist: false };
+
+      log('info', 'diff_meta_gathered', { task_id: taskId, lines_added: diffMeta.lines_added, lines_deleted: diffMeta.lines_deleted, files: (diffMeta.files_changed || []).length });
+
+      // Classify risk tier via hub API
+      try {
+        riskClassification = await classifyTask(_config, taskId, diffMeta);
+        log('info', 'risk_classified', { task_id: taskId, tier: riskClassification.tier, reasons: riskClassification.reasons });
+      } catch (err) {
+        riskClassification = { tier: 2, reasons: ['classification unavailable'], auto_merge_eligible: false };
+        log('warning', 'risk_classify_fallback', { task_id: taskId, error: err.message });
+      }
+
       const gitResult = runGitCommand('submit', {
         agent_id: _config.agent_id,
         task_id: taskId,
-        task: _queue.active
+        task: _queue.active,
+        risk_classification: riskClassification
       });
 
       if (gitResult.status === 'ok') {
@@ -265,9 +289,14 @@ async function handleResult(taskId, filePath, hub) {
       });
     }
 
+    // Include risk_classification in result for hub storage
+    if (riskClassification) {
+      result.risk_classification = riskClassification;
+    }
+
     // Always send task_complete with verification_report
     // (hub decides task status based on report)
-    log('info', 'task_complete', { task_id: taskId, output: result.output, pr_url: result.pr_url });
+    log('info', 'task_complete', { task_id: taskId, output: result.output, pr_url: result.pr_url, risk_tier: riskClassification ? riskClassification.tier : null });
     hub.sendTaskComplete(taskId, result);
   } else {
     const reason = result.reason || result.error || 'unknown';
@@ -350,6 +379,78 @@ function stopResultWatcher() {
     _resultWatcher.close();
     _resultWatcher = null;
   }
+}
+
+// =============================================================================
+// 5b. Risk Classification Helper
+// =============================================================================
+
+/**
+ * Call hub classify endpoint to get risk tier for a completed task.
+ * On any error, returns Tier 2 default (fail-safe, never blocks PR creation).
+ */
+function classifyTask(config, taskId, diffMeta) {
+  const url = `${config.hub_api_url}/api/tasks/${taskId}/classify`;
+  const body = JSON.stringify(diffMeta);
+
+  return new Promise((resolve) => {
+    const defaultResult = { tier: 2, reasons: ['classification unavailable'], auto_merge_eligible: false };
+
+    if (!config.hub_api_url) {
+      resolve(defaultResult);
+      return;
+    }
+
+    try {
+      const urlObj = new URL(url);
+      const httpModule = urlObj.protocol === 'https:' ? require('https') : require('http');
+
+      const req = httpModule.request({
+        hostname: urlObj.hostname,
+        port: urlObj.port,
+        path: urlObj.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.token}`
+        },
+        timeout: 10000
+      }, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          try {
+            if (res.statusCode === 200) {
+              resolve(JSON.parse(data));
+            } else {
+              log('warning', 'classify_http_error', { task_id: taskId, status: res.statusCode });
+              resolve(defaultResult);
+            }
+          } catch (err) {
+            log('warning', 'classify_parse_error', { task_id: taskId, error: err.message });
+            resolve(defaultResult);
+          }
+        });
+      });
+
+      req.on('error', (err) => {
+        log('warning', 'classify_request_error', { task_id: taskId, error: err.message });
+        resolve(defaultResult);
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        log('warning', 'classify_timeout', { task_id: taskId });
+        resolve(defaultResult);
+      });
+
+      req.write(body);
+      req.end();
+    } catch (err) {
+      log('warning', 'classify_error', { task_id: taskId, error: err.message });
+      resolve(defaultResult);
+    }
+  });
 }
 
 // =============================================================================
