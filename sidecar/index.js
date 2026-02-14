@@ -778,6 +778,19 @@ class HubConnection {
     const { executeWithVerification } = require('./lib/execution/verification-loop');
     const { ProgressEmitter } = require('./lib/execution/progress-emitter');
 
+    // PIPE-04: Check generation is still current before executing
+    const expectedGen = this.taskGenerations.get(task.task_id);
+    if (expectedGen !== undefined && task.generation !== expectedGen) {
+      log('warning', 'stale_generation_skip', {
+        task_id: task.task_id,
+        task_generation: task.generation,
+        expected_generation: expectedGen
+      });
+      _queue.active = null;
+      saveQueue(QUEUE_PATH, _queue);
+      return;
+    }
+
     // Resolve per-task workspace (Phase 23: multi-repo support)
     let effectiveConfig = { ..._config };
     if (task.repo && _workspaceManager) {
@@ -803,6 +816,21 @@ class HubConnection {
       }
     }
 
+    // PIPE-02: Determine execution timeout based on complexity tier
+    const complexityTier = task.complexity?.effective_tier || 'standard';
+    const TIMEOUT_MS = {
+      'trivial': 600000,    // 10 minutes
+      'standard': 1800000,  // 30 minutes
+      'complex': 1800000    // 30 minutes
+    }[complexityTier] || 1800000;
+
+    let timeoutHandle;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutHandle = setTimeout(() => {
+        reject(new Error('execution_timeout'));
+      }, TIMEOUT_MS);
+    });
+
     const emitter = new ProgressEmitter((events) => {
       for (const event of events) {
         this.send({
@@ -823,7 +851,11 @@ class HubConnection {
       task.status = 'working';
       saveQueue(QUEUE_PATH, _queue);
 
-      const result = await executeWithVerification(task, effectiveConfig, (event) => emitter.emit(event));
+      const result = await Promise.race([
+        executeWithVerification(task, effectiveConfig, (event) => emitter.emit(event)),
+        timeoutPromise
+      ]);
+      clearTimeout(timeoutHandle);
       emitter.flush();
       emitter.destroy();
 
@@ -842,9 +874,20 @@ class HubConnection {
         verification_attempts: result.verification_attempts
       });
     } catch (err) {
+      clearTimeout(timeoutHandle);
       emitter.destroy();
-      log('error', 'execution_failed', { task_id: task.task_id, error: err.message });
-      this.sendTaskFailed(task.task_id, err.message);
+
+      if (err.message === 'execution_timeout') {
+        log('error', 'execution_timeout', {
+          task_id: task.task_id,
+          timeout_ms: TIMEOUT_MS,
+          complexity_tier: complexityTier
+        });
+        this.sendTaskFailed(task.task_id, `execution_timeout_${TIMEOUT_MS}ms`);
+      } else {
+        log('error', 'execution_failed', { task_id: task.task_id, error: err.message });
+        this.sendTaskFailed(task.task_id, err.message);
+      }
     }
 
     _queue.active = null;
