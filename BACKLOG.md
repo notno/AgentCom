@@ -9,6 +9,7 @@ Nathan: just add a line under Inbox. One sentence is fine. I'll figure out the r
 ## Inbox
 <!-- Nathan drops ideas here, I process them into the backlog -->
 
+- Token roles / auth separation — current bouncer model treats all tokens identically. Need role distinction (admin vs agent) so Nathan can use the dashboard without needing an agent identity. Gate admin endpoints (token generation, hub reset, config) to admin-role tokens only.
 - Agent profiles/directory — a docs/agents.md (or similar) listing every agent with their personality, working style, strengths, what they've shipped, and what they care about. A "getting to know you" page. Push to GitHub.
 - Inter-Mind communication visibility — dashboard view showing message volume between Minds, who's talking to whom, message counts per agent per hour, conversation graphs. Let Nathan see the "nervous system" in action.
 - Educational tab on the dashboard — teach Nathan about our structure, agents, Minds, and stack. Interactive explainer: what is AgentCom, how do Minds connect, what's the architecture, who's who, what's BEAM/Elixir, etc.

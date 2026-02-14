@@ -497,23 +497,30 @@ defmodule AgentCom.Scheduler do
   # ---------------------------------------------------------------------------
 
   defp find_agent_for_decision(decision, task, agents) do
-    case decision.target_type do
-      :sidecar ->
-        # Trivial tasks: any idle agent with matching capabilities
-        Enum.find(agents, fn agent -> agent_matches_task?(agent, task) end)
+    # If task has assign_to, target that specific agent (operator override)
+    assign_to = Map.get(task, :assign_to) || get_in(task, [:metadata, "assign_to"])
 
-      :ollama ->
-        # Standard tasks: prefer agent whose ollama_url host matches the selected endpoint
-        preferred = Enum.find(agents, fn agent ->
-          agent_matches_task?(agent, task) and
-            agent_matches_endpoint?(agent, decision.selected_endpoint)
-        end)
+    if assign_to do
+      Enum.find(agents, fn agent -> agent.agent_id == assign_to end)
+    else
+      case decision.target_type do
+        :sidecar ->
+          # Trivial tasks: any idle agent with matching capabilities
+          Enum.find(agents, fn agent -> agent_matches_task?(agent, task) end)
 
-        preferred || Enum.find(agents, fn agent -> agent_matches_task?(agent, task) end)
+        :ollama ->
+          # Standard tasks: prefer agent whose ollama_url host matches the selected endpoint
+          preferred = Enum.find(agents, fn agent ->
+            agent_matches_task?(agent, task) and
+              agent_matches_endpoint?(agent, decision.selected_endpoint)
+          end)
 
-      :claude ->
-        # Complex tasks: any idle agent with matching capabilities
-        Enum.find(agents, fn agent -> agent_matches_task?(agent, task) end)
+          preferred || Enum.find(agents, fn agent -> agent_matches_task?(agent, task) end)
+
+        :claude ->
+          # Complex tasks: any idle agent with matching capabilities
+          Enum.find(agents, fn agent -> agent_matches_task?(agent, task) end)
+      end
     end
   end
 

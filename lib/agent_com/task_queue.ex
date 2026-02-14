@@ -294,7 +294,9 @@ defmodule AgentCom.TaskQueue do
           Map.get(params, "verification_timeout_ms", nil)),
       # Pipeline dependency fields (Phase 28)
       depends_on: Map.get(params, :depends_on, Map.get(params, "depends_on", [])),
-      goal_id: Map.get(params, :goal_id, Map.get(params, "goal_id", nil))
+      goal_id: Map.get(params, :goal_id, Map.get(params, "goal_id", nil)),
+      # Operator agent targeting (dashboard dropdown)
+      assign_to: Map.get(params, :assign_to, Map.get(params, "assign_to", nil))
     }
 
     # Phase 28: Validate that all dependency IDs exist
@@ -832,7 +834,13 @@ defmodule AgentCom.TaskQueue do
       :dets.foldl(
         fn {_id, task}, {status_acc, priority_acc} ->
           new_status = Map.update(status_acc, task.status, 1, &(&1 + 1))
-          new_priority = Map.update(priority_acc, task.priority, 1, &(&1 + 1))
+          # Only count queued tasks in priority breakdown (dashboard queue summary)
+          new_priority =
+            if task.status == :queued do
+              Map.update(priority_acc, task.priority, 1, &(&1 + 1))
+            else
+              priority_acc
+            end
           {new_status, new_priority}
         end,
         {%{}, %{}},
