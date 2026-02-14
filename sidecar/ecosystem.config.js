@@ -46,7 +46,8 @@ module.exports = {
 
     // Environment
     env: {
-      NODE_ENV: 'production'
+      NODE_ENV: 'production',
+      PM2_PROCESS_NAME: 'agentcom-sidecar'
     }
   }]
 };
