@@ -32,6 +32,7 @@ defmodule AgentCom.DashboardSocket do
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "llm_registry")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "repo_registry")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "hub_fsm")
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "goals")
 
     # Get initial snapshot
     snapshot = AgentCom.DashboardState.snapshot()
@@ -388,6 +389,23 @@ defmodule AgentCom.DashboardSocket do
         last_state_change: info.last_state_change,
         cycle_count: info.cycle_count,
         timestamp: info.timestamp
+      }
+    }
+
+    {:ok, %{state | pending_events: [formatted | state.pending_events]}}
+  end
+
+  # -- PubSub: goal events -----------------------------------------------------
+
+  def handle_info({:goal_event, payload}, state) do
+    formatted = %{
+      type: "goal_event",
+      data: %{
+        event: to_string(payload.event),
+        goal_id: payload.goal_id,
+        status: if(payload.goal, do: to_string(payload.goal.status), else: nil),
+        priority: if(payload.goal, do: payload.goal.priority, else: nil),
+        timestamp: payload.timestamp
       }
     }
 
