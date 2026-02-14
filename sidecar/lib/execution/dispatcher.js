@@ -45,8 +45,25 @@ async function dispatch(task, config, onProgress) {
     }
 
     case 'sidecar': {
-      const { ShellExecutor } = require('./shell-executor');
-      rawResult = await new ShellExecutor().execute(task, config, onProgress);
+      // Only use ShellExecutor if there's an explicit shell_command in metadata.
+      // Otherwise, this is a natural-language task misclassified as trivial —
+      // fall through to wake command (OpenClaw) for proper handling.
+      if (task.metadata && task.metadata.shell_command) {
+        const { ShellExecutor } = require('./shell-executor');
+        rawResult = await new ShellExecutor().execute(task, config, onProgress);
+      } else {
+        // No shell command — reject with clear error so the task can be
+        // retried or escalated. Don't silently pretend we handled it.
+        onProgress({ type: 'status', message: 'No shell_command in metadata — task requires LLM routing, not sidecar execution' });
+        rawResult = {
+          status: 'failed',
+          output: '',
+          model_used: 'none',
+          tokens_in: 0,
+          tokens_out: 0,
+          error: 'Task routed as trivial/sidecar but has no shell_command metadata. Needs LLM routing.'
+        };
+      }
       break;
     }
 

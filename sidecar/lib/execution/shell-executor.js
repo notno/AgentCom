@@ -104,10 +104,8 @@ class ShellExecutor {
     if (task.metadata && task.metadata.shell_command) {
       return task.metadata.shell_command;
     }
-    // Fallback: use description directly (trivial tasks carry the command)
-    if (task.description) {
-      return task.description;
-    }
+    // Do NOT fall back to task.description — natural language descriptions
+    // are not shell commands. Only execute explicit shell_command metadata.
     return null;
   }
 

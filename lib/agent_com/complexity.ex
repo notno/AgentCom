@@ -134,14 +134,23 @@ defmodule AgentCom.Complexity do
         {:complex, confidence}
 
       # Trivial keywords with no contradicting signals -> trivial
+      # Only classify as trivial when there's a positive trivial keyword signal.
+      # Short descriptions without trivial keywords are likely natural language
+      # tasks that need LLM routing, not shell execution.
       signals.keywords.trivial and signals.file_count <= @file_count_standard_max and
           signals.verification_count <= @verification_count_standard_max ->
         confidence = if signals.word_count < @word_count_trivial, do: 0.9, else: 0.75
         {:trivial, confidence}
 
+      # No keyword matches: use signal scoring but floor at :standard.
+      # A short natural-language description with no files/verification is
+      # ambiguous, not trivial — it likely needs LLM processing.
       true ->
         scores = score_non_keyword_signals(signals)
         tier = majority_tier(scores)
+        # Prevent pure-heuristic classification as trivial without keyword support.
+        # Trivial requires a positive signal (trivial keyword or shell_command metadata).
+        tier = if tier == :trivial and not signals.keywords.trivial, do: :standard, else: tier
         confidence = agreement_ratio(scores, tier)
         {tier, confidence}
     end

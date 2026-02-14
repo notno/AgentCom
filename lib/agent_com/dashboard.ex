@@ -708,6 +708,9 @@ defmodule AgentCom.Dashboard do
       <div class="task-prompt">
         <input type="text" id="task-input" placeholder="What needs to be done?"
                onkeydown="if(event.key==='Enter')submitTask()">
+        <select id="task-agent-select" style="background:#1a1a2e;border:1px solid #2a2a3a;border-radius:6px;color:#e0e0e0;padding:10px 10px;font-size:0.85em;outline:none;min-width:120px;">
+          <option value="">Any agent</option>
+        </select>
         <button class="task-prompt-btn" id="task-submit-btn" onclick="submitTask()">Submit</button>
         <button class="task-prompt-token-btn" id="task-token-btn" onclick="promptForToken()">Token</button>
       </div>
@@ -1789,6 +1792,19 @@ defmodule AgentCom.Dashboard do
               '<td>' + rlHtml + '</td>' +
               '</tr>';
           }).join('');
+
+          // Update agent targeting dropdown
+          var select = document.getElementById('task-agent-select');
+          var currentVal = select.value;
+          var options = '<option value="">Any agent</option>';
+          agents.forEach(function(a) {
+            var id = a.agent_id;
+            var name = a.name || id;
+            var state = fsmStateClass(a.fsm_state);
+            var selected = (id === currentVal) ? ' selected' : '';
+            options += '<option value="' + escapeHtml(id) + '"' + selected + '>' + escapeHtml(name) + ' (' + state + ')</option>';
+          });
+          select.innerHTML = options;
         }
 
         // =====================================================================
@@ -3060,7 +3076,10 @@ defmodule AgentCom.Dashboard do
               'Content-Type': 'application/json',
               'Authorization': 'Bearer ' + token
             },
-            body: JSON.stringify({ description: description, priority: priority })
+            body: JSON.stringify(Object.assign(
+              { description: description, priority: priority },
+              document.getElementById('task-agent-select').value ? { assign_to: document.getElementById('task-agent-select').value } : {}
+            ))
           }).then(function(res) {
             return res.json().then(function(data) { return { status: res.status, data: data }; });
           }).then(function(result) {

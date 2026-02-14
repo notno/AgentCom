@@ -924,7 +924,8 @@ defmodule AgentCom.Endpoint do
                   skip_verification: params["skip_verification"],
                   verification_timeout_ms: params["verification_timeout_ms"],
                   depends_on: params["depends_on"] || [],
-                  goal_id: params["goal_id"]
+                  goal_id: params["goal_id"],
+                  assign_to: params["assign_to"]
                 }
 
                 case AgentCom.TaskQueue.submit(task_params) do
