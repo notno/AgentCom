@@ -58,6 +58,7 @@ defmodule AgentCom.DashboardState do
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "rate_limits")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "llm_registry")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "repo_registry")
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "goals")
 
     Process.send_after(self(), :check_queue_growth, @queue_check_interval_ms)
     Process.send_after(self(), :reset_hourly, @hourly_reset_interval_ms)
@@ -85,7 +86,8 @@ defmodule AgentCom.DashboardState do
         "alerts",
         "rate_limits",
         "llm_registry",
-        "repo_registry"
+        "repo_registry",
+        "goals"
       ]
     )
 
@@ -244,6 +246,53 @@ defmodule AgentCom.DashboardState do
         :exit, _ -> %{fsm_state: :unknown, paused: false, cycle_count: 0, transition_count: 0}
       end
 
+    goal_stats =
+      try do
+        AgentCom.GoalBacklog.stats()
+      catch
+        :exit, _ -> %{by_status: %{}, by_priority: %{}, total: 0}
+      end
+
+    # Only fetch active goals (decomposing/executing/verifying) for progress display
+    active_goals =
+      try do
+        [:decomposing, :executing, :verifying]
+        |> Enum.flat_map(fn status ->
+          AgentCom.GoalBacklog.list(%{status: status})
+        end)
+        |> Enum.take(10)
+        |> Enum.map(fn goal ->
+          progress = AgentCom.TaskQueue.goal_progress(goal.id)
+
+          %{
+            id: goal.id,
+            description: String.slice(to_string(goal.description), 0, 100),
+            status: goal.status,
+            priority: goal.priority,
+            tasks_total: progress.total,
+            tasks_complete: progress.completed,
+            tasks_failed: progress.failed,
+            created_at: goal.created_at,
+            updated_at: goal.updated_at
+          }
+        end)
+      catch
+        :exit, _ -> []
+      end
+
+    cost_stats =
+      try do
+        AgentCom.CostLedger.stats()
+      catch
+        :exit, _ ->
+          %{
+            hourly: %{executing: 0, improving: 0, contemplating: 0, total: 0},
+            daily: %{executing: 0, improving: 0, contemplating: 0, total: 0},
+            session: %{executing: 0, improving: 0, contemplating: 0, total: 0},
+            budgets: %{}
+          }
+      end
+
     snapshot = %{
       uptime_ms: now - state.started_at,
       timestamp: now,
@@ -262,7 +311,10 @@ defmodule AgentCom.DashboardState do
       llm_registry: llm_registry,
       repo_registry: repo_registry,
       routing_stats: routing_stats,
-      hub_fsm: hub_fsm
+      hub_fsm: hub_fsm,
+      goal_stats: goal_stats,
+      active_goals: active_goals,
+      cost_stats: cost_stats
     }
 
     {:reply, snapshot, state}
@@ -431,6 +483,12 @@ defmodule AgentCom.DashboardState do
   # -- PubSub: repo_registry events (data fetched live in snapshot) ----------
 
   def handle_info({:repo_registry_update, _detail}, state) do
+    {:noreply, state}
+  end
+
+  # -- PubSub: goal events (data fetched live in snapshot) ------------------
+
+  def handle_info({:goal_event, _payload}, state) do
     {:noreply, state}
   end
 
