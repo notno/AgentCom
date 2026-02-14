@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Phase 37 - CI Fix (v1.4 Reliable Autonomy)
+**Current focus:** Phase 38 - OllamaClient and Hub LLM Routing (v1.4 Reliable Autonomy)
 
 ## Current Position
 
-Phase: 37 of 44 (CI Fix) -- COMPLETE
-Plan: 1 of 1 in current phase
-Status: Phase complete, ready for Phase 38
-Last activity: 2026-02-14 -- Phase 37 CI Fix complete (CI green, 2 test bugs fixed)
+Phase: 38 of 44 (OllamaClient and Hub LLM Routing) -- PLANNED
+Plan: 0 of 2 in current phase
+Status: Phase planned, ready for execution
+Last activity: 2026-02-14 -- Phase 38 research + planning complete (2 plans in 2 waves)
 
 Progress: [█░░░░░░░░░] 12% (v1.4) -- 1/8 phases complete
 
@@ -57,5 +57,5 @@ v1.1-v1.3 decisions archived to respective milestone roadmap files.
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 37-01-PLAN.md (CI Fix)
+Stopped at: Phase 38 planned (38-01-PLAN.md + 38-02-PLAN.md created)
 Resume file: None
