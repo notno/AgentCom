@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Phase 40 - Sidecar Tool Infrastructure (v1.4 Reliable Autonomy) -- COMPLETE
+**Current focus:** Phase 42 - Agent Self-Management (v1.4 Reliable Autonomy) -- COMPLETE
 
 ## Current Position
 
-Phase: 40 of 44 (Sidecar Tool Infrastructure) -- COMPLETE
-Plan: 2 of 2 in current phase
-Status: Phase 40 complete -- tool registry, sandbox, and executor implemented
-Last activity: 2026-02-14 -- Phase 40 complete (2 plans, 4 task commits, 119 tests)
+Phase: 42 of 44 (Agent Self-Management) -- COMPLETE
+Plan: 1 of 1 in current phase
+Status: Phase 42 complete -- pm2 self-awareness and hub-commanded restart
+Last activity: 2026-02-14 -- Phase 42 complete (1 plan, 2 task commits, 5 tests)
 
-Progress: [███░░░░░░░] 37% (v1.4) -- 3/8 phases complete
+Progress: [████░░░░░░] 50% (v1.4) -- 4/8 phases complete
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 117 (19 v1.0 + 32 v1.1 + 25 v1.2 + 35 v1.3 + 6 v1.4)
+- Total plans completed: 118 (19 v1.0 + 32 v1.1 + 25 v1.2 + 35 v1.3 + 7 v1.4)
 - Average duration: 4 min
 - Total execution time: ~8 hours
 
@@ -57,5 +57,5 @@ v1.1-v1.3 decisions archived to respective milestone roadmap files.
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Phase 40 complete (2 plans, 119 tests green)
+Stopped at: Phase 38 complete (2 plans, 4 task commits) + Phase 42 complete
 Resume file: None
