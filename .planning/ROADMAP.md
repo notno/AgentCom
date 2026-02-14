@@ -125,11 +125,11 @@ Plans:
   2. Goal decomposition produces valid task lists when routed through OllamaClient with Qwen3 8B
   3. Zero remaining `claude -p` or `ClaudeClient.Cli` calls in production code paths
   4. Hub FSM completes a full executing cycle (decompose goal, create tasks) using only local Ollama
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 38-01: OllamaClient HTTP module
-- [ ] 38-02: Hub FSM LLM routing swap and prompt adaptation
+- [ ] 38-01-PLAN.md -- OllamaClient HTTP module (chat/2, config, unit tests)
+- [ ] 38-02-PLAN.md -- Hub FSM LLM routing swap and prompt adaptation
 
 ### Phase 39: Pipeline Reliability
 **Goal**: Tasks reliably move from assignment to completion -- wake failures recovered, stuck tasks requeued, timeouts enforced, reconnects handled
