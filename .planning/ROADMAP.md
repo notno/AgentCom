@@ -219,11 +219,11 @@ Plans:
   2. Tests trigger healing state, verify remediation actions fire, and confirm exit to resting
   3. HTTP endpoints /api/hub/pause, /api/hub/resume, /api/hub/state, /api/hub/history return correct responses
   4. Watchdog timeout test verifies forced transition fires after configured timeout expires
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 44-01: FSM cycle integration tests
-- [ ] 44-02: Healing state and HTTP endpoint tests
+- [ ] 44-01-PLAN.md -- FSM full-cycle integration tests and healing state tests
+- [ ] 44-02-PLAN.md -- Hub FSM HTTP endpoint tests (pause, resume, state, history)
 
 ## Progress
 
