@@ -575,6 +575,123 @@ defmodule AgentCom.TaskQueueTest do
   end
 
   # ---------------------------------------------------------------------------
+  # Pipeline dependencies (Phase 28)
+  # ---------------------------------------------------------------------------
+
+  describe "pipeline dependencies (Phase 28)" do
+    # -- depends_on field persistence --
+
+    test "submit task B with depends_on: [A.id] -- B's depends_on contains A.id after get" do
+      {:ok, task_a} = TaskQueue.submit(%{description: "task A (no deps)"})
+      {:ok, task_b} = TaskQueue.submit(%{description: "task B depends on A", depends_on: [task_a.id]})
+
+      {:ok, fetched_b} = TaskQueue.get(task_b.id)
+      assert fetched_b.depends_on == [task_a.id]
+    end
+
+    test "submit task with depends_on: [] -- stored as empty list" do
+      {:ok, task} = TaskQueue.submit(%{description: "empty deps", depends_on: []})
+
+      {:ok, fetched} = TaskQueue.get(task.id)
+      assert fetched.depends_on == []
+    end
+
+    test "submit task with goal_id -- goal_id is persisted and retrievable" do
+      {:ok, task} = TaskQueue.submit(%{description: "goal task", goal_id: "goal-123"})
+
+      {:ok, fetched} = TaskQueue.get(task.id)
+      assert fetched.goal_id == "goal-123"
+    end
+
+    # -- Dependency validation at submit --
+
+    test "submit with depends_on referencing nonexistent ID returns error" do
+      result = TaskQueue.submit(%{description: "bad deps", depends_on: ["nonexistent-id"]})
+
+      assert {:error, {:invalid_dependencies, ["nonexistent-id"]}} = result
+    end
+
+    test "submit with depends_on referencing valid existing task succeeds" do
+      {:ok, task_a} = TaskQueue.submit(%{description: "dep target"})
+
+      assert {:ok, _task_b} =
+               TaskQueue.submit(%{description: "depends on A", depends_on: [task_a.id]})
+    end
+
+    test "submit with depends_on: [] always succeeds (empty deps valid)" do
+      assert {:ok, _task} = TaskQueue.submit(%{description: "no deps", depends_on: []})
+    end
+
+    # -- tasks_for_goal/1 --
+
+    test "tasks_for_goal returns only tasks with matching goal_id" do
+      {:ok, _g1a} = TaskQueue.submit(%{description: "g1-a", goal_id: "goal-1"})
+      {:ok, _g1b} = TaskQueue.submit(%{description: "g1-b", goal_id: "goal-1"})
+      {:ok, _g1c} = TaskQueue.submit(%{description: "g1-c", goal_id: "goal-1"})
+      {:ok, _g2a} = TaskQueue.submit(%{description: "g2-a", goal_id: "goal-2"})
+      {:ok, _g2b} = TaskQueue.submit(%{description: "g2-b", goal_id: "goal-2"})
+
+      goal_1_tasks = TaskQueue.tasks_for_goal("goal-1")
+      assert length(goal_1_tasks) == 3
+      assert Enum.all?(goal_1_tasks, fn t -> t.goal_id == "goal-1" end)
+    end
+
+    test "tasks_for_goal returns empty list for nonexistent goal" do
+      assert TaskQueue.tasks_for_goal("nonexistent") == []
+    end
+
+    # -- goal_progress/1 --
+
+    test "goal_progress returns correct counts for mixed statuses" do
+      {:ok, t1} = TaskQueue.submit(%{description: "gp-1", goal_id: "gp-goal", max_retries: 1})
+      {:ok, t2} = TaskQueue.submit(%{description: "gp-2", goal_id: "gp-goal"})
+      {:ok, _t3} = TaskQueue.submit(%{description: "gp-3", goal_id: "gp-goal"})
+
+      # Complete t1
+      {:ok, assigned1} = TaskQueue.assign_task(t1.id, "agent-gp")
+      {:ok, _completed} = TaskQueue.complete_task(t1.id, assigned1.generation, %{result: "done"})
+
+      # Dead-letter t2
+      {:ok, assigned2} = TaskQueue.assign_task(t2.id, "agent-gp")
+      {:ok, :retried, _} = TaskQueue.fail_task(t2.id, assigned2.generation, "err1")
+      {:ok, reassigned2} = TaskQueue.assign_task(t2.id, "agent-gp")
+      {:ok, :retried, _} = TaskQueue.fail_task(t2.id, reassigned2.generation, "err2")
+      {:ok, reassigned2b} = TaskQueue.assign_task(t2.id, "agent-gp")
+      {:ok, :dead_letter, _} = TaskQueue.fail_task(t2.id, reassigned2b.generation, "err3")
+
+      # t3 stays queued (pending)
+      progress = TaskQueue.goal_progress("gp-goal")
+
+      assert progress.total == 3
+      assert progress.completed == 1
+      assert progress.failed == 1
+      assert progress.pending == 1
+    end
+
+    # -- list/1 with goal_id filter --
+
+    test "list with goal_id filter returns only matching tasks" do
+      {:ok, _g1} = TaskQueue.submit(%{description: "list-g1", goal_id: "list-goal-1"})
+      {:ok, _g2} = TaskQueue.submit(%{description: "list-g2", goal_id: "list-goal-2"})
+      {:ok, _g1b} = TaskQueue.submit(%{description: "list-g1b", goal_id: "list-goal-1"})
+
+      filtered = TaskQueue.list(goal_id: "list-goal-1")
+      assert length(filtered) == 2
+      assert Enum.all?(filtered, fn t -> t.goal_id == "list-goal-1" end)
+    end
+
+    # -- Backward compatibility --
+
+    test "task without depends_on or goal_id defaults to empty list and nil" do
+      {:ok, task} = TaskQueue.submit(%{description: "plain backward compat"})
+      {:ok, fetched} = TaskQueue.get(task.id)
+
+      assert Map.get(fetched, :depends_on, []) == []
+      assert Map.get(fetched, :goal_id, nil) == nil
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Helper
   # ---------------------------------------------------------------------------
 

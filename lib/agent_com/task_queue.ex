@@ -803,7 +803,7 @@ defmodule AgentCom.TaskQueue do
 
   @impl true
   def handle_call({:tasks_for_goal, goal_id}, _from, state) do
-    tasks =
+    main_tasks =
       :dets.foldl(
         fn {_id, task}, acc ->
           if Map.get(task, :goal_id) == goal_id, do: [task | acc], else: acc
@@ -812,7 +812,16 @@ defmodule AgentCom.TaskQueue do
         @tasks_table
       )
 
-    {:reply, tasks, state}
+    dl_tasks =
+      :dets.foldl(
+        fn {_id, task}, acc ->
+          if Map.get(task, :goal_id) == goal_id, do: [task | acc], else: acc
+        end,
+        [],
+        @dead_letter_table
+      )
+
+    {:reply, main_tasks ++ dl_tasks, state}
   end
 
   # -- stats -------------------------------------------------------------------
