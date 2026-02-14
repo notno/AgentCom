@@ -105,13 +105,13 @@ function generateSlug(description, maxLength = 40) {
 // PR body generation
 // ---------------------------------------------------------------------------
 
-function generatePrBody(task, agentId, diffStat, config) {
+function generatePrBody(task, agentId, diffStat, config, riskClassification) {
   const hubUrl = config.hub_api_url || 'http://localhost:4000';
   const taskId = task.task_id || task.id || 'unknown';
   const priority = (task.metadata && task.metadata.priority) || 'normal';
   const description = task.description || 'No description provided';
 
-  return [
+  const lines = [
     `## Task: ${taskId}`,
     '',
     `**Agent:** ${agentId}`,
@@ -127,10 +127,36 @@ function generatePrBody(task, agentId, diffStat, config) {
     '```',
     diffStat || 'No changes',
     '```',
-    '',
-    '---',
-    `*Submitted by agentcom-git | Agent: ${agentId} | Task: ${taskId}*`
-  ].join('\n');
+  ];
+
+  // Add risk classification section if provided
+  if (riskClassification) {
+    const tierLabels = {
+      1: 'Tier 1 (Auto-merge candidate)',
+      2: 'Tier 2 (Review required)',
+      3: 'Tier 3 (Escalate)'
+    };
+    const tierLabel = tierLabels[riskClassification.tier] || `Tier ${riskClassification.tier}`;
+
+    lines.push('');
+    lines.push('### Risk Classification');
+    lines.push('');
+    lines.push(`**${tierLabel}**`);
+
+    if (riskClassification.reasons && riskClassification.reasons.length > 0) {
+      lines.push('');
+      lines.push('**Reasons:**');
+      for (const reason of riskClassification.reasons) {
+        lines.push(`- ${reason}`);
+      }
+    }
+  }
+
+  lines.push('');
+  lines.push('---');
+  lines.push(`*Submitted by agentcom-git | Agent: ${agentId} | Task: ${taskId}*`);
+
+  return lines.join('\n');
 }
 
 function prTitle(task) {
@@ -202,7 +228,7 @@ function startTask(args) {
 
 function submit(args) {
   const config = loadConfig();
-  const { agent_id, task_id, task } = args;
+  const { agent_id, task_id, task, risk_classification } = args;
 
   if (!agent_id || !task_id) {
     outputError('missing_args', {
@@ -252,7 +278,7 @@ function submit(args) {
   } catch {
     // diff stat not available
   }
-  const prBody = generatePrBody(taskObj, agent_id, diffStat, config);
+  const prBody = generatePrBody(taskObj, agent_id, diffStat, config, risk_classification);
 
   // 6. Ensure labels exist (idempotent via --force)
   const shortAgent = agent_id.split('-')[0].slice(0, 8);
@@ -261,6 +287,13 @@ function submit(args) {
 
   try { gh(`label create "${agentLabel}" --force`, { _config: config }); } catch { /* ignore */ }
   try { gh(`label create "${priorityLabel}" --force`, { _config: config }); } catch { /* ignore */ }
+
+  // 6b. Create risk tier label if classification provided
+  let riskLabel = null;
+  if (risk_classification && risk_classification.tier) {
+    riskLabel = `risk:tier-${risk_classification.tier}`;
+    try { gh(`label create "${riskLabel}" --force`, { _config: config }); } catch { /* ignore */ }
+  }
 
   // 7. Write PR body to temp file (avoids shell escaping -- Pitfall 6)
   const bodyFile = path.join(config.repo_dir, '.pr-body.tmp');
@@ -271,11 +304,13 @@ function submit(args) {
     const title = prTitle(taskObj);
     const reviewerFlag = config.reviewer ? ` --reviewer "${config.reviewer}"` : '';
 
+    const riskLabelFlag = riskLabel ? ` --label "${riskLabel}"` : '';
     const prUrl = gh(
       `pr create --base main --head "${branch}" ` +
       `--title "${title}" ` +
       `--body-file "${bodyFile}" ` +
       `--label "${agentLabel}" --label "${priorityLabel}"` +
+      riskLabelFlag +
       reviewerFlag,
       { _config: config }
     );
@@ -287,6 +322,89 @@ function submit(args) {
   } finally {
     // 10. Clean up temp file
     try { fs.unlinkSync(bodyFile); } catch { /* ignore */ }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Diff metadata gathering for risk classification
+// ---------------------------------------------------------------------------
+
+function gatherDiffMeta(config) {
+  const defaults = {
+    lines_added: 0,
+    lines_deleted: 0,
+    files_changed: [],
+    files_added: [],
+    tests_exist: false
+  };
+
+  try {
+    // Lines added/deleted per file
+    let linesAdded = 0;
+    let linesDeleted = 0;
+    try {
+      const numstat = git('diff --numstat origin/main...HEAD', { _config: config });
+      if (numstat) {
+        for (const line of numstat.split('\n')) {
+          const parts = line.split('\t');
+          if (parts.length >= 3) {
+            const added = parseInt(parts[0], 10);
+            const deleted = parseInt(parts[1], 10);
+            if (!isNaN(added)) linesAdded += added;
+            if (!isNaN(deleted)) linesDeleted += deleted;
+          }
+        }
+      }
+    } catch { /* use defaults */ }
+
+    // New files (status 'A')
+    let filesAdded = [];
+    try {
+      const nameStatus = git('diff --name-status origin/main...HEAD', { _config: config });
+      if (nameStatus) {
+        for (const line of nameStatus.split('\n')) {
+          const parts = line.split('\t');
+          if (parts.length >= 2 && parts[0] === 'A') {
+            filesAdded.push(parts[1]);
+          }
+        }
+      }
+    } catch { /* use defaults */ }
+
+    // All changed files
+    let filesChanged = [];
+    try {
+      const nameOnly = git('diff --name-only origin/main...HEAD', { _config: config });
+      if (nameOnly) {
+        filesChanged = nameOnly.split('\n').filter(Boolean);
+      }
+    } catch { /* use defaults */ }
+
+    // Check if tests exist for changed files
+    let testsExist = false;
+    try {
+      for (const file of filesChanged) {
+        // lib/X.ex -> test/X_test.exs
+        if (file.startsWith('lib/') && file.endsWith('.ex')) {
+          const testFile = file.replace(/^lib\//, 'test/').replace(/\.ex$/, '_test.exs');
+          const testPath = path.join(config.repo_dir, testFile);
+          if (fs.existsSync(testPath)) {
+            testsExist = true;
+            break;
+          }
+        }
+      }
+    } catch { /* use defaults */ }
+
+    return {
+      lines_added: linesAdded,
+      lines_deleted: linesDeleted,
+      files_changed: filesChanged,
+      files_added: filesAdded,
+      tests_exist: testsExist
+    };
+  } catch {
+    return defaults;
   }
 }
 
@@ -345,7 +463,13 @@ function status() {
 // Command dispatch
 // ---------------------------------------------------------------------------
 
-const commands = { 'start-task': startTask, 'submit': submit, 'status': status };
+function gatherDiffMetaCommand() {
+  const config = loadConfig();
+  const meta = gatherDiffMeta(config);
+  outputSuccess(meta);
+}
+
+const commands = { 'start-task': startTask, 'submit': submit, 'status': status, 'gather-diff-meta': gatherDiffMetaCommand };
 
 try {
   const command = process.argv[2];

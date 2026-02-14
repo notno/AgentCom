@@ -37,6 +37,7 @@ defmodule AgentCom.Endpoint do
   - GET    /api/tasks/stats       — Queue statistics (auth required)
   - GET    /api/tasks/:task_id    — Get task details with history (auth required)
   - POST   /api/tasks/:task_id/retry — Retry a dead-letter task (auth required)
+  - POST   /api/tasks/:task_id/classify — Classify task risk tier from diff metadata (auth required)
   - WS     /ws/dashboard         — WebSocket for dashboard real-time updates
   - GET    /api/dashboard/state  — Full dashboard state snapshot (JSON, no auth)
   - GET    /sw.js               — Service worker for push notifications
@@ -1233,6 +1234,39 @@ defmodule AgentCom.Endpoint do
           {:error, :not_found} ->
             send_json(conn, 404, %{"error" => "task_not_found", "task_id" => task_id})
         end
+      end
+    end
+  end
+
+  # --- Task Risk Classification ---
+
+  post "/api/tasks/:task_id/classify" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
+    if conn.halted do
+      conn
+    else
+      case AgentCom.TaskQueue.get(task_id) do
+        {:ok, task} ->
+          diff_meta =
+            %{
+              lines_added: conn.body_params["lines_added"] || 0,
+              lines_deleted: conn.body_params["lines_deleted"] || 0,
+              files_changed: conn.body_params["files_changed"] || [],
+              files_added: conn.body_params["files_added"] || [],
+              tests_exist: conn.body_params["tests_exist"] || false
+            }
+
+          classification = AgentCom.RiskClassifier.classify(task, diff_meta)
+
+          send_json(conn, 200, %{
+            "tier" => classification.tier,
+            "reasons" => classification.reasons,
+            "auto_merge_eligible" => classification.auto_merge_eligible
+          })
+
+        {:error, :not_found} ->
+          send_json(conn, 404, %{"error" => "task_not_found", "task_id" => task_id})
       end
     end
   end
