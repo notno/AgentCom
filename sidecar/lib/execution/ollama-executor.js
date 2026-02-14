@@ -5,6 +5,7 @@ const { log } = require('../log');
 const { parseToolCalls } = require('./tool-call-parser');
 const { getToolDefinitions } = require('../tools/tool-registry');
 const { executeTool } = require('../tools/tool-executor');
+const { buildAgenticSystemPrompt } = require('./agentic-prompt');
 
 /**
  * OllamaExecutor -- calls Ollama /api/chat with streaming NDJSON,
@@ -219,19 +220,14 @@ class OllamaExecutor {
     const callHistory = [];
     let lastWriteIteration = -1; // Track last iteration with a successful write_file
 
-    // Build initial messages
-    const systemContent = this._buildMessages(task)[0];
+    // Build initial messages with full agentic system prompt
+    const systemPrompt = buildAgenticSystemPrompt(task, tools);
     const messages = [];
 
-    // System message
-    if (systemContent && systemContent.role === 'system') {
-      messages.push(systemContent);
-    } else {
-      messages.push({
-        role: 'system',
-        content: 'You are a helpful coding assistant. Use the available tools to complete the task.'
-      });
-    }
+    messages.push({
+      role: 'system',
+      content: systemPrompt
+    });
 
     // User message
     messages.push({
@@ -345,6 +341,14 @@ class OllamaExecutor {
 
           const toolResult = await executeTool(call.name, call.arguments, workspace);
 
+          // Emit result summary for dashboard streaming
+          onProgress({
+            type: 'tool_call',
+            tool_name: call.name,
+            result_summary: this._summarizeResult(call.name, toolResult),
+            iteration: i
+          });
+
           // Track write_file success for stall detection
           if (call.name === 'write_file' && toolResult.success) {
             hadWrite = true;
@@ -457,6 +461,22 @@ class OllamaExecutor {
    * @param {number} threshold - Number of consecutive identical rounds to detect (default 3)
    * @returns {boolean} True if repetition detected
    */
+  /**
+   * Summarize a tool result for dashboard display.
+   *
+   * @param {string} toolName - Tool name
+   * @param {object} toolResult - Tool result from executeTool()
+   * @returns {string} Brief summary (max ~100 chars)
+   */
+  _summarizeResult(toolName, toolResult) {
+    if (toolResult.success) {
+      const output = JSON.stringify(toolResult.output || {});
+      return `OK: ${toolName} -> ${output.slice(0, 100)}`;
+    }
+    const errMsg = toolResult.error ? toolResult.error.message : 'unknown error';
+    return `ERR: ${toolName} -> ${errMsg.slice(0, 100)}`;
+  }
+
   _isRepetition(callHistory, newCalls, threshold = 3) {
     if (callHistory.length < threshold) return false;
 
