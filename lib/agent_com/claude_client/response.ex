@@ -1,6 +1,8 @@
 defmodule AgentCom.ClaudeClient.Response do
   @moduledoc """
-  Response parser for Claude Code CLI output.
+  Response parser for Claude Code CLI output and Ollama JSON responses.
+
+  ## Claude CLI Parsing (XML)
 
   Handles the JSON wrapper produced by `--output-format json` and extracts the
   inner XML content based on the prompt type. The parsing pipeline is:
@@ -12,15 +14,11 @@ defmodule AgentCom.ClaudeClient.Response do
   4. **XML extraction** -- Strip markdown fences, find the expected root element.
   5. **Type-specific parsing** -- Parse child elements into typed Elixir maps.
 
-  ## JSON Wrapper Formats
+  ## Ollama Parsing (JSON)
 
-  The `--output-format json` mode may return different structures:
-
-  - `%{"result" => "text response"}` -- simple string result
-  - `%{"result" => %{"content" => [%{"text" => "text response"}, ...]}}` -- nested content array
-
-  If JSON decoding fails, the raw output is tried as plain text (fallback for
-  `--output-format text` or unexpected formats).
+  `parse_ollama/2` handles plain text containing JSON from Ollama responses.
+  Strips thinking blocks and markdown fences, extracts JSON arrays/objects,
+  and maps them to the same Elixir map shapes as XML parsing.
 
   ## Error Types
 
@@ -29,15 +27,156 @@ defmodule AgentCom.ClaudeClient.Response do
   - `{:error, :empty_response}` -- empty CLI output
   - `{:error, {:exit_code, integer}}` -- non-zero exit code
   - `{:error, {:unexpected_format, term}}` -- JSON structure doesn't match expected shapes
-  - `{:error, {:parse_error, string}}` -- XML extraction or element parsing failure
+  - `{:error, {:parse_error, string}}` -- XML/JSON extraction or element parsing failure
   """
 
+  # ---------------------------------------------------------------------------
+  # Ollama response parsing (JSON)
+  # ---------------------------------------------------------------------------
+
   @doc """
-  Parse Ollama response content. Delegates to `parse/3` with exit_code 0,
-  treating the raw content as successful CLI output.
+  Parse Ollama response content (plain text containing JSON) into typed Elixir maps.
+
+  Handles all 4 prompt types: `:decompose`, `:verify`, `:identify_improvements`,
+  `:generate_proposals`. Strips thinking blocks and markdown fences before
+  extracting JSON.
   """
   @spec parse_ollama(String.t(), atom()) :: {:ok, term()} | {:error, term()}
-  def parse_ollama(content, prompt_type), do: parse(content, 0, prompt_type)
+
+  def parse_ollama(content, :decompose) do
+    case extract_json(content) do
+      {:ok, items} when is_list(items) ->
+        tasks =
+          Enum.map(items, fn item ->
+            depends_on = normalize_depends_on(Map.get(item, "depends_on", []))
+
+            %{
+              title: Map.get(item, "title", ""),
+              description: Map.get(item, "description", ""),
+              success_criteria: Map.get(item, "success_criteria", ""),
+              depends_on: depends_on
+            }
+          end)
+
+        {:ok, tasks}
+
+      {:ok, _other} ->
+        {:error, {:parse_error, "expected JSON array for decompose"}}
+
+      {:error, reason} ->
+        {:error, {:parse_error, "failed to extract JSON: #{inspect(reason)}"}}
+    end
+  end
+
+  def parse_ollama(content, :verify) do
+    case extract_json(content) do
+      {:ok, %{"verdict" => verdict_str} = item} ->
+        verdict =
+          case String.downcase(to_string(verdict_str)) do
+            "pass" -> :pass
+            "fail" -> :fail
+            other -> other
+          end
+
+        gaps =
+          Map.get(item, "gaps", [])
+          |> Enum.map(fn gap ->
+            %{
+              description: Map.get(gap, "description", ""),
+              severity: Map.get(gap, "severity", "minor")
+            }
+          end)
+
+        {:ok, %{verdict: verdict, reasoning: Map.get(item, "reasoning", ""), gaps: gaps}}
+
+      {:ok, _other} ->
+        {:error, {:parse_error, "expected JSON object with verdict for verify"}}
+
+      {:error, reason} ->
+        {:error, {:parse_error, "failed to extract JSON: #{inspect(reason)}"}}
+    end
+  end
+
+  def parse_ollama(content, :identify_improvements) do
+    case extract_json(content) do
+      {:ok, items} when is_list(items) ->
+        improvements =
+          Enum.map(items, fn item ->
+            files =
+              case Map.get(item, "files", []) do
+                f when is_list(f) -> f
+                f when is_binary(f) -> String.split(f, ",", trim: true) |> Enum.map(&String.trim/1)
+                _ -> []
+              end
+
+            %{
+              title: Map.get(item, "title", ""),
+              description: Map.get(item, "description", ""),
+              category: Map.get(item, "category", ""),
+              effort: Map.get(item, "effort", ""),
+              files: files
+            }
+          end)
+
+        {:ok, improvements}
+
+      {:ok, _other} ->
+        {:error, {:parse_error, "expected JSON array for identify_improvements"}}
+
+      {:error, reason} ->
+        {:error, {:parse_error, "failed to extract JSON: #{inspect(reason)}"}}
+    end
+  end
+
+  def parse_ollama(content, :generate_proposals) do
+    case extract_json(content) do
+      {:ok, items} when is_list(items) ->
+        proposals =
+          Enum.map(items, fn item ->
+            dependencies =
+              case Map.get(item, "dependencies", []) do
+                d when is_list(d) -> d
+                _ -> []
+              end
+
+            related_files =
+              case Map.get(item, "related_files", []) do
+                f when is_list(f) -> f
+                _ -> []
+              end
+
+            %{
+              title: Map.get(item, "title", ""),
+              problem: Map.get(item, "problem", ""),
+              solution: Map.get(item, "solution", ""),
+              description: Map.get(item, "description", ""),
+              rationale: Map.get(item, "rationale", ""),
+              why_now: Map.get(item, "why_now", ""),
+              why_not: Map.get(item, "why_not", ""),
+              impact: Map.get(item, "impact", "medium"),
+              effort: Map.get(item, "effort", "medium"),
+              dependencies: dependencies,
+              related_files: related_files
+            }
+          end)
+
+        {:ok, proposals}
+
+      {:ok, _other} ->
+        {:error, {:parse_error, "expected JSON array for generate_proposals"}}
+
+      {:error, reason} ->
+        {:error, {:parse_error, "failed to extract JSON: #{inspect(reason)}"}}
+    end
+  end
+
+  def parse_ollama(_content, unknown_type) do
+    {:error, {:parse_error, "unknown prompt type: #{inspect(unknown_type)}"}}
+  end
+
+  # ---------------------------------------------------------------------------
+  # Claude CLI response parsing (XML)
+  # ---------------------------------------------------------------------------
 
   @spec parse(String.t(), non_neg_integer(), atom()) :: {:ok, term()} | {:error, term()}
 
@@ -270,4 +409,58 @@ defmodule AgentCom.ClaudeClient.Response do
     pattern = Regex.compile!("<#{Regex.escape(tag)}>.*?</#{Regex.escape(tag)}>", "s")
     Regex.scan(pattern, xml) |> Enum.map(fn [match] -> match end)
   end
+
+  # ---------------------------------------------------------------------------
+  # JSON extraction helpers (for Ollama responses)
+  # ---------------------------------------------------------------------------
+
+  defp extract_json(text) do
+    cleaned = strip_thinking(text) |> String.trim()
+    # Strip markdown code fences
+    cleaned = Regex.replace(~r/```(?:json)?\n?/, cleaned, "")
+    cleaned = Regex.replace(~r/```\s*$/, cleaned, "", global: true)
+    cleaned = String.trim(cleaned)
+
+    case Jason.decode(cleaned) do
+      {:ok, result} ->
+        {:ok, result}
+
+      {:error, _} ->
+        # Try to extract JSON array or object via regex
+        cond do
+          String.contains?(cleaned, "[") ->
+            case Regex.run(~r/\[.*\]/s, cleaned) do
+              [json] -> Jason.decode(json)
+              nil -> {:error, :no_json_found}
+            end
+
+          String.contains?(cleaned, "{") ->
+            case Regex.run(~r/\{.*\}/s, cleaned) do
+              [json] -> Jason.decode(json)
+              nil -> {:error, :no_json_found}
+            end
+
+          true ->
+            {:error, :no_json_found}
+        end
+    end
+  end
+
+  defp strip_thinking(content) do
+    Regex.replace(~r/<think>.*?<\/think>/s, content, "") |> String.trim()
+  end
+
+  defp normalize_depends_on(deps) when is_list(deps) do
+    Enum.flat_map(deps, fn
+      n when is_integer(n) -> [n]
+      s when is_binary(s) ->
+        case Integer.parse(s) do
+          {n, _} -> [n]
+          :error -> []
+        end
+      _ -> []
+    end)
+  end
+
+  defp normalize_depends_on(_), do: []
 end
