@@ -231,7 +231,7 @@ Plans:
 **Plans:** 2 plans
 Plans:
 - [x] 35-01-PLAN.md -- Core scanner library: Patterns, FileWalker, Finding struct, RepoScanner API
-- [ ] 35-02-PLAN.md -- API endpoint and comprehensive test suite
+- [x] 35-02-PLAN.md -- API endpoint and comprehensive test suite
 
 ### Phase 36: Dashboard and Observability
 **Goal**: The autonomous hub's behavior is fully visible through the dashboard for human oversight
@@ -263,5 +263,5 @@ Phases execute in numeric order: 24, 25, 26... Decimal phases (if inserted) exec
 | 32. Improvement Scanning | v1.3 | 0/TBD | Not started | - |
 | 33. Contemplation and Scalability | v1.3 | 0/TBD | Not started | - |
 | 34. Tiered Autonomy | v1.3 | 0/TBD | Not started | - |
-| 35. Pre-Publication Cleanup | v1.3 | 0/2 | Not started | - |
+| 35. Pre-Publication Cleanup | v1.3 | 2/2 | Complete | 2026-02-13 |
 | 36. Dashboard and Observability | v1.3 | 0/TBD | Not started | - |

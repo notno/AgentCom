@@ -64,10 +64,10 @@ Requirements for v1.3 Hub FSM Loop of Self-Improvement. Each maps to roadmap pha
 
 ### Pre-Publication Cleanup
 
-- [ ] **CLEAN-01**: Regex-based scanning detects leaked tokens/API keys across registered repos
-- [ ] **CLEAN-02**: Scanning detects and replaces hardcoded IPs/hostnames with placeholders
-- [ ] **CLEAN-03**: Workspace files (SOUL.md, USER.md, etc.) removed from git and added to .gitignore
-- [ ] **CLEAN-04**: Personal references (names, local paths) identified with recommended replacements
+- [x] **CLEAN-01**: Regex-based scanning detects leaked tokens/API keys across registered repos
+- [x] **CLEAN-02**: Scanning detects and replaces hardcoded IPs/hostnames with placeholders
+- [x] **CLEAN-03**: Workspace files (SOUL.md, USER.md, etc.) removed from git and added to .gitignore
+- [x] **CLEAN-04**: Personal references (names, local paths) identified with recommended replacements
 
 ### Scalability
 
@@ -169,10 +169,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUTO-01 | Phase 34 | Pending |
 | AUTO-02 | Phase 34 | Pending |
 | AUTO-03 | Phase 34 | Pending |
-| CLEAN-01 | Phase 35 | Pending |
-| CLEAN-02 | Phase 35 | Pending |
-| CLEAN-03 | Phase 35 | Pending |
-| CLEAN-04 | Phase 35 | Pending |
+| CLEAN-01 | Phase 35 | Done |
+| CLEAN-02 | Phase 35 | Done |
+| CLEAN-03 | Phase 35 | Done |
+| CLEAN-04 | Phase 35 | Done |
 | DASH-01 | Phase 36 | Pending |
 | DASH-02 | Phase 36 | Pending |
 
