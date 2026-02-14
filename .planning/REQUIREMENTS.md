@@ -71,13 +71,13 @@ Requirements for v1.3 Hub FSM Loop of Self-Improvement. Each maps to roadmap pha
 
 ### Scalability
 
-- [ ] **SCALE-01**: Hub produces scalability analysis report from existing ETS metrics (throughput, utilization, bottlenecks)
-- [ ] **SCALE-02**: Report recommends whether to add machines vs agents based on current constraints
+- [x] **SCALE-01**: Hub produces scalability analysis report from existing ETS metrics (throughput, utilization, bottlenecks)
+- [x] **SCALE-02**: Report recommends whether to add machines vs agents based on current constraints
 
 ### Contemplation
 
-- [ ] **CONTEMP-01**: In Contemplating state, hub generates structured feature proposals from codebase analysis
-- [ ] **CONTEMP-02**: Proposals written as XML files in proposals directory for human review
+- [x] **CONTEMP-01**: In Contemplating state, hub generates structured feature proposals from codebase analysis
+- [x] **CONTEMP-02**: Proposals written as XML files in proposals directory for human review
 
 ### Document Format
 
@@ -162,10 +162,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | IMPR-03 | Phase 32 | Done |
 | IMPR-04 | Phase 32 | Done |
 | IMPR-05 | Phase 32 | Done |
-| CONTEMP-01 | Phase 33 | Pending |
-| CONTEMP-02 | Phase 33 | Pending |
-| SCALE-01 | Phase 33 | Pending |
-| SCALE-02 | Phase 33 | Pending |
+| CONTEMP-01 | Phase 33 | Done |
+| CONTEMP-02 | Phase 33 | Done |
+| SCALE-01 | Phase 33 | Done |
+| SCALE-02 | Phase 33 | Done |
 | AUTO-01 | Phase 34 | Done |
 | AUTO-02 | Phase 34 | Done |
 | AUTO-03 | Phase 34 | Done |

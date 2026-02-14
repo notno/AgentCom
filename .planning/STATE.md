@@ -9,17 +9,17 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 
 ## Current Position
 
-Phase: 34 of 36 (Tiered Autonomy)
-Plan: 2/2 complete
+Phase: 33 of 36 (Contemplation and Scalability)
+Plan: 3/3 complete
 Status: Complete
-Last activity: 2026-02-14 -- Plan 34-02: Sidecar risk classification integration (2 tasks, 3 commits incl. direct import refactor)
+Last activity: 2026-02-14 -- Phase 33: HubFSM 4-state expansion, proposal schema enrichment, TDD suite (6 tasks, 10 commits incl. regression fix)
 
-Progress: [███████████████] 100% (2/2 plans)
+Progress: [███████████████] 100% (3/3 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 91 (19 v1.0 + 32 v1.1 + 25 v1.2 + 15 v1.3)
+- Total plans completed: 94 (19 v1.0 + 32 v1.1 + 25 v1.2 + 18 v1.3)
 - Average duration: 4 min
 - Total execution time: ~5.5 hours
 
@@ -95,6 +95,12 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - [Phase 30]: Process.demonitor with :flush prevents stale DOWN messages from Task.async
 - [Phase 31]: WebhookHistory initialized in HubFSM.init alongside History (single startup point)
 - [Phase 31]: GitHub full_name normalized (/ to -) to match RepoRegistry url_to_id convention
+- [Phase 33]: HubFSM expanded to 4-state: improving->contemplating when zero findings AND budget available
+- [Phase 33]: Contemplation cycle spawns via Task.start (mirrors SelfImprovement pattern exactly)
+- [Phase 33]: Proposal schema enriched with problem, solution, why_now, why_not, dependencies fields
+- [Phase 33]: Contemplation reads PROJECT.md Out of Scope section to avoid proposing excluded features
+- [Phase 33]: ScalabilityAnalyzer pure metric analysis (no LLM) with agents-vs-machines recommendation
+- [Phase 33]: Improving predicates now transition to :executing when goals submitted (not :stay)
 
 ### Research Findings (v1.3)
 
@@ -125,5 +131,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 33-03-PLAN.md -- Contemplation test suite (2 tasks, 40 tests across 5 files)
+Stopped at: Completed Phase 33 -- Contemplation and Scalability (3 plans, 10 commits, regression fix applied)
 Resume file: None
