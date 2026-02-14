@@ -77,6 +77,9 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - Regex-based XML extraction (not Saxy) for LLM response parsing -- LLM output may not be valid XML; regex is more lenient
 - Fallback plain text parsing when JSON decode fails -- supports --output-format text responses
 - rescue in Cli.invoke for System.cmd :enoent -- prevents GenServer crash when CLI binary unavailable
+- [Phase 30]: Path.expand before Path.wildcard for Windows cross-platform compatibility
+- [Phase 30]: Forward-only dependency constraint: task N can only depend on tasks 1..N-1
+- [Phase 30]: Kahn's algorithm via list-based queue for topological sort simplicity
 - [Phase 31]: Both resting->executing and resting->improving increment cycle count (active work cycles)
 - [Phase 31]: :improving exits only via budget exhaustion or watchdog timeout (not goal predicates)
 - [Phase 32]: @library_tables pattern in DetsBackup for non-GenServer DETS table owners (sync-only compaction, direct close/copy/init restore)
@@ -109,5 +112,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 32-02-PLAN.md -- Deterministic Scanners (Credo, Dialyzer, test/doc/dep gaps)
+Stopped at: Completed 30-01-PLAN.md -- FileTree and DagValidator utility modules
 Resume file: None
