@@ -85,6 +85,9 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - [Phase 32]: @library_tables pattern in DetsBackup for non-GenServer DETS table owners (sync-only compaction, direct close/copy/init restore)
 - [Phase 32]: Path.expand on temp dirs for Windows Path.wildcard compatibility in test fixtures
 - [Phase 32]: GoalBacklog normalizes string priorities to integers; tests assert against normalized values
+- [Phase 30]: Single pending_async slot ensures one LLM call in-flight at a time (respects ClaudeClient serialization)
+- [Phase 30]: Verification before decomposition priority in GoalOrchestrator tick
+- [Phase 30]: Process.demonitor with :flush prevents stale DOWN messages from Task.async
 - [Phase 31]: WebhookHistory initialized in HubFSM.init alongside History (single startup point)
 - [Phase 31]: GitHub full_name normalized (/ to -) to match RepoRegistry url_to_id convention
 
@@ -117,5 +120,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 32-04-PLAN.md -- Self-Improvement Test Suite
+Stopped at: Completed 30-03-PLAN.md -- GoalOrchestrator GenServer
 Resume file: None
