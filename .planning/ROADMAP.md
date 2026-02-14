@@ -188,10 +188,10 @@ Plans:
   1. Sidecar can query its own pm2 process name and running status
   2. Sidecar can trigger its own graceful restart via pm2 (process exits, pm2 auto-restarts)
   3. Hub sends a restart command over WebSocket, and the target sidecar executes a graceful pm2 restart
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 42-01: pm2 self-awareness and hub-commanded restart
+- [ ] 42-01-PLAN.md -- pm2 self-awareness, graceful restart, and hub-commanded restart
 
 ### Phase 43: Hub FSM Healing
 **Goal**: Hub autonomously detects and remediates infrastructure problems -- stuck tasks, dead endpoints, CI failures -- via a dedicated healing state with watchdog protection
