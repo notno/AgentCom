@@ -34,6 +34,7 @@ defmodule AgentCom.Application do
       {Registry, keys: :unique, name: AgentCom.AgentRegistry},
       {AgentCom.Config, []},
       {AgentCom.CostLedger, []},
+      {AgentCom.ClaudeClient, []},
       {AgentCom.Auth, []},
       {AgentCom.Mailbox, []},
       {AgentCom.Channels, []},
