@@ -20,14 +20,14 @@ Requirements for v1.3 Hub FSM Loop of Self-Improvement. Each maps to roadmap pha
 
 ### Goal Management
 
-- [ ] **GOAL-01**: Centralized goal backlog with DETS persistence and priority ordering (urgent/high/normal/low)
-- [ ] **GOAL-02**: Goals can be submitted via HTTP API, CLI tool, and internal generation
+- [x] **GOAL-01**: Centralized goal backlog with DETS persistence and priority ordering (urgent/high/normal/low)
+- [x] **GOAL-02**: Goals can be submitted via HTTP API, CLI tool, and internal generation
 - [ ] **GOAL-03**: Hub decomposes goals into enriched tasks via Claude Code CLI (elephant carpaccio slicing)
 - [ ] **GOAL-04**: Decomposition is grounded in actual file tree (validates referenced files exist)
-- [ ] **GOAL-05**: Each goal has a lifecycle (submitted -> decomposing -> executing -> verifying -> complete/failed)
+- [x] **GOAL-05**: Each goal has a lifecycle (submitted -> decomposing -> executing -> verifying -> complete/failed)
 - [ ] **GOAL-06**: Hub monitors child task completion and drives Ralph-style inner loop per goal
 - [ ] **GOAL-07**: Goal completion verified by LLM judging success criteria, max 2 retry attempts
-- [ ] **GOAL-08**: Goals carry success criteria defined at submission time
+- [x] **GOAL-08**: Goals carry success criteria defined at submission time
 - [ ] **GOAL-09**: Goal decomposition produces a dependency graph -- independent tasks marked for parallel execution, dependent tasks carry depends_on references
 
 ### Claude API Client
@@ -137,10 +137,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | COST-04 | Phase 25 | Done |
 | CLIENT-01 | Phase 26 | Pending |
 | CLIENT-02 | Phase 26 | Pending |
-| GOAL-01 | Phase 27 | Pending |
-| GOAL-02 | Phase 27 | Pending |
-| GOAL-05 | Phase 27 | Pending |
-| GOAL-08 | Phase 27 | Pending |
+| GOAL-01 | Phase 27 | Done |
+| GOAL-02 | Phase 27 | Done |
+| GOAL-05 | Phase 27 | Done |
+| GOAL-08 | Phase 27 | Done |
 | PIPE-01 | Phase 28 | Pending |
 | PIPE-02 | Phase 28 | Pending |
 | PIPE-03 | Phase 28 | Pending |

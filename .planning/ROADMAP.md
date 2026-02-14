@@ -73,8 +73,8 @@
 - [x] **Phase 24: Document Format Conversion** - Convert machine-consumed planning artifacts to XML (shipped 2026-02-13)
 - [x] **Phase 25: Cost Control Infrastructure** - CostLedger GenServer with per-state budgets and telemetry (shipped 2026-02-13)
 - [ ] **Phase 26: Claude API Client** - Req-based HTTP client GenServer for hub-side LLM calls
-- [ ] **Phase 27: Goal Backlog** - DETS-backed goal storage with multi-source intake and lifecycle
-- [ ] **Phase 28: Pipeline Dependencies** - Task dependency graph with scheduler filtering
+- [x] **Phase 27: Goal Backlog** - DETS-backed goal storage with multi-source intake and lifecycle (shipped 2026-02-13)
+- [x] **Phase 28: Pipeline Dependencies** - Task dependency graph with scheduler filtering (shipped 2026-02-13)
 - [ ] **Phase 29: Hub FSM Core** - 4-state autonomous brain with queue-driven transitions
 - [ ] **Phase 30: Goal Decomposition and Inner Loop** - LLM-powered goal-to-task transformation with Ralph-style verification
 - [ ] **Phase 31: Hub Event Wiring** - GitHub webhooks and external event triggers for FSM transitions
@@ -138,8 +138,8 @@ Plans:
   3. Each goal carries success criteria defined at submission time and progresses through lifecycle states (submitted, decomposing, executing, verifying, complete, failed)
   4. GoalBacklog publishes PubSub events on goal state changes for downstream consumers
 **Plans**: 2 plans
-- [ ] 27-01-PLAN.md — GoalBacklog GenServer with DETS persistence, lifecycle state machine, priority index, PubSub, DetsBackup registration
-- [ ] 27-02-PLAN.md — HTTP API routes, validation schemas, CLI sidecar tool (agentcom-submit-goal.js)
+- [x] 27-01-PLAN.md — GoalBacklog GenServer with DETS persistence, lifecycle state machine, priority index, PubSub, DetsBackup registration
+- [x] 27-02-PLAN.md — HTTP API routes, validation schemas, CLI sidecar tool (agentcom-submit-goal.js)
 
 ### Phase 28: Pipeline Dependencies
 **Goal**: Tasks can declare dependency ordering so the scheduler executes them in correct sequence
@@ -151,8 +151,8 @@ Plans:
   3. Tasks carry a goal_id field linking them to their parent goal, enabling goal-level progress tracking
 **Plans:** 2 plans
 Plans:
-- [ ] 28-01-PLAN.md -- Core implementation: TaskQueue fields, scheduler filter, API layer, dependency validation
-- [ ] 28-02-PLAN.md -- TDD: dependency filtering, goal progress, backward compatibility tests
+- [x] 28-01-PLAN.md -- Core implementation: TaskQueue fields, scheduler filter, API layer, dependency validation
+- [x] 28-02-PLAN.md -- TDD: dependency filtering, goal progress, backward compatibility tests
 
 ### Phase 29: Hub FSM Core
 **Goal**: The hub operates as an autonomous 4-state brain with observable, controllable state transitions
@@ -255,8 +255,8 @@ Phases execute in numeric order: 24, 25, 26... Decimal phases (if inserted) exec
 | 24. Document Format Conversion | v1.3 | 2/2 | Complete | 2026-02-13 |
 | 25. Cost Control Infrastructure | v1.3 | 3/3 | Complete | 2026-02-13 |
 | 26. Claude API Client | v1.3 | 0/3 | Not started | - |
-| 27. Goal Backlog | v1.3 | 0/TBD | Not started | - |
-| 28. Pipeline Dependencies | v1.3 | 0/TBD | Not started | - |
+| 27. Goal Backlog | v1.3 | 2/2 | Complete | 2026-02-13 |
+| 28. Pipeline Dependencies | v1.3 | 2/2 | Complete | 2026-02-13 |
 | 29. Hub FSM Core | v1.3 | 0/TBD | Not started | - |
 | 30. Goal Decomposition and Inner Loop | v1.3 | 0/TBD | Not started | - |
 | 31. Hub Event Wiring | v1.3 | 0/TBD | Not started | - |
