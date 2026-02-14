@@ -22,13 +22,13 @@ Requirements for v1.3 Hub FSM Loop of Self-Improvement. Each maps to roadmap pha
 
 - [x] **GOAL-01**: Centralized goal backlog with DETS persistence and priority ordering (urgent/high/normal/low)
 - [x] **GOAL-02**: Goals can be submitted via HTTP API, CLI tool, and internal generation
-- [ ] **GOAL-03**: Hub decomposes goals into enriched tasks via Claude Code CLI (elephant carpaccio slicing)
-- [ ] **GOAL-04**: Decomposition is grounded in actual file tree (validates referenced files exist)
+- [x] **GOAL-03**: Hub decomposes goals into enriched tasks via Claude Code CLI (elephant carpaccio slicing)
+- [x] **GOAL-04**: Decomposition is grounded in actual file tree (validates referenced files exist)
 - [x] **GOAL-05**: Each goal has a lifecycle (submitted -> decomposing -> executing -> verifying -> complete/failed)
-- [ ] **GOAL-06**: Hub monitors child task completion and drives Ralph-style inner loop per goal
-- [ ] **GOAL-07**: Goal completion verified by LLM judging success criteria, max 2 retry attempts
+- [x] **GOAL-06**: Hub monitors child task completion and drives Ralph-style inner loop per goal
+- [x] **GOAL-07**: Goal completion verified by LLM judging success criteria, max 2 retry attempts
 - [x] **GOAL-08**: Goals carry success criteria defined at submission time
-- [ ] **GOAL-09**: Goal decomposition produces a dependency graph -- independent tasks marked for parallel execution, dependent tasks carry depends_on references
+- [x] **GOAL-09**: Goal decomposition produces a dependency graph -- independent tasks marked for parallel execution, dependent tasks carry depends_on references
 
 ### Claude API Client
 
@@ -37,11 +37,11 @@ Requirements for v1.3 Hub FSM Loop of Self-Improvement. Each maps to roadmap pha
 
 ### Self-Improvement
 
-- [ ] **IMPR-01**: Deterministic codebase scanning identifies test gaps, documentation gaps, and dead dependencies
-- [ ] **IMPR-02**: LLM-assisted code review via git diff analysis identifies refactoring and simplification opportunities
-- [ ] **IMPR-03**: Improvement scanning cycles through repos in priority order (uses RepoRegistry)
-- [ ] **IMPR-04**: Improvement history tracks changes to prevent Sisyphus loops (oscillation detection)
-- [ ] **IMPR-05**: File-level cooldowns prevent re-scanning recently improved files
+- [x] **IMPR-01**: Deterministic codebase scanning identifies test gaps, documentation gaps, and dead dependencies
+- [x] **IMPR-02**: LLM-assisted code review via git diff analysis identifies refactoring and simplification opportunities
+- [x] **IMPR-03**: Improvement scanning cycles through repos in priority order (uses RepoRegistry)
+- [x] **IMPR-04**: Improvement history tracks changes to prevent Sisyphus loops (oscillation detection)
+- [x] **IMPR-05**: File-level cooldowns prevent re-scanning recently improved files
 
 ### Cost and Safety
 
@@ -149,19 +149,19 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FSM-03 | Phase 29 | Done |
 | FSM-04 | Phase 29 | Done |
 | FSM-05 | Phase 29 | Done |
-| GOAL-03 | Phase 30 | Pending |
-| GOAL-04 | Phase 30 | Pending |
-| GOAL-06 | Phase 30 | Pending |
-| GOAL-07 | Phase 30 | Pending |
-| GOAL-09 | Phase 30 | Pending |
+| GOAL-03 | Phase 30 | Done |
+| GOAL-04 | Phase 30 | Done |
+| GOAL-06 | Phase 30 | Done |
+| GOAL-07 | Phase 30 | Done |
+| GOAL-09 | Phase 30 | Done |
 | FSM-06 | Phase 31 | Pending |
 | FSM-07 | Phase 31 | Pending |
 | FSM-08 | Phase 31 | Pending |
-| IMPR-01 | Phase 32 | Pending |
-| IMPR-02 | Phase 32 | Pending |
-| IMPR-03 | Phase 32 | Pending |
-| IMPR-04 | Phase 32 | Pending |
-| IMPR-05 | Phase 32 | Pending |
+| IMPR-01 | Phase 32 | Done |
+| IMPR-02 | Phase 32 | Done |
+| IMPR-03 | Phase 32 | Done |
+| IMPR-04 | Phase 32 | Done |
+| IMPR-05 | Phase 32 | Done |
 | CONTEMP-01 | Phase 33 | Pending |
 | CONTEMP-02 | Phase 33 | Pending |
 | SCALE-01 | Phase 33 | Pending |

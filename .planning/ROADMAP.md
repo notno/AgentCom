@@ -76,13 +76,13 @@
 - [x] **Phase 27: Goal Backlog** - DETS-backed goal storage with multi-source intake and lifecycle (shipped 2026-02-13)
 - [x] **Phase 28: Pipeline Dependencies** - Task dependency graph with scheduler filtering (shipped 2026-02-13)
 - [x] **Phase 29: Hub FSM Core** - 4-state autonomous brain with queue-driven transitions (shipped 2026-02-13)
-- [ ] **Phase 30: Goal Decomposition and Inner Loop** - LLM-powered goal-to-task transformation with Ralph-style verification
+- [x] **Phase 30: Goal Decomposition and Inner Loop** - LLM-powered goal-to-task transformation with Ralph-style verification (shipped 2026-02-13)
   Plans:
-  - [ ] 30-01-PLAN.md -- FileTree and DagValidator utility modules
-  - [ ] 30-02-PLAN.md -- Decomposer and Verifier LLM pipeline modules
-  - [ ] 30-03-PLAN.md -- GoalOrchestrator GenServer and HubFSM integration
+  - [x] 30-01-PLAN.md -- FileTree and DagValidator utility modules
+  - [x] 30-02-PLAN.md -- Decomposer and Verifier LLM pipeline modules
+  - [x] 30-03-PLAN.md -- GoalOrchestrator GenServer and HubFSM integration
 - [x] **Phase 31: Hub Event Wiring** - GitHub webhooks and external event triggers for FSM transitions (shipped 2026-02-13)
-- [ ] **Phase 32: Improvement Scanning** - Deterministic and LLM-assisted codebase improvement identification
+- [x] **Phase 32: Improvement Scanning** - Deterministic and LLM-assisted codebase improvement identification (shipped 2026-02-13)
 - [ ] **Phase 33: Contemplation and Scalability** - Feature proposal generation and bottleneck analysis
 - [ ] **Phase 34: Tiered Autonomy** - Risk-based PR classification with configurable thresholds
 - [x] **Phase 35: Pre-Publication Cleanup** - Secret scanning, IP replacement, workspace file management (shipped 2026-02-13)
@@ -216,10 +216,10 @@ Plans:
   5. Per-file cooldowns prevent re-scanning recently improved files within a configurable window
 **Plans:** 4 plans
 Plans:
-- [ ] 32-01-PLAN.md -- Finding struct, ImprovementHistory (DETS + cooldowns + oscillation), DetsBackup registration
-- [ ] 32-02-PLAN.md -- CredoScanner, DialyzerScanner, DeterministicScanner (test gaps, doc gaps, dead deps)
-- [ ] 32-03-PLAN.md -- LlmScanner, SelfImprovement orchestrator, HubFSM Improving state
-- [ ] 32-04-PLAN.md -- TDD: comprehensive test suite for all SelfImprovement modules
+- [x] 32-01-PLAN.md -- Finding struct, ImprovementHistory (DETS + cooldowns + oscillation), DetsBackup registration
+- [x] 32-02-PLAN.md -- CredoScanner, DialyzerScanner, DeterministicScanner (test gaps, doc gaps, dead deps)
+- [x] 32-03-PLAN.md -- LlmScanner, SelfImprovement orchestrator, HubFSM Improving state
+- [x] 32-04-PLAN.md -- TDD: comprehensive test suite for all SelfImprovement modules
 
 ### Phase 33: Contemplation and Scalability
 **Goal**: The hub produces strategic analysis -- feature proposals from codebase insight and scalability recommendations from metrics
@@ -283,9 +283,9 @@ Phases execute in numeric order: 24, 25, 26... Decimal phases (if inserted) exec
 | 27. Goal Backlog | v1.3 | 2/2 | Complete | 2026-02-13 |
 | 28. Pipeline Dependencies | v1.3 | 2/2 | Complete | 2026-02-13 |
 | 29. Hub FSM Core | v1.3 | 4/4 | Complete | 2026-02-13 |
-| 30. Goal Decomposition and Inner Loop | v1.3 | 0/TBD | Not started | - |
+| 30. Goal Decomposition and Inner Loop | v1.3 | 3/3 | Complete | 2026-02-13 |
 | 31. Hub Event Wiring | v1.3 | 3/3 | Complete | 2026-02-13 |
-| 32. Improvement Scanning | v1.3 | 0/4 | Not started | - |
+| 32. Improvement Scanning | v1.3 | 4/4 | Complete | 2026-02-13 |
 | 33. Contemplation and Scalability | v1.3 | 0/TBD | Not started | - |
 | 34. Tiered Autonomy | v1.3 | 0/TBD | Not started | - |
 | 35. Pre-Publication Cleanup | v1.3 | 2/2 | Complete | 2026-02-13 |
