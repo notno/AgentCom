@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const readline = require('readline');
 const { validatePath, isCommandBlocked, SandboxError } = require('./sandbox');
 const { getToolByName } = require('./tool-registry');
@@ -217,12 +217,20 @@ async function handleRunCommand(args, workspaceRoot) {
     });
 
     // Timeout with SIGTERM/SIGKILL escalation (from ShellExecutor pattern)
+    // On Windows, proc.kill() with shell:true doesn't kill child processes,
+    // so use taskkill /T /F to kill the entire process tree.
     const timer = setTimeout(() => {
       timedOut = true;
-      proc.kill('SIGTERM');
-      setTimeout(() => {
-        try { proc.kill('SIGKILL'); } catch (e) { /* already dead */ }
-      }, 5000);
+      if (process.platform === 'win32') {
+        try {
+          execSync(`taskkill /PID ${proc.pid} /T /F`, { windowsHide: true, stdio: 'ignore' });
+        } catch (e) { /* already dead */ }
+      } else {
+        proc.kill('SIGTERM');
+        setTimeout(() => {
+          try { proc.kill('SIGKILL'); } catch (e) { /* already dead */ }
+        }, 5000);
+      }
     }, timeoutMs);
 
     proc.stdout.on('data', (data) => {
