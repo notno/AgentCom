@@ -126,7 +126,7 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - [Tech debt]: Elixir version bump (1.14 to 1.17+) recommended for :gen_statem logger fix
 - [Tech debt]: Sidecar queue.json atomicity -- fs.writeFileSync has partial-write-on-crash risk
 - [Tech debt]: VAPID keys ephemeral -- push subscriptions lost on hub restart
-- [Tech debt]: Analytics and Threads modules orphaned (not exposed via API)
+- [Resolved]: Analytics and Threads are actively used (supervisor, router, endpoint, socket, backup)
 
 ## Session Continuity
 

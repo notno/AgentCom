@@ -112,8 +112,12 @@ defmodule AgentCom.HubFSM.History do
   """
   @spec clear() :: :ok
   def clear do
-    :ets.delete_all_objects(@table)
-    :ok
+    case :ets.whereis(@table) do
+      :undefined -> :ok
+      _ref ->
+        :ets.delete_all_objects(@table)
+        :ok
+    end
   end
 
   # ---------------------------------------------------------------------------

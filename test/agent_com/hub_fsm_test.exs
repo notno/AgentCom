@@ -97,29 +97,32 @@ defmodule AgentCom.HubFSMTest do
           success_criteria: "Transition occurs"
         })
 
-      # Wait for tick to evaluate (1s tick interval + margin)
-      Process.sleep(2_000)
+      # Tick is disabled in test env; trigger manually
+      send(Process.whereis(HubFSM), :tick)
+      Process.sleep(100)
 
       state = HubFSM.get_state()
       assert state.fsm_state == :executing
     end
 
     test "transitions back to :resting when no goals remain" do
-      # Submit and wait for transition to :executing
+      # Submit and trigger tick to transition to :executing
       {:ok, goal} =
         GoalBacklog.submit(%{
           description: "Temporary goal",
           success_criteria: "Will be deleted"
         })
 
-      Process.sleep(2_000)
+      send(Process.whereis(HubFSM), :tick)
+      Process.sleep(100)
       assert HubFSM.get_state().fsm_state == :executing
 
       # Delete the goal so no pending/active goals remain
       GoalBacklog.delete(goal.id)
 
-      # Wait for tick to detect no goals
-      Process.sleep(2_000)
+      # Trigger tick to detect no goals
+      send(Process.whereis(HubFSM), :tick)
+      Process.sleep(100)
 
       assert HubFSM.get_state().fsm_state == :resting
     end
@@ -171,8 +174,9 @@ defmodule AgentCom.HubFSMTest do
           success_criteria: "Should not trigger transition"
         })
 
-      # Wait well past tick interval
-      Process.sleep(2_500)
+      # Trigger tick manually — paused FSM should ignore it
+      send(Process.whereis(HubFSM), :tick)
+      Process.sleep(100)
 
       # Should still be resting (paused prevents evaluation)
       state = HubFSM.get_state()
