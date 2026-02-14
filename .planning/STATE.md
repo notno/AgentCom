@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 ## Current Position
 
 Phase: 32 of 36 (Improvement Scanning)
-Plan: 3/4 complete
-Status: In Progress
-Last activity: 2026-02-14 -- Plan 32-03 LLM Scanner and Orchestrator
+Plan: 4/4 complete
+Status: Phase Complete
+Last activity: 2026-02-14 -- Plan 32-04 Self-Improvement Test Suite
 
-Progress: [███████████░░░░] 75% (3/4 plans)
+Progress: [███████████████] 100% (4/4 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 90 (19 v1.0 + 32 v1.1 + 25 v1.2 + 14 v1.3)
+- Total plans completed: 91 (19 v1.0 + 32 v1.1 + 25 v1.2 + 15 v1.3)
 - Average duration: 4 min
 - Total execution time: ~5.5 hours
 
@@ -83,6 +83,8 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - [Phase 31]: Both resting->executing and resting->improving increment cycle count (active work cycles)
 - [Phase 31]: :improving exits only via budget exhaustion or watchdog timeout (not goal predicates)
 - [Phase 32]: @library_tables pattern in DetsBackup for non-GenServer DETS table owners (sync-only compaction, direct close/copy/init restore)
+- [Phase 32]: Path.expand on temp dirs for Windows Path.wildcard compatibility in test fixtures
+- [Phase 32]: GoalBacklog normalizes string priorities to integers; tests assert against normalized values
 - [Phase 31]: WebhookHistory initialized in HubFSM.init alongside History (single startup point)
 - [Phase 31]: GitHub full_name normalized (/ to -) to match RepoRegistry url_to_id convention
 
@@ -115,5 +117,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 32-03-PLAN.md -- LLM Scanner, Orchestrator, and Improving State
+Stopped at: Completed 32-04-PLAN.md -- Self-Improvement Test Suite
 Resume file: None
