@@ -92,7 +92,7 @@
 
 **Phase Numbering:** 37-44 (8 phases)
 
-- [ ] **Phase 37: CI Fix** - Unblock CI with green builds before building new features
+- [x] **Phase 37: CI Fix** - Unblock CI with green builds before building new features (shipped 2026-02-14)
 - [ ] **Phase 38: OllamaClient and Hub LLM Routing** - Hub-side Ollama HTTP client replaces all claude -p CLI calls
 - [ ] **Phase 39: Pipeline Reliability** - Wake failures, execution timeouts, stuck task recovery, reconnect handling
 - [ ] **Phase 40: Sidecar Tool Infrastructure** - Tool registry, sandboxed executor, structured observations for LLM tool calling
@@ -237,7 +237,7 @@ Note: Phases 38, 39, 40, 42 all depend only on Phase 37, so they can parallelize
 | 9-16 | v1.1 | 32/32 | Complete | 2026-02-12 |
 | 17-23 | v1.2 | 25/25 | Complete | 2026-02-12 |
 | 24-36 | v1.3 | 35/35 | Complete | 2026-02-14 |
-| 37. CI Fix | v1.4 | 0/TBD | Not started | - |
+| 37. CI Fix | v1.4 | 1/1 | Complete | 2026-02-14 |
 | 38. OllamaClient + Hub LLM Routing | v1.4 | 0/TBD | Not started | - |
 | 39. Pipeline Reliability | v1.4 | 0/TBD | Not started | - |
 | 40. Sidecar Tool Infrastructure | v1.4 | 0/TBD | Not started | - |
