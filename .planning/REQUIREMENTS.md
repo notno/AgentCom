@@ -14,9 +14,9 @@ Requirements for v1.3 Hub FSM Loop of Self-Improvement. Each maps to roadmap pha
 - [x] **FSM-03**: Hub FSM can be paused/resumed via API
 - [x] **FSM-04**: FSM transition history is logged and queryable
 - [x] **FSM-05**: Dashboard shows current FSM state, transition timeline, and state durations
-- [ ] **FSM-06**: Hub exposes a GitHub webhook endpoint for push and PR merge events
-- [ ] **FSM-07**: Git push/PR merge on active repos wakes FSM from Resting to Improving
-- [ ] **FSM-08**: Goal backlog changes wake FSM from Resting to Executing
+- [x] **FSM-06**: Hub exposes a GitHub webhook endpoint for push and PR merge events
+- [x] **FSM-07**: Git push/PR merge on active repos wakes FSM from Resting to Improving
+- [x] **FSM-08**: Goal backlog changes wake FSM from Resting to Executing
 
 ### Goal Management
 
