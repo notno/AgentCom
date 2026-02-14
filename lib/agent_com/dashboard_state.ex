@@ -501,6 +501,13 @@ defmodule AgentCom.DashboardState do
   # Private helpers
   # ---------------------------------------------------------------------------
 
+  # Skip socket log_task_event broadcasts that lack a :task map.
+  # The authoritative completion broadcast from TaskQueue always includes :task.
+  defp handle_task_event(event, info, state)
+       when event in ["task_complete", "task_completed"] and not is_map_key(info, :task) do
+    state
+  end
+
   defp handle_task_event(event, info, state) when event in ["task_complete", "task_completed"] do
     now = System.system_time(:millisecond)
 
