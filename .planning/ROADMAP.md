@@ -77,6 +77,10 @@
 - [x] **Phase 28: Pipeline Dependencies** - Task dependency graph with scheduler filtering (shipped 2026-02-13)
 - [x] **Phase 29: Hub FSM Core** - 4-state autonomous brain with queue-driven transitions (shipped 2026-02-13)
 - [ ] **Phase 30: Goal Decomposition and Inner Loop** - LLM-powered goal-to-task transformation with Ralph-style verification
+  Plans:
+  - [ ] 30-01-PLAN.md -- FileTree and DagValidator utility modules
+  - [ ] 30-02-PLAN.md -- Decomposer and Verifier LLM pipeline modules
+  - [ ] 30-03-PLAN.md -- GoalOrchestrator GenServer and HubFSM integration
 - [ ] **Phase 31: Hub Event Wiring** - GitHub webhooks and external event triggers for FSM transitions
 - [ ] **Phase 32: Improvement Scanning** - Deterministic and LLM-assisted codebase improvement identification
 - [ ] **Phase 33: Contemplation and Scalability** - Feature proposal generation and bottleneck analysis
@@ -180,7 +184,11 @@ Plans:
   2. Decomposition produces a dependency graph where independent tasks are marked for parallel execution and dependent tasks carry depends_on references
   3. Hub monitors child task completion via PubSub and drives a Ralph-style inner loop per goal (decompose, submit, monitor, verify)
   4. Goal completion is verified by LLM judging success criteria, with max 2 retry attempts (redecompose on failure)
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 30-01-PLAN.md -- FileTree and DagValidator utility modules
+- [ ] 30-02-PLAN.md -- Decomposer and Verifier LLM pipeline modules
+- [ ] 30-03-PLAN.md -- GoalOrchestrator GenServer and HubFSM integration
 
 ### Phase 31: Hub Event Wiring
 **Goal**: External repository events wake the hub from rest and trigger appropriate state transitions
