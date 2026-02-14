@@ -180,3 +180,47 @@
 
 ---
 
+
+## v1.4 — Reliable Autonomy (Complete)
+
+**Completed:** 2026-02-14
+**Phases:** 37-44 (18 plans, ~1.2 hours total)
+**Last phase number:** 44
+
+### What Shipped
+
+| Phase | Name | What It Delivered |
+|-------|------|-------------------|
+| 37 | CI Fix | Merge conflict resolution, pushed local fixes, green CI builds |
+| 38 | OllamaClient + Hub LLM Routing | Elixir HTTP client for Ollama /api/chat, hub FSM routes through local Ollama instead of claude -p |
+| 39 | Pipeline Reliability | Wake failure recovery, execution timeouts, stuck task detection, reconnect state recovery, wake_command pre-routing gate |
+| 40 | Sidecar Tool Infrastructure | 5-tool registry (read_file, write_file, list_directory, run_command, search_files), sandbox with path validation |
+| 41 | Agentic Execution Loop | ReAct loop with 3-layer output parser, safety guardrails, adaptive iteration limits, dashboard streaming |
+| 42 | Agent Self-Management | pm2 self-awareness, hub-commanded graceful restart via WebSocket |
+| 43 | Hub FSM Healing | 5th FSM state with HealthAggregator, automated remediation, watchdog timeout, healing history audit log |
+| 44 | Hub FSM Testing | 22 integration tests covering all 5 FSM states, healing cycles, HTTP endpoints |
+
+### Key Accomplishments
+
+- Hub LLM operations routed through local Ollama HTTP client — zero claude -p CLI calls remaining in production paths
+- Multi-turn agentic ReAct execution loop with 3-layer output parser (native tool_calls, JSON extraction, XML fallback) and safety guardrails
+- Pipeline reliability: wake failure recovery, 30-min execution timeouts, stuck task detection, reconnect state recovery, pre-routing wake_command gate
+- Hub FSM Healing (5th state): HealthAggregator unifying signals, automated stuck-task/endpoint remediation, 5-min watchdog, audit log
+- Sidecar tool infrastructure: 5-tool sandboxed registry with path validation, command blocking, and structured JSON observations
+- Integration test suite: 22 tests validating full FSM cycles, healing state, HTTP endpoints, and watchdog timeout
+
+### Stats
+
+- ~50 commits, ~60 files changed, ~+5,000 lines
+- Timeline: 1 day (2026-02-14)
+- Git range: v1.3..v1.4
+
+### Deferred
+
+- REG-03: Warm/cold model distinction (binary availability used instead)
+- Elixir version bump (1.14 to 1.17+) for :gen_statem logger fix
+- Sidecar queue.json atomicity (fs.writeFileSync partial-write-on-crash risk)
+- VAPID keys ephemeral (push subscriptions lost on hub restart)
+
+---
+

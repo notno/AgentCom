@@ -60,22 +60,26 @@ Reliable autonomous work execution: ideas enter a queue and emerge as reviewed, 
 - ✓ Risk-tiered autonomy classification with configurable thresholds — v1.3
 - ✓ Pre-publication secret scanning, IP replacement, workspace file management — v1.3
 - ✓ Dashboard goal progress, cost tracking, and FSM state visualization — v1.3
+- ✓ OllamaClient HTTP module wrapping Ollama /api/chat with streaming and error handling — v1.4
+- ✓ Hub FSM LLM operations routed through OllamaClient instead of claude -p CLI — v1.4
+- ✓ All claude -p / ClaudeClient.Cli invocations removed from production code paths — v1.4
+- ✓ Pipeline reliability: wake failure recovery, execution timeouts, stuck task detection, reconnect state recovery — v1.4
+- ✓ Pre-routing wake_command gate: tasks with missing/empty wake_command fail immediately regardless of routing target — v1.4
+- ✓ Sidecar tool registry with 5 core tools in Ollama function-calling format — v1.4
+- ✓ Sandboxed tool executor with path validation, command blocking, per-tool timeout — v1.4
+- ✓ OllamaExecutor ReAct loop: multi-turn tool calling with 3-layer output parser — v1.4
+- ✓ Safety guardrails: adaptive iteration limits, repetition detection, token budget, wall-clock timeout — v1.4
+- ✓ Dashboard real-time tool call event streaming during agentic execution — v1.4
+- ✓ pm2 self-awareness and hub-commanded graceful restart — v1.4
+- ✓ Hub FSM 5th state :healing with HealthAggregator, automated remediation, 5-min watchdog — v1.4
+- ✓ Healing history audit log with timestamps, context, outcomes — v1.4
+- ✓ Integration tests: 22 tests covering all 5 FSM states, healing cycles, HTTP endpoints — v1.4
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-## Current Milestone: v1.4 Reliable Autonomy
-
-**Goal:** Make the autonomous pipeline actually work end-to-end — local LLMs execute agentic tool-calling loops, the hub heals its own infrastructure and code, and the pipeline reliably moves tasks from assignment to completion.
-
-**Target features:**
-- Agentic local LLM execution (tool calling, file/git/shell/hub-API actions)
-- Pipeline reliability fixes (wake failures, execution timeouts, stuck task recovery)
-- Hub FSM "Healing" state (detect and fix stuck agents, dead endpoints, CI failures, compilation issues)
-- Hub FSM LLM calls routed through Ollama instead of `claude -p`
-- Hub FSM integration testing infrastructure
-- CI pipeline fix (push merge conflict resolution, green builds)
+(No active milestone — v1.4 complete, next milestone not yet defined)
 
 ### Out of Scope
 
@@ -108,12 +112,13 @@ Shipped v1.0 on 2026-02-11 (8 phases, 19 plans, 48 commits, +12,858 LOC across 6
 Shipped v1.1 on 2026-02-12 (8 phases, 32 plans, 153 commits, +35,732 LOC across 195 files in 4 days).
 Shipped v1.2 on 2026-02-12 (7 phases, 25 plans, 136 commits, +26,075 LOC across 147 files in 1 day).
 Shipped v1.3 on 2026-02-14 (13 phases, 35 plans, 167 commits, +39,920 LOC across 242 files in 2 days).
+Shipped v1.4 on 2026-02-14 (8 phases, 18 plans, ~50 commits, ~+5,000 LOC across ~60 files in 1 day).
 
-**Tech stack:** Elixir/BEAM hub (~30,000 LOC), Node.js sidecars (~5,000 LOC), HTML/CSS/JS dashboard, ExDoc documentation.
+**Tech stack:** Elixir/BEAM hub (~35,000 LOC), Node.js sidecars (~6,000 LOC), HTML/CSS/JS dashboard, ExDoc documentation.
 
-**Architecture:** Push-based scheduler with model-aware routing drives work to always-on sidecars via persistent WebSocket. Tasks carry structured context, success criteria, and complexity classification. Scheduler routes by complexity tier: trivial to local shell, standard to Ollama endpoints, complex to Claude API. Sidecars execute via three backends and self-verify against mechanical checks before submission. Hub operates as an autonomous brain via 4-state FSM (Executing/Improving/Contemplating/Resting) with tick-driven transitions, cost-controlled Claude Code CLI calls, and goal decomposition inner loops. DETS persistence for task queue, agent state, LLM registry, repo registry, goal backlog, cost ledger, improvement history, and config with automated backup/compaction/recovery. ETS-backed metrics, rate limiting, budget checks, and validation tracking. PubSub for internal event distribution. pm2 for sidecar process management. LoggerJSON for structured observability.
+**Architecture:** Push-based scheduler with model-aware routing drives work to always-on sidecars via persistent WebSocket. Tasks carry structured context, success criteria, and complexity classification. Scheduler routes by complexity tier: trivial to local shell, standard to Ollama endpoints, complex to Claude API. Sidecars execute via agentic ReAct loop (multi-turn tool-calling with 5 sandboxed tools) and self-verify against mechanical checks before submission. Hub operates as an autonomous brain via 5-state FSM (Executing/Improving/Contemplating/Resting/Healing) with tick-driven transitions, local Ollama LLM calls, and goal decomposition inner loops. Healing state detects and remediates stuck tasks, dead endpoints, and CI failures with watchdog timeout protection. DETS persistence for task queue, agent state, LLM registry, repo registry, goal backlog, cost ledger, improvement history, healing history, and config with automated backup/compaction/recovery. ETS-backed metrics, rate limiting, budget checks, and validation tracking. PubSub for internal event distribution. pm2 for sidecar process management with hub-commanded restart. LoggerJSON for structured observability.
 
-**Current state:** All v1.0 through v1.3 features shipped. System delivers a complete autonomous pipeline: goals are submitted, decomposed into tasks via LLM, executed by agents, self-verified, and submitted as PRs with risk-tiered classification. Hub autonomously cycles through goal execution, codebase improvement, and strategic contemplation. Operational with 5 AI agents on Tailscale mesh.
+**Current state:** All v1.0 through v1.4 features shipped. System delivers a reliable autonomous pipeline: goals are submitted, decomposed into tasks via local Ollama, executed by agents through agentic tool-calling loops, self-verified, and submitted as PRs with risk-tiered classification. Hub autonomously cycles through goal execution, codebase improvement, strategic contemplation, and self-healing. Pipeline reliability ensures tasks with missing wake_command fail fast, stuck tasks are requeued, and execution timeouts are enforced. Operational with 5 AI agents on Tailscale mesh.
 
 **Known tech debt:**
 - REG-03: Warm/cold model distinction deferred (binary availability used instead)
@@ -164,6 +169,12 @@ Shipped v1.3 on 2026-02-14 (13 phases, 35 plans, 167 commits, +39,920 LOC across
 | PR-only before auto-merge | No auto-merge until pipeline reliability proven through production data | ✓ Good — risk classification ready, conservative default |
 | Ralph-style inner loops | Single pending_async slot ensures one LLM call in-flight at a time | ✓ Good — verification before decomposition priority |
 | Regex-based XML extraction for LLM output | LLM output may not be valid XML; regex is more lenient than Saxy | ✓ Good — fallback plain text parsing when JSON fails |
+| OllamaClient as stateless HTTP wrapper | No GenServer needed — :httpc handles connection pooling, simpler to test | ✓ Good — zero state management, direct function calls |
+| Pre-routing wake_command gate | Wake_command must gate ALL execution paths, not just legacy wake | ✓ Good — UAT gap closed, defense-in-depth preserved |
+| 3-layer output parser for tool calls | LLMs vary in output format (native JSON, JSON-in-content, XML) | ✓ Good — handles Qwen3, Llama, and other models flexibly |
+| ReAct loop with adaptive iteration limits | Different complexity tiers need different iteration budgets | ✓ Good — trivial: 5, standard: 10, complex: 20 |
+| 5th FSM state :healing (not inline checks) | Dedicated state gives healing its own tick budget and watchdog | ✓ Good — clean separation from executing/improving states |
+| HealthAggregator as pure function module | Stateless assessment from existing signals, no new GenServer | ✓ Good — testable, no state management overhead |
 
 ---
-*Last updated: 2026-02-14 after v1.4 milestone start*
+*Last updated: 2026-02-14 after v1.4 milestone complete*
