@@ -5,7 +5,8 @@
 - [x] **v1.0 Core Architecture** - Phases 1-8 (shipped 2026-02-11)
 - [x] **v1.1 Hardening** - Phases 9-16 (shipped 2026-02-12)
 - [x] **v1.2 Smart Agent Pipeline** - Phases 17-23 (shipped 2026-02-12)
-- [ ] **v1.3 Hub FSM Loop of Self-Improvement** - Phases 24-36 (in progress)
+- [x] **v1.3 Hub FSM Loop of Self-Improvement** - Phases 24-36 (shipped 2026-02-14)
+- [ ] **v1.4 Reliable Autonomy** - Phases 37-44 (in progress)
 
 ## Phases
 
@@ -62,238 +63,187 @@
 
 </details>
 
-### v1.3 Hub FSM Loop of Self-Improvement (In Progress)
+<details>
+<summary>v1.3 Hub FSM Loop of Self-Improvement (Phases 24-36) - SHIPPED 2026-02-14</summary>
 
-**Milestone Goal:** Make the hub an autonomous thinker that cycles through executing goals, improving codebases, contemplating future features, and resting -- with Ralph-style inner loops and LLM-powered decomposition.
+| Phase | Name | What It Delivered |
+|-------|------|-------------------|
+| 24 | Document Format Conversion | Saxy-based XML infrastructure with 5 schema structs and round-trip encoding |
+| 25 | Cost Control Infrastructure | CostLedger GenServer with dual DETS+ETS, per-state budgets, telemetry alerting |
+| 26 | Claude API Client | CLI-based ClaudeClient GenServer with budget-gated invocation, prompt templates, response parsing |
+| 27 | Goal Backlog | DETS-backed goal storage with lifecycle state machine, priority ordering, multi-channel intake |
+| 28 | Pipeline Dependencies | Task dependency graph with forward-only constraints, scheduler filtering, goal tracking |
+| 29 | Hub FSM Core | 4-state autonomous brain (Executing/Improving/Contemplating/Resting) with tick-driven transitions |
+| 30 | Goal Decomposition and Inner Loop | LLM-powered goal-to-task transformation with Ralph-style verify-retry inner loop |
+| 31 | Hub Event Wiring | GitHub webhook endpoint with signature verification, FSM wake triggers, event history |
+| 32 | Improvement Scanning | Deterministic + LLM-assisted codebase scanning with anti-oscillation and file cooldowns |
+| 33 | Contemplation and Scalability | Feature proposal generation, enriched proposal schema, scalability bottleneck analysis |
+| 34 | Tiered Autonomy | Risk-based PR classification with configurable thresholds, sidecar diff integration |
+| 35 | Pre-Publication Cleanup | Secret scanning, IP replacement, workspace file management, personal reference detection |
+| 36 | Dashboard and Observability | Goal progress panels, cost tracking display, FSM state duration visualization |
 
-**Phase Numbering:**
-- Integer phases (24, 25, 26...): Planned milestone work
-- Decimal phases (25.1, 25.2): Urgent insertions (marked with INSERTED)
+167 commits, 242 files, +39,920 LOC across 2 days.
 
-- [x] **Phase 24: Document Format Conversion** - Convert machine-consumed planning artifacts to XML (shipped 2026-02-13)
-- [x] **Phase 25: Cost Control Infrastructure** - CostLedger GenServer with per-state budgets and telemetry (shipped 2026-02-13)
-- [x] **Phase 26: Claude API Client** - CLI-based ClaudeClient GenServer with budget-gated invocation, prompt templates, and response parsing (shipped 2026-02-14)
-- [x] **Phase 27: Goal Backlog** - DETS-backed goal storage with multi-source intake and lifecycle (shipped 2026-02-13)
-- [x] **Phase 28: Pipeline Dependencies** - Task dependency graph with scheduler filtering (shipped 2026-02-13)
-- [x] **Phase 29: Hub FSM Core** - 4-state autonomous brain with queue-driven transitions (shipped 2026-02-13)
-- [x] **Phase 30: Goal Decomposition and Inner Loop** - LLM-powered goal-to-task transformation with Ralph-style verification (shipped 2026-02-13)
-  Plans:
-  - [x] 30-01-PLAN.md -- FileTree and DagValidator utility modules
-  - [x] 30-02-PLAN.md -- Decomposer and Verifier LLM pipeline modules
-  - [x] 30-03-PLAN.md -- GoalOrchestrator GenServer and HubFSM integration
-- [x] **Phase 31: Hub Event Wiring** - GitHub webhooks and external event triggers for FSM transitions (shipped 2026-02-13)
-- [x] **Phase 32: Improvement Scanning** - Deterministic and LLM-assisted codebase improvement identification (shipped 2026-02-13)
-- [x] **Phase 33: Contemplation and Scalability** - Feature proposal generation and bottleneck analysis (shipped 2026-02-14)
-- [x] **Phase 34: Tiered Autonomy** - Risk-based PR classification with configurable thresholds (shipped 2026-02-13)
-- [x] **Phase 35: Pre-Publication Cleanup** - Secret scanning, IP replacement, workspace file management (shipped 2026-02-13)
-- [x] **Phase 36: Dashboard and Observability** - Goal progress, cost tracking, and FSM visibility panels (shipped 2026-02-13)
+</details>
+
+### v1.4 Reliable Autonomy (In Progress)
+
+**Milestone Goal:** Make the autonomous pipeline actually work end-to-end -- local LLMs execute agentic tool-calling loops, the hub heals its own infrastructure and code, and the pipeline reliably moves tasks from assignment to completion.
+
+**Phase Numbering:** 37-44 (8 phases)
+
+- [ ] **Phase 37: CI Fix** - Unblock CI with green builds before building new features
+- [ ] **Phase 38: OllamaClient and Hub LLM Routing** - Hub-side Ollama HTTP client replaces all claude -p CLI calls
+- [ ] **Phase 39: Pipeline Reliability** - Wake failures, execution timeouts, stuck task recovery, reconnect handling
+- [ ] **Phase 40: Sidecar Tool Infrastructure** - Tool registry, sandboxed executor, structured observations for LLM tool calling
+- [ ] **Phase 41: Agentic Execution Loop** - ReAct loop with guardrails, output parsing, adaptive limits, dashboard streaming
+- [ ] **Phase 42: Agent Self-Management** - Sidecar pm2 awareness and hub-commanded restart capability
+- [ ] **Phase 43: Hub FSM Healing** - 5th FSM state with health aggregation, automated remediation, watchdog timeout
+- [ ] **Phase 44: Hub FSM Testing** - Integration tests covering all 5 FSM states, healing cycles, HTTP endpoints
 
 ## Phase Details
 
-### Phase 24: Document Format Conversion
-**Goal**: Machine-consumed planning/context documents use XML format for structured parsing
-**Depends on**: Nothing (independent, sets convention for all new v1.3 documents)
-**Requirements**: FORMAT-01, FORMAT-02
+### Phase 37: CI Fix
+**Goal**: CI pipeline passes -- merge conflicts resolved, compilation clean, tests green
+**Depends on**: Nothing (first phase, unblocks everything)
+**Requirements**: CI-01, CI-02, CI-03
 **Success Criteria** (what must be TRUE):
-  1. All new machine-consumed documents (goal definitions, task context, scan results, FSM state snapshots) are authored in XML format
-  2. Existing .planning/ artifacts that are machine-consumed are converted from markdown to XML with equivalent information
-  3. Human-facing documents (README, changelogs) remain in markdown
-**Plans:** 2 plans
-Plans:
-- [x] 24-01-PLAN.md -- XML infrastructure: Saxy dep, encode/decode API, SAX parser, 5 schema structs
-- [x] 24-02-PLAN.md -- TDD: encode/decode round-trip tests for all schema types
+  1. `git diff --check` on remote main shows zero conflict markers
+  2. `mix compile --warnings-as-errors` exits 0 in CI environment
+  3. `mix test --exclude skip --exclude smoke` exits 0 in CI environment
+**Plans**: TBD
 
-### Phase 25: Cost Control Infrastructure
-**Goal**: The hub tracks and enforces API spending limits before any autonomous LLM call is made
-**Depends on**: Nothing (must exist before Phase 26)
-**Requirements**: COST-01, COST-02, COST-03, COST-04
-**Success Criteria** (what must be TRUE):
-  1. CostLedger GenServer tracks cumulative Claude API spend with per-hour, per-day, and per-session breakdowns
-  2. Per-state token budgets (Executing, Improving, Contemplating) are configurable via the existing Config GenServer
-  3. Any code path that would call the Claude API checks the CostLedger budget first and transitions HubFSM to Resting if budget is exhausted
-  4. Cost telemetry events are emitted via :telemetry and trigger existing Alerter rules when thresholds are approached
-**Plans:** 3 plans
 Plans:
-- [x] 25-01-PLAN.md -- CostLedger GenServer with dual-layer DETS+ETS store, supervision tree, DetsBackup
-- [x] 25-02-PLAN.md -- Telemetry events, Alerter rule 7, DetsHelpers test isolation
-- [x] 25-03-PLAN.md -- TDD: comprehensive CostLedger test suite
+- [ ] 37-01: Resolve merge conflicts and fix CI
 
-### Phase 26: Claude API Client
-**Goal**: The hub can make structured LLM calls through a rate-limited, cost-aware HTTP client
-**Depends on**: Phase 25 (CostLedger for budget enforcement)
-**Requirements**: CLIENT-01, CLIENT-02
+### Phase 38: OllamaClient and Hub LLM Routing
+**Goal**: Hub FSM operations (goal decomposition, improvement scanning, contemplation) talk to local Ollama instead of shelling out to claude -p
+**Depends on**: Phase 37
+**Requirements**: ROUTE-01, ROUTE-02, ROUTE-03, ROUTE-04
 **Success Criteria** (what must be TRUE):
-  1. ClaudeClient GenServer sends requests to the Claude Messages API via Req with connection pooling, rate limiting (RPM tracking), and request serialization
-  2. Structured prompt/response handling supports decomposition, verification, and improvement identification use cases with typed response parsing
-  3. Every API call passes through CostLedger budget check before execution and reports token usage after completion
-**Plans:** 3 plans
+  1. Hub can send a chat request to Ollama /api/chat and receive a parsed response with content and token counts
+  2. Goal decomposition produces valid task lists when routed through OllamaClient with Qwen3 8B
+  3. Zero remaining `claude -p` or `ClaudeClient.Cli` calls in production code paths
+  4. Hub FSM completes a full executing cycle (decompose goal, create tasks) using only local Ollama
+**Plans**: TBD
+
 Plans:
-- [x] 26-01-PLAN.md -- ClaudeClient GenServer with CostLedger integration and Cli invocation module
-- [x] 26-02-PLAN.md -- Prompt template builder and Response parser for 3 use cases
-- [x] 26-03-PLAN.md -- TDD test suite for ClaudeClient modules
+- [ ] 38-01: OllamaClient HTTP module
+- [ ] 38-02: Hub FSM LLM routing swap and prompt adaptation
 
-### Phase 27: Goal Backlog
-**Goal**: Users can submit goals through multiple channels and track them through a complete lifecycle
-**Depends on**: Nothing (DETS pattern established by TaskQueue/RepoRegistry)
-**Requirements**: GOAL-01, GOAL-02, GOAL-05, GOAL-08
+### Phase 39: Pipeline Reliability
+**Goal**: Tasks reliably move from assignment to completion -- wake failures recovered, stuck tasks requeued, timeouts enforced, reconnects handled
+**Depends on**: Phase 37
+**Requirements**: PIPE-01, PIPE-02, PIPE-03, PIPE-04, PIPE-05, PIPE-06, PIPE-07
 **Success Criteria** (what must be TRUE):
-  1. GoalBacklog GenServer persists goals in DETS with priority ordering (urgent/high/normal/low) and registered with DetsBackup
-  2. Goals can be submitted via HTTP API endpoint and CLI tool, each receiving a unique goal ID
-  3. Each goal carries success criteria defined at submission time and progresses through lifecycle states (submitted, decomposing, executing, verifying, complete, failed)
-  4. GoalBacklog publishes PubSub events on goal state changes for downstream consumers
-**Plans**: 2 plans
-- [x] 27-01-PLAN.md — GoalBacklog GenServer with DETS persistence, lifecycle state machine, priority index, PubSub, DetsBackup registration
-- [x] 27-02-PLAN.md — HTTP API routes, validation schemas, CLI sidecar tool (agentcom-submit-goal.js)
+  1. Task with missing or failing wake_command is immediately failed (not silently stuck in working state)
+  2. Agentic task exceeding 30-minute deadline is killed and requeued with retry counter incremented
+  3. Task stuck in working state for >10 minutes with offline agent is automatically requeued
+  4. Sidecar reconnecting after disconnect reports its state, and hub either continues waiting or requeues appropriately
+  5. Task that exhausts iteration budget saves partial results and reports partial_pass status
+**Plans**: TBD
 
-### Phase 28: Pipeline Dependencies
-**Goal**: Tasks can declare dependency ordering so the scheduler executes them in correct sequence
-**Depends on**: Nothing (extends existing TaskQueue and Scheduler)
-**Requirements**: PIPE-01, PIPE-02, PIPE-03
-**Success Criteria** (what must be TRUE):
-  1. Tasks support an optional depends_on field containing a list of prerequisite task IDs
-  2. Scheduler filters out tasks whose dependencies have not yet completed, only scheduling tasks with all dependencies satisfied
-  3. Tasks carry a goal_id field linking them to their parent goal, enabling goal-level progress tracking
-**Plans:** 2 plans
 Plans:
-- [x] 28-01-PLAN.md -- Core implementation: TaskQueue fields, scheduler filter, API layer, dependency validation
-- [x] 28-02-PLAN.md -- TDD: dependency filtering, goal progress, backward compatibility tests
+- [ ] 39-01: Wake failure recovery and no-wake fail-fast
+- [ ] 39-02: Task timeouts, stuck detection, and idempotent requeue
+- [ ] 39-03: Sidecar reconnect state recovery and per-iteration budget checks
 
-### Phase 29: Hub FSM Core
-**Goal**: The hub operates as an autonomous 4-state brain with observable, controllable state transitions
-**Depends on**: Phase 25 (CostLedger), Phase 26 (ClaudeClient), Phase 27 (GoalBacklog)
-**Requirements**: FSM-01, FSM-02, FSM-03, FSM-04, FSM-05
+### Phase 40: Sidecar Tool Infrastructure
+**Goal**: Sidecar has a sandboxed tool execution layer that LLMs can call -- 5 tools with workspace isolation and structured JSON observations
+**Depends on**: Phase 37
+**Requirements**: AGENT-01, AGENT-02, AGENT-06
 **Success Criteria** (what must be TRUE):
-  1. HubFSM runs as a singleton GenServer with 4 states (Executing, Improving, Contemplating, Resting) and transitions driven by queue state and external events
-  2. FSM can be paused and resumed via API endpoint, immediately halting autonomous behavior when paused
-  3. FSM transition history is logged with timestamps and queryable via API, including time spent in each state
-  4. Dashboard shows current FSM state, transition timeline, and state duration metrics in real time
-  5. Start with 2-state core (Executing + Resting), expand to 4 states after core loop proves stable
-**Plans:** 4 plans
-Plans:
-- [x] 29-01-PLAN.md -- HubFSM GenServer core with 2-state transitions, predicates, ETS history, supervision tree
-- [x] 29-02-PLAN.md -- API endpoints (pause/resume/state/history), dashboard integration, telemetry
-- [x] 29-03-PLAN.md -- TDD test suite for predicates, history, and GenServer integration
-- [x] 29-04-PLAN.md -- Gap closure: transition timeline visualization in dashboard
+  1. ToolRegistry exports 5 tool definitions (read_file, write_file, list_directory, run_command, search_files) in Ollama function-calling JSON format
+  2. Tool executor rejects file paths outside the task workspace (path traversal blocked)
+  3. Tool executor kills commands exceeding per-tool timeout
+  4. Every tool returns a structured JSON observation with typed fields (not raw text)
+**Plans**: TBD
 
-### Phase 30: Goal Decomposition and Inner Loop
-**Goal**: The hub transforms high-level goals into executable task graphs and drives them to verified completion
-**Depends on**: Phase 26 (ClaudeClient), Phase 27 (GoalBacklog), Phase 28 (Pipeline Dependencies), Phase 29 (HubFSM)
-**Requirements**: GOAL-03, GOAL-04, GOAL-06, GOAL-07, GOAL-09
-**Success Criteria** (what must be TRUE):
-  1. Hub decomposes goals into 3-8 enriched tasks via Claude API using elephant carpaccio slicing, grounded in actual file tree (validates referenced files exist)
-  2. Decomposition produces a dependency graph where independent tasks are marked for parallel execution and dependent tasks carry depends_on references
-  3. Hub monitors child task completion via PubSub and drives a Ralph-style inner loop per goal (decompose, submit, monitor, verify)
-  4. Goal completion is verified by LLM judging success criteria, with max 2 retry attempts (redecompose on failure)
-**Plans:** 3 plans
 Plans:
-- [ ] 30-01-PLAN.md -- FileTree and DagValidator utility modules
-- [ ] 30-02-PLAN.md -- Decomposer and Verifier LLM pipeline modules
-- [ ] 30-03-PLAN.md -- GoalOrchestrator GenServer and HubFSM integration
+- [ ] 40-01: Tool registry and sandbox
+- [ ] 40-02: Tool executor with structured observations
 
-### Phase 31: Hub Event Wiring
-**Goal**: External repository events wake the hub from rest and trigger appropriate state transitions
-**Depends on**: Phase 29 (HubFSM)
-**Requirements**: FSM-06, FSM-07, FSM-08
+### Phase 41: Agentic Execution Loop
+**Goal**: Local Ollama models execute tasks via multi-turn tool-calling loops with safety guardrails, with real-time visibility in the dashboard
+**Depends on**: Phase 40
+**Requirements**: AGENT-03, AGENT-04, AGENT-05, AGENT-07, AGENT-08, AGENT-09, AGENT-10
 **Success Criteria** (what must be TRUE):
-  1. Hub exposes a GitHub webhook endpoint that receives push and PR merge events with signature verification
-  2. Git push or PR merge on an active repo wakes the FSM from Resting to Improving
-  3. Goal backlog changes (new goal submitted, goal priority changed) wake the FSM from Resting to Executing
-**Plans:** 3 plans
-Plans:
-- [x] 31-01-PLAN.md -- Foundation: HubFSM :improving state, CacheBodyReader, WebhookVerifier
-- [x] 31-02-PLAN.md -- Wiring: Webhook endpoint, event history, config API
-- [x] 31-03-PLAN.md -- TDD: Comprehensive test suite for webhook handling
+  1. OllamaExecutor runs a multi-turn ReAct loop: sends task + tools to Ollama, parses tool_calls, executes tools, feeds results back, repeats until final answer
+  2. Loop terminates on max iterations (5/10/20 by complexity tier), repeated tool calls, token budget exhaustion, or wall-clock timeout
+  3. Output parser handles native tool_calls JSON, JSON-in-content extraction, and XML extraction (Qwen3 >5 tool fallback)
+  4. Dashboard shows real-time tool call events (tool name, args summary, result summary) during agentic execution via WebSocket
+  5. Task that times out or exhausts budget preserves partial work, runs verification on current state, and reports partial_pass with completed vs remaining
+**Plans**: TBD
 
-### Phase 32: Improvement Scanning
-**Goal**: The hub autonomously identifies and executes codebase improvements during idle time
-**Depends on**: Phase 26 (ClaudeClient), Phase 29 (HubFSM in Improving state)
-**Requirements**: IMPR-01, IMPR-02, IMPR-03, IMPR-04, IMPR-05
-**Success Criteria** (what must be TRUE):
-  1. Deterministic scanning identifies test gaps, documentation gaps, and dead dependencies without LLM calls
-  2. LLM-assisted scanning via git diff analysis identifies refactoring and simplification opportunities
-  3. Scanning cycles through repos in priority order using the existing RepoRegistry
-  4. Improvement history (DETS-backed) prevents Sisyphus loops by tracking attempted improvements with anti-oscillation detection
-  5. Per-file cooldowns prevent re-scanning recently improved files within a configurable window
-**Plans:** 4 plans
 Plans:
-- [x] 32-01-PLAN.md -- Finding struct, ImprovementHistory (DETS + cooldowns + oscillation), DetsBackup registration
-- [x] 32-02-PLAN.md -- CredoScanner, DialyzerScanner, DeterministicScanner (test gaps, doc gaps, dead deps)
-- [x] 32-03-PLAN.md -- LlmScanner, SelfImprovement orchestrator, HubFSM Improving state
-- [x] 32-04-PLAN.md -- TDD: comprehensive test suite for all SelfImprovement modules
+- [ ] 41-01: ReAct loop core with output parsing
+- [ ] 41-02: Safety guardrails and adaptive limits
+- [ ] 41-03: System prompt, partial results, and dashboard streaming
 
-### Phase 33: Contemplation and Scalability
-**Goal**: The hub produces strategic analysis -- feature proposals from codebase insight and scalability recommendations from metrics
-**Depends on**: Phase 26 (ClaudeClient), Phase 29 (HubFSM in Contemplating state)
-**Requirements**: CONTEMP-01, CONTEMP-02, SCALE-01, SCALE-02
+### Phase 42: Agent Self-Management
+**Goal**: Sidecars are aware of their own pm2 process and can restart themselves on hub command
+**Depends on**: Phase 37
+**Requirements**: PM2-01, PM2-02, PM2-03
 **Success Criteria** (what must be TRUE):
-  1. In Contemplating state, hub generates structured feature proposals from codebase analysis and writes them as XML files in a proposals directory
-  2. Hub produces a scalability analysis report from existing ETS metrics covering throughput, agent utilization, and bottlenecks
-  3. Scalability report recommends whether to add machines vs agents based on current constraint analysis
-**Plans:** 3 plans
-Plans:
-- [x] 33-01-PLAN.md -- HubFSM 4-state expansion with contemplating transitions and cycle spawn
-- [x] 33-02-PLAN.md -- Proposal schema enrichment, prompt/response update, contemplation context
-- [x] 33-03-PLAN.md -- TDD test suite for all contemplation and HubFSM expansion modules
+  1. Sidecar can query its own pm2 process name and running status
+  2. Sidecar can trigger its own graceful restart via pm2 (process exits, pm2 auto-restarts)
+  3. Hub sends a restart command over WebSocket, and the target sidecar executes a graceful pm2 restart
+**Plans**: TBD
 
-### Phase 34: Tiered Autonomy
-**Goal**: Completed tasks are classified by risk so the system can enforce appropriate review levels
-**Depends on**: Phase 29 (HubFSM), Phase 30 (Goal Decomposition producing tasks)
-**Requirements**: AUTO-01, AUTO-02, AUTO-03
-**Success Criteria** (what must be TRUE):
-  1. Completed tasks are classified into risk tiers based on complexity, number of files touched, and lines changed
-  2. Default mode is PR-only for all tiers -- no auto-merge until pipeline reliability is proven through production data
-  3. Tier thresholds are configurable via the existing Config GenServer and can be adjusted without code changes
-**Plans:** 2 plans
 Plans:
-- [x] 34-01-PLAN.md -- TDD: RiskClassifier pure function module with Config-driven thresholds
-- [x] 34-02-PLAN.md -- Sidecar diff gathering, classify endpoint, PR body enrichment
+- [ ] 42-01: pm2 self-awareness and hub-commanded restart
 
-### Phase 35: Pre-Publication Cleanup
-**Goal**: Repos can be scanned for sensitive content before open-sourcing, with actionable findings
-**Depends on**: Nothing (independent of FSM loop, uses RepoRegistry)
-**Requirements**: CLEAN-01, CLEAN-02, CLEAN-03, CLEAN-04
+### Phase 43: Hub FSM Healing
+**Goal**: Hub autonomously detects and remediates infrastructure problems -- stuck tasks, dead endpoints, CI failures -- via a dedicated healing state with watchdog protection
+**Depends on**: Phase 38, Phase 39
+**Requirements**: HEAL-01, HEAL-02, HEAL-03, HEAL-04, HEAL-05, HEAL-06, HEAL-07, HEAL-08
 **Success Criteria** (what must be TRUE):
-  1. Regex-based scanning detects leaked tokens, API keys, and secrets across all registered repos
-  2. Scanning detects hardcoded IPs and hostnames and recommends placeholder replacements
-  3. Workspace files (SOUL.md, USER.md, etc.) are identified for removal from git and addition to .gitignore
-  4. Personal references (names, local paths) are identified with recommended replacements
-**Plans:** 2 plans
-Plans:
-- [x] 35-01-PLAN.md -- Core scanner library: Patterns, FileWalker, Finding struct, RepoScanner API
-- [x] 35-02-PLAN.md -- API endpoint and comprehensive test suite
+  1. FSM transitions to :healing when critical issues detected (3+ stuck tasks, all endpoints unhealthy, compilation failure)
+  2. Healing requeues stuck tasks (offline agent) and dead-letters tasks after 3 retries
+  3. Healing attempts Ollama endpoint recovery with backoff retries and falls back to Claude routing if recovery fails
+  4. Healing detects merge conflicts and compilation failures and produces actionable diagnostics
+  5. Healing state force-transitions to :resting after 5-minute watchdog timeout with critical alert
+**Plans**: TBD
 
-### Phase 36: Dashboard and Observability
-**Goal**: The autonomous hub's behavior is fully visible through the dashboard for human oversight
-**Depends on**: Phase 25 (CostLedger), Phase 27 (GoalBacklog), Phase 29 (HubFSM)
-**Requirements**: DASH-01, DASH-02
-**Success Criteria** (what must be TRUE):
-  1. Dashboard shows Hub FSM state, goal progress bars, and goal backlog depth with real-time updates
-  2. Dashboard shows hub-side API cost tracking (CostLedger data) displayed separately from task execution costs (sidecar costs)
-**Plans:** 2 plans
 Plans:
-- [x] 36-01-PLAN.md -- Backend data integration: GoalBacklog and CostLedger data in DashboardState snapshot, goals PubSub in DashboardSocket
-- [x] 36-02-PLAN.md -- Frontend panels: Goal Progress panel, Cost Tracking panel, Hub FSM state duration enhancement
+- [ ] 43-01: Healing state and health aggregator
+- [ ] 43-02: Stuck task and endpoint remediation
+- [ ] 43-03: CI/compilation healing, watchdog, and audit logging
+
+### Phase 44: Hub FSM Testing
+**Goal**: Integration tests validate all 5 FSM states, healing cycles, and HTTP control endpoints
+**Depends on**: Phase 43
+**Requirements**: TEST-01, TEST-02, TEST-03, TEST-04
+**Success Criteria** (what must be TRUE):
+  1. Tests exercise full FSM cycles: resting -> executing -> resting, resting -> improving -> contemplating -> resting
+  2. Tests trigger healing state, verify remediation actions fire, and confirm exit to resting
+  3. HTTP endpoints /api/hub/pause, /api/hub/resume, /api/hub/state, /api/hub/history return correct responses
+  4. Watchdog timeout test verifies forced transition fires after configured timeout expires
+**Plans**: TBD
+
+Plans:
+- [ ] 44-01: FSM cycle integration tests
+- [ ] 44-02: Healing state and HTTP endpoint tests
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 24, 25, 26... Decimal phases (if inserted) execute between their surrounding integers.
+Phases execute in numeric order: 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43 -> 44
+Note: Phases 38, 39, 40, 42 all depend only on Phase 37, so they can parallelize after CI is green.
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 1-8 | v1.0 | 19/19 | Complete | 2026-02-11 |
 | 9-16 | v1.1 | 32/32 | Complete | 2026-02-12 |
 | 17-23 | v1.2 | 25/25 | Complete | 2026-02-12 |
-| 24. Document Format Conversion | v1.3 | 2/2 | Complete | 2026-02-13 |
-| 25. Cost Control Infrastructure | v1.3 | 3/3 | Complete | 2026-02-13 |
-| 26. Claude API Client | v1.3 | 3/3 | Complete | 2026-02-14 |
-| 27. Goal Backlog | v1.3 | 2/2 | Complete | 2026-02-13 |
-| 28. Pipeline Dependencies | v1.3 | 2/2 | Complete | 2026-02-13 |
-| 29. Hub FSM Core | v1.3 | 4/4 | Complete | 2026-02-13 |
-| 30. Goal Decomposition and Inner Loop | v1.3 | 3/3 | Complete | 2026-02-13 |
-| 31. Hub Event Wiring | v1.3 | 3/3 | Complete | 2026-02-13 |
-| 32. Improvement Scanning | v1.3 | 4/4 | Complete | 2026-02-13 |
-| 33. Contemplation and Scalability | v1.3 | 3/3 | Complete | 2026-02-14 |
-| 34. Tiered Autonomy | v1.3 | 2/2 | Complete | 2026-02-13 |
-| 35. Pre-Publication Cleanup | v1.3 | 2/2 | Complete | 2026-02-13 |
-| 36. Dashboard and Observability | v1.3 | 2/2 | Complete | 2026-02-13 |
+| 24-36 | v1.3 | 35/35 | Complete | 2026-02-14 |
+| 37. CI Fix | v1.4 | 0/TBD | Not started | - |
+| 38. OllamaClient + Hub LLM Routing | v1.4 | 0/TBD | Not started | - |
+| 39. Pipeline Reliability | v1.4 | 0/TBD | Not started | - |
+| 40. Sidecar Tool Infrastructure | v1.4 | 0/TBD | Not started | - |
+| 41. Agentic Execution Loop | v1.4 | 0/TBD | Not started | - |
+| 42. Agent Self-Management | v1.4 | 0/TBD | Not started | - |
+| 43. Hub FSM Healing | v1.4 | 0/TBD | Not started | - |
+| 44. Hub FSM Testing | v1.4 | 0/TBD | Not started | - |
+
+**Totals:** 44 phases, 111+ plans across 5 milestones.

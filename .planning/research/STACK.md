@@ -1,69 +1,289 @@
-# Technology Stack: LLM Mesh Routing & Enriched Tasks
+# Technology Stack: Agentic Tool Calling, Hub FSM Healing & Ollama Routing
 
-**Project:** AgentCom v2 -- Milestone 2 (Distributed LLM, Enriched Tasks, Self-Verification)
-**Researched:** 2026-02-12
-**Confidence:** HIGH (Ollama API verified via GitHub docs, Req verified via Hex, ollama npm verified via npm/GitHub)
+**Project:** AgentCom v2 -- Milestone 3 (Agentic Execution, Self-Healing FSM, Hub LLM Routing)
+**Researched:** 2026-02-14
+**Confidence:** HIGH (Ollama tool calling API verified via official docs, ollama-js verified via GitHub/npm, GenServer testing patterns verified via Elixir community sources)
 
 ## Scope
 
-This document covers ONLY the stack additions for milestone 2 features:
-1. Distributed LLM routing (Ollama across Tailscale mesh)
-2. Enriched task format with context/criteria
-3. Model-aware scheduling
-4. Sidecar trivial execution (zero-token tasks)
-5. Agent self-verification
+This document covers ONLY the stack additions/changes for milestone 3 features:
 
-Existing stack (Elixir/BEAM, Bandit, Phoenix.PubSub, Jason, ws, chokidar, etc.) is
-unchanged and not re-documented here.
+1. Ollama native function/tool calling API integration in sidecar
+2. Agentic execution loop in Node.js sidecar (ReAct-style tool use)
+3. Self-healing FSM state (`:healing`) in Elixir Hub FSM
+4. Hub FSM integration testing improvements
+5. Routing Hub LLM calls through Ollama instead of `claude -p` CLI
+
+Existing stack from Milestone 2 (Req, ollama npm, OllamaPool, TaskClassifier, etc.) is
+assumed present and not re-documented here.
 
 ---
 
 ## Recommended Stack Additions
 
-### Hub-Side (Elixir)
+### Hub-Side (Elixir) -- No New Dependencies
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| Req | ~> 0.5.0 | HTTP client for Ollama API calls | Batteries-included Elixir HTTP client. Built-in streaming (`into:` option), automatic JSON decode via Jason, retries with `max_retries`, connection pooling via Finch. Community standard -- likely becoming Phoenix's default HTTP client. v0.5.17 current (Jan 2026). Replaces need for raw hackney/HTTPoison calls. |
+No new hex packages required. All changes use existing dependencies:
 
-### Sidecar-Side (Node.js)
+| Technology | Already Present | New Usage |
+|------------|----------------|-----------|
+| Req ~> 0.5.0 | Yes (Milestone 2) | Replace `ClaudeClient.Cli` System.cmd calls with Ollama `/api/chat` HTTP calls via Req. Add tool-calling-formatted requests for Hub LLM operations. |
+| GenServer (OTP) | Yes (stdlib) | Add `:healing` state to HubFSM. No new behaviour needed -- GenServer handles this. Do NOT migrate to `:gen_statem`; the existing GenServer pattern with `@valid_transitions` map is working and well-tested. |
+| ExUnit (OTP) | Yes (stdlib) | New integration test patterns for 5-state FSM. Use `start_supervised!/2` and direct `send/2` for tick simulation (pattern already established in existing `hub_fsm_test.exs`). |
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| ollama (npm) | ^0.6.3 | Ollama client for sidecar model invocation | Official Ollama JavaScript library. Exposes `chat()`, `generate()`, `list()`, `ps()` methods. Configurable `host` for remote instances. Supports `format` parameter for structured JSON output. Handles streaming via async iterators. Accepts custom `fetch` implementation. 412 downstream dependents on npm. |
+### Sidecar-Side (Node.js) -- No New Dependencies
 
-### Infrastructure (No Code Dependency)
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| Ollama | latest (0.15.x) | Local LLM inference server | Runs on each Tailscale machine with GPU. REST API on port 11434. Supports model management, VRAM reporting (`/api/ps` returns `size_vram`), health check (`GET /api/version`), structured output via `format` parameter with JSON Schema. v0.15.6 current (Feb 7, 2026). |
-| Qwen3 8B | Q4_K_M quant | Primary local inference model | Fits in 12GB VRAM (~6-7GB at Q4_K_M including KV cache). Supports tool calling, structured JSON output, thinking/non-thinking modes. 32K native context. Handles tiers 1-2 tasks (trivial and standard). Optimized for reasoning and structured responses. |
-| Tailscale MagicDNS | (existing) | Cross-machine Ollama discovery | Already deployed for agent mesh. MagicDNS resolves hostnames automatically (e.g., `nathan-pc.tail1234.ts.net`). Hub discovers Ollama instances at `http://{hostname}:11434`. No additional service discovery needed. |
+| Technology | Already Present | New Usage |
+|------------|----------------|-----------|
+| ollama npm ^0.6.3 | Yes (Milestone 2) | Use `chat()` with `tools` parameter for function/tool calling. Build agentic ReAct loop on top. |
+| Node.js built-in `child_process` | Yes (ShellExecutor) | Reuse existing `spawn` pattern from ShellExecutor for tool-invoked shell commands. |
+| Node.js built-in `fs/promises` | Yes (stdlib) | File operation tools (read, write, list) for agentic execution. |
+| Node.js built-in `test` runner | Yes (package.json scripts) | Integration tests for agentic loop. Already using `node --test`. |
 
 ### Custom Implementations (No External Dependency)
 
 | Component | Approach | Lines (est.) | Why Custom |
 |-----------|----------|-------------|------------|
-| OllamaPool | GenServer + ETS | ~250 | Multi-host Ollama endpoint registry. Periodic health checks via `GET /api/version`, model inventory via `GET /api/tags`, VRAM status via `GET /api/ps`. Tracks endpoint health state (healthy/degraded/down) with circuit-breaker semantics. No off-the-shelf Elixir multi-host Ollama pool exists. |
-| TaskClassifier | Pure function module | ~80 | Classifies task complexity (trivial/standard/complex) from enriched task metadata. Drives model routing decisions. Domain-specific logic unique to AgentCom's 3-tier model. |
-| VerificationEngine | GenServer | ~150 | Accepts self-verification reports from sidecars, validates against task acceptance criteria, updates task status with verification_status field. Unique to AgentCom's task lifecycle. |
-| TrivialExecutor | Module in sidecar | ~120 | Node.js module handling zero-LLM-token mechanical operations (file writes, git status, status reports) and low-token operations (summaries, simple analysis) using local Ollama via the `ollama` npm package. |
+| AgenticExecutor | New class in sidecar | ~350 | ReAct loop: send task + tools to Ollama, parse tool_calls, execute tools, feed results back, repeat until done or max iterations. No off-the-shelf library fits because: (1) we need tight integration with existing ShellExecutor/OllamaExecutor patterns, (2) tool definitions are AgentCom-specific (hub API, git, file ops), (3) must report progress via existing `onProgress` callback, (4) must conform to existing ExecutionResult format. Building a framework-agnostic agentic loop from ollama-js `chat()` is ~350 lines vs. pulling in a framework like LangChain (~50MB) or Bee Agent Framework that would impose their own abstractions. |
+| ToolRegistry | Module in sidecar | ~150 | Registry of available tools with their Ollama-format schemas and execution functions. Maps tool names to handlers (shell, file_read, file_write, git_status, hub_api). Keeps tool definitions in one place for the agentic loop. |
+| HubLLMClient | New Elixir module | ~200 | Replaces `ClaudeClient.Cli` for Hub FSM LLM operations. Calls Ollama `/api/chat` via Req with tool calling support. Handles streaming NDJSON response parsing (pattern already exists in sidecar OllamaExecutor). Same API surface as ClaudeClient (decompose_goal, verify_completion, identify_improvements, generate_proposals) but routes through Ollama. |
+| HubFSM.Healing | Extension to existing FSM | ~100 | New `:healing` state in `@valid_transitions`. Healing predicates in `HubFSM.Predicates`. Async healing cycle spawned on enter (same pattern as `:improving` and `:contemplating`). |
+| HubFSM.HealthCheck | New module | ~80 | Gathers infrastructure health signals (Ollama reachability, sidecar connectivity, DETS integrity) that the Healing state acts on. Consumed by `HubFSM.Predicates` to trigger healing transitions. |
 
 ### Already Present (No Change Needed)
 
-| Technology | Version | Role in Milestone 2 |
-|------------|---------|---------------------|
-| Phoenix.PubSub | ~> 2.1 | Broadcasts Ollama pool status changes, model routing events, verification results |
-| Jason | ~> 1.4 | JSON encoding/decoding for Ollama API payloads, enriched task serialization |
-| DETS | OTP stdlib | Persists enriched task fields (context, criteria, model, verification_status) |
-| ETS | OTP stdlib | OllamaPool health state cache (fast reads from Scheduler), validation backoff (existing) |
-| Registry | OTP stdlib | AgentRegistry (existing), AgentFSMRegistry (existing) -- no new registries needed |
-| :telemetry | 1.3.0 (via Bandit) | Instrument Ollama call latency, token counts, routing decisions |
-| AgentCom.Validation | custom | Extend existing pattern-matching schemas for enriched task fields |
-| AgentCom.Validation.Schemas | custom | Add new schemas for enriched task submission, verification results |
-| ws (npm) | ^8.19.0 | WebSocket relay unchanged. Enriched task payloads flow through existing channel |
-| write-file-atomic (npm) | ^5.0.0 | Queue persistence for sidecar. Enriched task data persisted same way |
-| chokidar (npm) | ^3.6.0 | Result file watcher unchanged. Verification results use same .json pattern |
+| Technology | Role in Milestone 3 |
+|------------|---------------------|
+| Phoenix.PubSub ~> 2.1 | Broadcasts healing state changes, agentic execution progress |
+| Jason ~> 1.4 | JSON encode/decode for Ollama tool calling payloads |
+| DETS (OTP stdlib) | Persists healing history, agentic execution logs |
+| ETS (OTP stdlib) | Fast health-state reads for healing predicates |
+| :telemetry (via Bandit) | Instrument agentic loop iterations, tool call latency, healing cycles |
+| ws npm ^8.19.0 | WebSocket relay unchanged. Agentic results flow through existing channel |
+| write-file-atomic npm ^5.0.0 | Queue persistence unchanged |
+| chokidar npm ^3.6.0 | Result file watcher unchanged |
+
+---
+
+## Key Technical Details
+
+### 1. Ollama Tool Calling API Format
+
+**Confidence: HIGH** (verified via [official Ollama docs](https://docs.ollama.com/capabilities/tool-calling))
+
+The existing OllamaExecutor uses `/api/chat` with `stream: true` and plain messages. Tool calling extends this by adding a `tools` array to the request body.
+
+**Request format:**
+
+```json
+{
+  "model": "qwen3:8b",
+  "messages": [
+    {"role": "system", "content": "You are a coding agent..."},
+    {"role": "user", "content": "Fix the failing test in auth.js"}
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "read_file",
+        "description": "Read a file from the workspace",
+        "parameters": {
+          "type": "object",
+          "required": ["path"],
+          "properties": {
+            "path": {"type": "string", "description": "File path relative to workspace root"}
+          }
+        }
+      }
+    }
+  ],
+  "stream": false
+}
+```
+
+**Response with tool calls:**
+
+```json
+{
+  "message": {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "function": {
+          "name": "read_file",
+          "arguments": {"path": "test/auth.test.js"}
+        }
+      }
+    ]
+  },
+  "done": true
+}
+```
+
+**Tool result message:**
+
+```json
+{
+  "role": "tool",
+  "content": "// file contents here..."
+}
+```
+
+**Critical implementation note:** When using tool calling, set `stream: false` initially. Streaming with tool calls works but requires accumulating `tool_calls` chunks and reconstructing the complete message before execution. Start with `stream: false` for reliability, optimize to streaming later if needed.
+
+### 2. Models for Tool Calling on RTX 3080 Ti (12GB VRAM)
+
+**Confidence: HIGH** (verified via Ollama model pages and VRAM guides)
+
+| Model | VRAM (Q4_K_M) | Tool Calling | Recommendation |
+|-------|---------------|-------------|----------------|
+| Qwen3 8B | ~6-7GB | Yes, F1 0.933 | **Primary choice.** Best tool calling accuracy for size. Fits comfortably in 12GB with headroom for KV cache. ~40+ tok/s at Q4_K_M. |
+| Llama 3.1 8B | ~6-7GB | Yes | Good alternative. Meta's tool calling improvements are solid. Slightly less accurate than Qwen3 on tool calling benchmarks. |
+| Qwen3 4B | ~3-4GB | Yes | Faster but less accurate. Use only if running two models simultaneously or for simple tool calls. |
+| Mistral 7B | ~5-6GB | Yes | Decent but Qwen3 8B outperforms it on structured output and tool calling. |
+
+**Recommendation:** Use Qwen3 8B (Q4_K_M) for both sidecar agentic execution AND Hub LLM routing. Single model simplifies operations. It handles tool calling well and fits in 12GB VRAM.
+
+### 3. Agentic Execution Loop Architecture
+
+**Confidence: HIGH** (ReAct pattern is well-established; implementation is custom)
+
+The agentic loop follows the standard ReAct (Reason + Act + Observe) pattern:
+
+```
+User Task
+    |
+    v
+[1] Send task + tool definitions to Ollama /api/chat
+    |
+    v
+[2] Parse response:
+    - If response has tool_calls -> execute each tool -> add tool results to messages -> goto [1]
+    - If response has content only (no tool_calls) -> task complete -> return result
+    - If max iterations reached -> return partial result with warning
+    |
+    v
+[3] Return ExecutionResult (same format as OllamaExecutor/ClaudeExecutor)
+```
+
+**Key design decisions:**
+
+- **Max iterations:** 10 (configurable). Prevents runaway loops. Most tasks complete in 3-5 iterations.
+- **Tool execution timeout:** 60s per tool call (reuse ShellExecutor timeout pattern).
+- **Tool result truncation:** Cap tool output at 4000 chars to stay within context window.
+- **Error handling:** Tool execution failures are reported back to the LLM as tool results with error messages. The LLM can retry or choose a different approach.
+- **Progress reporting:** Each iteration fires `onProgress({ type: 'agentic_iteration', iteration: N, tool_calls: [...] })`.
+
+### 4. Hub FSM Healing State
+
+**Confidence: HIGH** (extending well-understood existing patterns)
+
+The existing HubFSM uses a `@valid_transitions` map and `do_transition/3` for state management. Adding `:healing` requires:
+
+**New transitions:**
+
+```elixir
+@valid_transitions %{
+  resting: [:executing, :improving, :healing],       # +healing
+  executing: [:resting, :healing],                    # +healing
+  improving: [:resting, :executing, :contemplating],  # unchanged
+  contemplating: [:resting, :executing],              # unchanged
+  healing: [:resting, :executing]                     # NEW
+}
+```
+
+**Healing triggers (in Predicates):**
+- Ollama endpoint unreachable for > 3 consecutive health checks
+- Sidecar disconnected and tasks stuck in `:assigned` for > 5 minutes
+- DETS corruption detected (read error)
+- Test suite regression detected (git hook failure)
+
+**Healing actions:**
+- Restart failed Ollama endpoints (via SSH/Tailscale or local restart)
+- Reassign stuck tasks from disconnected sidecars
+- DETS table repair/rebuild from backup
+- Run targeted test suite and report results
+
+**Healing cycle pattern** (mirrors existing `:improving` cycle):
+
+```elixir
+# In do_transition/3, after entering :healing
+if new_state == :healing do
+  pid = self()
+  Task.start(fn ->
+    result = AgentCom.SelfHealing.run_healing_cycle()
+    send(pid, {:healing_cycle_complete, result})
+  end)
+end
+```
+
+### 5. Hub LLM Routing Through Ollama
+
+**Confidence: HIGH** (replacing System.cmd with HTTP calls via already-present Req)
+
+The current flow is:
+```
+ClaudeClient -> ClaudeClient.Cli -> System.cmd("claude", ["-p", ...]) -> parse JSON output
+```
+
+The new flow will be:
+```
+ClaudeClient -> HubLLMClient -> Req.post("http://localhost:11434/api/chat", ...) -> parse JSON response
+```
+
+**Key changes:**
+
+1. **New module `AgentCom.HubLLMClient`** -- drop-in replacement for `ClaudeClient.Cli`. Same `invoke/3` API but calls Ollama HTTP instead of CLI.
+2. **ClaudeClient stays as-is** -- just swap the backend it calls. Change one line in `handle_call`:
+   ```elixir
+   # Before:
+   AgentCom.ClaudeClient.Cli.invoke(prompt_type, params, state)
+   # After:
+   AgentCom.HubLLMClient.invoke(prompt_type, params, state)
+   ```
+3. **Prompt module reuse** -- `ClaudeClient.Prompt.build/2` already builds prompts as strings. These become the `user` message content for Ollama.
+4. **Response module adaptation** -- `ClaudeClient.Response.parse/3` currently parses Claude CLI JSON output. Need a parallel `HubLLMClient.Response` that parses Ollama `/api/chat` response format.
+5. **Configuration change:**
+   ```elixir
+   # Before:
+   config :agent_com, :claude_cli_path, "claude"
+   config :agent_com, :claude_model, "sonnet"
+
+   # After:
+   config :agent_com, :hub_llm_backend, :ollama  # or :claude for fallback
+   config :agent_com, :hub_llm_model, "qwen3:8b"
+   config :agent_com, :hub_llm_endpoint, "http://localhost:11434"
+   ```
+6. **Budget tracking unchanged** -- `CostLedger.record_invocation/2` works the same way. Ollama calls are free (local) but still worth tracking for rate limiting and metrics.
+
+**Ollama request for Hub LLM operations:**
+
+```elixir
+def invoke(:decompose, params, state) do
+  prompt = AgentCom.ClaudeClient.Prompt.build(:decompose, params)
+
+  body = %{
+    model: state.model,
+    messages: [
+      %{role: "system", content: "You are a goal decomposition engine. Respond with valid JSON."},
+      %{role: "user", content: prompt}
+    ],
+    format: "json",
+    stream: false
+  }
+
+  case Req.post("#{state.endpoint}/api/chat", json: body, receive_timeout: 120_000) do
+    {:ok, %{status: 200, body: %{"message" => %{"content" => content}}}} ->
+      AgentCom.HubLLMClient.Response.parse(content, :decompose)
+    {:ok, %{status: status, body: body}} ->
+      {:error, {:ollama_error, status, body}}
+    {:error, reason} ->
+      {:error, {:http_error, reason}}
+  end
+end
+```
 
 ---
 
@@ -71,15 +291,17 @@ unchanged and not re-documented here.
 
 | Category | Recommended | Alternative | Why Not |
 |----------|-------------|-------------|---------|
-| HTTP Client (Elixir) | Req ~> 0.5 | ollama hex package 0.9.0 | The `ollama` hex package (v0.9.0, Sep 2025) wraps Req and provides `init/1`, `list_models/1`, `list_running/1`, `chat/2` with structured output. However: (1) hasn't been updated since Sep 2025 while Ollama server went from ~0.3.x to 0.15.6, (2) we need custom health-check polling and multi-host pool management that goes beyond its single-client model, (3) adds nimble_options and plug version constraint as transitive deps, (4) only ~2K downloads for latest version. Using Req directly gives us full control over endpoints and zero risk of wrapper staleness. |
-| HTTP Client (Elixir) | Req ~> 0.5 | HTTPoison (already transitive via web_push_elixir) | HTTPoison wraps hackney which is in maintenance mode. Not directly used in codebase (only a transitive dep). Req uses Finch (modern, connection-pooling, HTTP/2). Req has better streaming via `into:` parameter and built-in retries. |
-| HTTP Client (Elixir) | Req ~> 0.5 | Tesla ~> 1.13 | Tesla adds middleware abstraction we don't need. Req is simpler, has streaming built-in, and is the emerging community standard (preferred per ElixirForum consensus). |
-| LLM Client (Node.js) | ollama npm 0.6.3 | Raw fetch/http calls | Official ollama-js library handles streaming, structured output format, host configuration, and exposes all API methods (chat, generate, list, ps, etc.). Doing this manually would be ~200 lines of fetch boilerplate for no benefit. |
-| LLM Client (Node.js) | ollama npm 0.6.3 | @langchain/ollama | LangChain is a heavy framework with chains, agents, memory abstractions we don't need. Our sidecar does ONE thing: send a task to Ollama and get structured JSON back. |
-| Task Validation | Extend existing Validation module | ex_json_schema ~> 0.11.0 | The existing `AgentCom.Validation` module uses a custom pattern-matching approach with `required`/`optional` field maps and type atoms. Adding ex_json_schema introduces a second validation paradigm. Better to extend the existing system -- it already handles nested types (`{:list, :string}`), length limits, and error formatting. Adding new schemas for enriched tasks is ~30 lines of schema definitions in `Validation.Schemas`. |
-| Service Discovery | Tailscale MagicDNS + config | Consul / etcd | Overkill for 3-5 machines. MagicDNS already resolves hostnames. A config list of endpoint maps with health checks is sufficient. |
-| Model Routing | Custom TaskClassifier | LiteLLM proxy | LiteLLM is a Python proxy adding another runtime. Our routing logic is simple (3 tiers) and lives naturally in the Elixir scheduler. |
-| Health Checking | Custom OllamaPool GenServer | External monitoring (Prometheus, etc.) | Already have :telemetry and MetricsCollector. Health checks are simple HTTP GETs on a timer. A GenServer with Process.send_after/3 is the idiomatic Elixir pattern (same as existing Scheduler stuck-sweep and TaskQueue overdue-sweep). |
+| Agentic Framework (Node.js) | Custom ReAct loop (~350 LOC) | LangChain.js / @langchain/ollama | LangChain adds ~50MB of dependencies, imposes chain/agent/memory abstractions that conflict with AgentCom's own architecture. Our loop is simple: call Ollama with tools, execute tool calls, feed back results. ~350 lines vs. learning and fighting a framework. |
+| Agentic Framework (Node.js) | Custom ReAct loop | Bee Agent Framework | TypeScript-first with heavy type system. Our sidecar is plain JavaScript. Would require TS compilation pipeline. Also imposes its own agent model. |
+| Agentic Framework (Node.js) | Custom ReAct loop | OpenAI Agents SDK (JS) | Designed for OpenAI API, not Ollama. Would need adapter layer. Adds complexity for no benefit. |
+| Agentic Framework (Node.js) | Custom ReAct loop | Vercel AI SDK | Primarily designed for streaming chat UIs. Agentic capabilities are secondary. Heavy dependency tree. |
+| FSM Implementation | Extend GenServer | Migrate to :gen_statem | The existing GenServer-based FSM is working, well-tested (47 lines of tests), and well-understood. Migrating to :gen_statem would require rewriting all callbacks, tests, and the History module for ONE new state. :gen_statem benefits (postpone, state enter callbacks, typed timeouts) are not needed here -- our tick-based evaluation handles everything. |
+| FSM Implementation | Extend GenServer | gen_state_machine hex package | Wrapper around :gen_statem. Same migration cost as above, plus an external dependency. |
+| Hub LLM Backend | Ollama via Req | Keep claude -p CLI | The CLI approach has known bugs (>7000 char stdin issue requiring temp files), is slow (cold start per invocation), costs money (Claude API fees), and requires internet. Ollama is local, free, fast (model stays loaded in VRAM), and already deployed for sidecar tasks. |
+| Hub LLM Backend | Ollama via Req | LiteLLM proxy | Adds a Python process as middleware between Elixir and Ollama. Extra failure point, extra process to manage, extra complexity. Direct HTTP calls via Req are simpler. |
+| Hub LLM Backend | Ollama via Req | ollama hex package 0.9.0 | Same issue as Milestone 2 research: stale (Sep 2025), adds transitive deps, single-client model doesn't fit our multi-endpoint architecture. |
+| Testing | ExUnit + send(:tick) | Mox for mock-based testing | The existing test pattern (direct `send(pid, :tick)` with real GoalBacklog/CostLedger) is already established and works well. Adding Mox would introduce a second testing paradigm. For the Healing state, follow the same pattern: set up conditions, send tick, assert state. |
+| Testing | ExUnit + send(:tick) | Property-based testing (StreamData) | Overkill for FSM transitions. The state space is small (5 states, ~12 transitions). Exhaustive case testing with ExUnit is sufficient and more readable. |
 
 ---
 
@@ -87,92 +309,273 @@ unchanged and not re-documented here.
 
 | Avoid | Why | Do Instead |
 |-------|-----|------------|
-| ex_json_schema | Would introduce a second validation paradigm alongside existing pattern-matching validation. Enriched task schemas are flat enough for the existing system. | Extend `AgentCom.Validation.Schemas` with new schema maps for enriched tasks and verification results. |
-| LangChain (any variant) | Framework overhead for simple prompt-response pattern. Adds chains, memory, agent abstractions that conflict with AgentCom's own agent model. | Direct Ollama API calls via `ollama` npm package (sidecar) and `Req` (hub). |
-| vLLM / TGI inference servers | Complex GPU serving infrastructure for a 5-agent system. Ollama handles model management, quantization, and GPU scheduling already. | Ollama on each machine. If you outgrow it, revisit. |
-| OpenAI SDK for Ollama | Ollama's OpenAI compatibility endpoint has historically been experimental. The native `/api/chat` endpoint is stable and returns richer metadata (timing, token counts, VRAM info). | Use Ollama native API endpoints directly. |
-| Redis / external message broker | System is single-hub, 5 agents. Phoenix.PubSub with local adapter handles all event distribution. Adding Redis adds operational complexity for zero benefit at this scale. | Continue using Phoenix.PubSub for all event distribution. |
-| Ecto | No database in this system. DETS is the persistence layer. Adding Ecto would require rethinking the entire data layer for no benefit at this scale. | Continue DETS for persistence. Extend existing validation for schemas. |
-| Vector database (Qdrant, Pinecone) | No semantic search or RAG requirements in scope. Task matching is capability-based, not similarity-based. | Continue using exact-match capability filtering in scheduler. |
-| Circuit breaker library (breaker, fuse) | Adds a dependency for something that is ~20 lines in a GenServer. Our health check intervals are 30s with simple healthy/degraded/down state tracking. | Custom health state tracking in OllamaPool GenServer with consecutive-failure counting. |
+| LangChain / any agent framework | 50MB+ deps, imposes foreign abstractions, our use case is simple ReAct loop | Custom AgenticExecutor class (~350 LOC) using ollama npm `chat()` with `tools` parameter |
+| :gen_statem migration | Rewrite cost for no benefit. Existing GenServer FSM works. | Add `:healing` to `@valid_transitions` map, add handler in `do_transition/3` |
+| Separate Ollama client library (Elixir) | Already have Req. Adding another abstraction layer is unnecessary. | Use Req.post/get directly for Ollama calls (same pattern as OllamaPool health checks) |
+| MCP (Model Context Protocol) | Emerging standard but overkill for local tool calling. Adds protocol complexity between sidecar and Ollama. Our tools are simple function calls. | Define tools directly in Ollama API `tools` array |
+| Streaming for tool calling (initially) | Streaming + tool calls requires chunk accumulation logic. Non-streaming is simpler and reliable. | Start with `stream: false` for tool calling. Optimize to streaming later if latency matters. |
+| External process supervisor for healing | Erlang/OTP already supervises processes. Adding systemd/pm2 orchestration from Elixir is fragile. | Healing actions: reassign tasks, rebuild DETS, restart GenServers via Supervisor API. For Ollama restarts, use simple HTTP health checks + alert (human intervention for server-level restarts). |
+| Claude API as fallback | Adds complexity (two backends), internet dependency, and cost. If Ollama is down, the Healing state should fix it, not fall back to paid API. | Single backend (Ollama). Healing state handles Ollama outages. |
 
 ---
 
 ## Integration Points
 
-### How New Stack Connects to Existing Code
+### How New Components Connect to Existing Code
 
 ```
-Existing Scheduler (scheduler.ex)
+Existing Dispatcher (dispatcher.js)
     |
-    +-- NEW: Calls OllamaPool.available_models() to check capacity
-    +-- NEW: Uses TaskClassifier.classify(task) for complexity tier
-    +-- NEW: Selects model/endpoint based on tier + availability
-    +-- NEW: Adds `model` and `ollama_endpoint` fields to task_data in do_assign/2
+    +-- EXISTING: 'ollama' -> OllamaExecutor (text generation only)
+    +-- NEW: 'agentic' -> AgenticExecutor (tool-calling loop)
+    |         |
+    |         +-- Uses ToolRegistry for tool schemas
+    |         +-- Uses ollama npm chat() with tools parameter
+    |         +-- Calls ShellExecutor._runCommand() for shell tools
+    |         +-- Uses fs/promises for file tools
+    |         +-- Uses http for hub API tools
+    |         |
+    |         +-- Returns same ExecutionResult format
     |
     v
-Existing TaskQueue (task_queue.ex)
+Existing HubFSM (hub_fsm.ex)
     |
-    +-- NEW: Enriched task map gains fields:
-    |     context, acceptance_criteria, model, complexity,
-    |     ollama_endpoint, verification_status, verification_result
-    +-- UNCHANGED: DETS persistence, priority index, generation fencing
+    +-- EXISTING: 4 states (resting/executing/improving/contemplating)
+    +-- NEW: 5th state :healing
+    |         |
+    |         +-- Entered from: resting, executing (when health check fails)
+    |         +-- Exits to: resting, executing
+    |         +-- Spawns SelfHealing.run_healing_cycle() (same pattern as SelfImprovement)
+    |
+    +-- EXISTING: ClaudeClient for LLM operations
+    +-- CHANGED: ClaudeClient backend swapped from Cli to HubLLMClient
+    |         |
+    |         +-- HubLLMClient.invoke/3 replaces Cli.invoke/3
+    |         +-- Uses Req.post to Ollama /api/chat
+    |         +-- Reuses ClaudeClient.Prompt for prompt building
+    |         +-- New HubLLMClient.Response for Ollama response parsing
     |
     v
-Existing Sidecar (sidecar/index.js)
+Existing TaskClassifier
     |
-    +-- NEW: Reads task.complexity from enriched task_assign payload
-    +-- NEW: If trivial, calls Ollama via `ollama` npm (TrivialExecutor)
-    +-- NEW: If not trivial, wakes agent as before
-    +-- NEW: After task complete, runs self-verification prompt if criteria present
-    +-- UNCHANGED: WebSocket relay, queue.json, result watcher, git workflow
+    +-- EXISTING: trivial/standard/complex classification
+    +-- NEW: 'agentic' classification for tasks requiring tool use
+    |         |
+    |         +-- Detected by: presence of tool_hints in metadata,
+    |         |   keywords like "fix", "implement", "debug", "create"
+    |         +-- Routes to AgenticExecutor instead of plain OllamaExecutor
 ```
 
-### Scheduler Integration Detail
+### Dispatcher Changes
 
-```elixir
-# Current do_assign/2 in scheduler.ex sends:
-task_data = %{
-  task_id: assigned_task.id,
-  description: assigned_task.description,
-  metadata: assigned_task.metadata,
-  generation: assigned_task.generation
-}
-
-# After milestone 2, adds:
-task_data = %{
-  task_id: assigned_task.id,
-  description: assigned_task.description,
-  metadata: assigned_task.metadata,
-  generation: assigned_task.generation,
-  # NEW fields:
-  complexity: assigned_task.complexity,         # "trivial" | "standard" | "complex"
-  model: assigned_task.model,                   # "qwen3:8b" | nil (use agent's own)
-  ollama_endpoint: assigned_task.ollama_endpoint, # "http://host:11434" | nil
-  context: assigned_task.context,               # map with project context
-  acceptance_criteria: assigned_task.acceptance_criteria,  # list of check strings
-  self_verify: assigned_task.self_verify        # boolean
+```javascript
+// In dispatcher.js switch statement, add new case:
+case 'agentic': {
+  const { AgenticExecutor } = require('./agentic-executor');
+  rawResult = await new AgenticExecutor().execute(task, config, onProgress);
+  break;
 }
 ```
 
-### OllamaPool Supervision
+### Tool Registry Schema (Sidecar)
 
-```elixir
-# New entry in Application.children list (after TaskQueue, before Scheduler):
-{AgentCom.OllamaPool, []}
+```javascript
+// tool-registry.js
+const TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'read_file',
+      description: 'Read a file from the workspace',
+      parameters: {
+        type: 'object',
+        required: ['path'],
+        properties: {
+          path: { type: 'string', description: 'File path relative to workspace root' }
+        }
+      }
+    },
+    handler: async (args, context) => {
+      const content = await fs.readFile(path.resolve(context.workDir, args.path), 'utf8');
+      return content.slice(0, 4000); // Truncate for context window
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'write_file',
+      description: 'Write content to a file',
+      parameters: {
+        type: 'object',
+        required: ['path', 'content'],
+        properties: {
+          path: { type: 'string' },
+          content: { type: 'string' }
+        }
+      }
+    },
+    handler: async (args, context) => {
+      await fs.writeFile(path.resolve(context.workDir, args.path), args.content);
+      return `Written ${args.content.length} bytes to ${args.path}`;
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'run_shell',
+      description: 'Run a shell command and return output',
+      parameters: {
+        type: 'object',
+        required: ['command'],
+        properties: {
+          command: { type: 'string', description: 'Shell command to execute' }
+        }
+      }
+    },
+    handler: async (args, context) => {
+      // Reuse ShellExecutor._runCommand pattern
+      // With timeout and output truncation
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_files',
+      description: 'List files in a directory',
+      parameters: {
+        type: 'object',
+        required: ['directory'],
+        properties: {
+          directory: { type: 'string' }
+        }
+      }
+    },
+    handler: async (args, context) => {
+      const entries = await fs.readdir(path.resolve(context.workDir, args.directory));
+      return entries.join('\n');
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'task_complete',
+      description: 'Signal that the task is complete with a summary',
+      parameters: {
+        type: 'object',
+        required: ['summary'],
+        properties: {
+          summary: { type: 'string', description: 'Summary of what was accomplished' }
+        }
+      }
+    },
+    handler: async (args) => {
+      return `TASK_COMPLETE: ${args.summary}`;
+    }
+  }
+];
 ```
 
-The OllamaPool GenServer must start BEFORE the Scheduler so that when the
-Scheduler processes its first event, `OllamaPool.available_models()` is ready.
+### HubFSM Test Patterns for Healing State
 
-### Ollama API Endpoints Used
+Follow the existing test patterns in `hub_fsm_test.exs`:
 
-| Endpoint | Method | Purpose | Called From |
-|----------|--------|---------|------------|
-| `GET /api/version` | GET | Health check (returns `{"version": "0.15.6"}`) | Hub OllamaPool (periodic, every 30s) |
-| `GET /api/tags` | GET | List available models on instance | Hub OllamaPool (periodic, every 60s + on-demand) |
-| `GET /api/ps` | GET | Running models + `size_vram` field | Hub OllamaPool (periodic, every 60s) |
-| `POST /api/chat` | POST | Chat completion with structured output | Sidecar TrivialExecutor (trivial tasks, verification) |
+```elixir
+describe "healing transitions" do
+  test "transitions to :healing when health check fails" do
+    # Force into executing state first
+    :ok = HubFSM.force_transition(:executing, "setup")
+
+    # Simulate health check failure (set up OllamaPool mock state)
+    # ... set up conditions ...
+
+    # Trigger tick
+    send(Process.whereis(HubFSM), :tick)
+    Process.sleep(100)
+
+    assert HubFSM.get_state().fsm_state == :healing
+  end
+
+  test "healing cycle complete returns to :resting" do
+    :ok = HubFSM.force_transition(:executing, "setup")
+    :ok = HubFSM.force_transition(:healing, "test healing")
+
+    # Simulate healing cycle completion
+    send(Process.whereis(HubFSM), {:healing_cycle_complete, %{repaired: 1}})
+    Process.sleep(100)
+
+    assert HubFSM.get_state().fsm_state == :resting
+  end
+
+  test "invalid transition: contemplating -> healing returns error" do
+    :ok = HubFSM.force_transition(:executing, "setup")
+    :ok = HubFSM.force_transition(:resting, "reset")
+    :ok = HubFSM.force_transition(:improving, "improve")
+
+    # Contemplating can't go to healing (healing is for infrastructure issues)
+    # Need to be in improving -> contemplating first
+    send(Process.whereis(HubFSM), {:improvement_cycle_complete, %{findings: 0}})
+    Process.sleep(100)
+
+    # Now in contemplating -- healing not a valid transition
+    assert {:error, :invalid_transition} = HubFSM.force_transition(:healing, "should fail")
+  end
+end
+```
+
+**Testing the HubLLMClient integration:**
+
+```elixir
+# Option 1: Test against real local Ollama (integration test)
+# Tag with @tag :ollama so it can be excluded in CI
+@tag :ollama
+test "HubLLMClient.invoke(:decompose, ...) returns valid task list" do
+  state = %{model: "qwen3:8b", endpoint: "http://localhost:11434"}
+  params = %{goal: %{description: "Add logging"}, context: %{repo: "test"}}
+
+  result = AgentCom.HubLLMClient.invoke(:decompose, params, state)
+  assert {:ok, tasks} = result
+  assert is_list(tasks)
+end
+
+# Option 2: Test response parsing in isolation (unit test)
+test "HubLLMClient.Response.parse handles decompose response" do
+  raw = ~s({"tasks": [{"description": "Add logger config", "priority": "high"}]})
+  assert {:ok, [%{"description" => "Add logger config"}]} =
+    AgentCom.HubLLMClient.Response.parse(raw, :decompose)
+end
+```
+
+---
+
+## Configuration Changes
+
+### Hub Application Config (Additions)
+
+```elixir
+# config/config.exs -- NEW entries for Milestone 3
+
+# Hub LLM backend (replaces claude -p CLI)
+config :agent_com, :hub_llm,
+  backend: :ollama,           # :ollama (default) or :claude (legacy fallback)
+  model: "qwen3:8b",          # Model for hub LLM operations
+  endpoint: "http://localhost:11434",
+  timeout_ms: 120_000,        # Same default as existing claude timeout
+  max_retries: 1              # Retry once on failure
+
+# Healing state configuration
+config :agent_com, :healing,
+  health_check_failure_threshold: 3,    # consecutive failures before triggering healing
+  stuck_task_threshold_ms: 300_000,     # 5 minutes
+  healing_cycle_timeout_ms: 600_000,    # 10 minutes max for healing cycle
+  auto_heal: true                       # set false to require manual trigger
+
+# Agentic execution configuration
+config :agent_com, :agentic,
+  max_iterations: 10,          # Max ReAct loop iterations
+  tool_timeout_ms: 60_000,     # Per-tool execution timeout
+  tool_output_max_chars: 4000, # Truncate tool output
+  enabled_tools: ["read_file", "write_file", "run_shell", "list_files", "task_complete"]
+```
 
 ### Sidecar Config Changes
 
@@ -184,207 +587,60 @@ Scheduler processes its first event, `OllamaPool.available_models()` is ready.
   "wake_command": "echo 'Waking for task ${TASK_ID}'",
   "capabilities": ["code"],
   "ollama_host": "http://localhost:11434",
-  "trivial_execution": true,
-  "trivial_model": "qwen3:8b",
-  "self_verification": true,
-  "verification_model": "qwen3:8b"
+  "agentic_execution": true,
+  "agentic_model": "qwen3:8b",
+  "agentic_max_iterations": 10,
+  "agentic_tools": ["read_file", "write_file", "run_shell", "list_files", "task_complete"]
 }
 ```
 
-New fields: `ollama_host`, `trivial_execution`, `trivial_model`, `self_verification`, `verification_model`.
-All optional with sensible defaults. Backward-compatible with existing configs.
+New fields: `agentic_execution`, `agentic_model`, `agentic_max_iterations`, `agentic_tools`.
+All optional with sensible defaults. Backward-compatible.
 
 ---
 
 ## Installation
 
-### Hub (Elixir)
-
-```elixir
-# mix.exs - add to deps
-defp deps do
-  [
-    # ... existing deps ...
-    {:req, "~> 0.5.0"}
-  ]
-end
-```
+### Hub (Elixir) -- No New Packages
 
 ```bash
-mix deps.get
+# No new dependencies. Req is already in mix.exs from Milestone 2.
+# Only code changes needed.
 ```
 
-### Sidecar (Node.js)
+### Sidecar (Node.js) -- No New Packages
 
 ```bash
-cd sidecar
-npm install ollama@^0.6.3
+# No new npm packages. ollama is already in package.json from Milestone 2.
+# Only code changes needed.
 ```
 
-### Infrastructure (Per Ollama Host Machine)
+### Infrastructure -- Model Verification
 
 ```bash
-# Install Ollama (if not already installed)
-curl -fsSL https://ollama.com/install.sh | sh
+# Verify Qwen3 8B supports tool calling on your Ollama instance
+ollama run qwen3:8b "Use the get_weather tool to check weather in NYC" --format json
 
-# Pull Qwen3 8B (default quantization is Q4_K_M)
-ollama pull qwen3:8b
-
-# Verify GPU detection
-ollama ps
-
-# Configure Ollama to listen on all interfaces (for Tailscale access)
-# Set OLLAMA_HOST=0.0.0.0:11434 in systemd unit or environment
-# On Windows: set OLLAMA_HOST=0.0.0.0:11434 as system env var
-```
-
----
-
-## Configuration
-
-### Hub Application Config
-
-```elixir
-# config/config.exs
-config :agent_com, :ollama_pool,
-  # List of Ollama instances on the Tailscale mesh
-  endpoints: [
-    %{host: "nathan-pc", port: 11434, label: "rtx3080ti"},
-    %{host: "second-machine", port: 11434, label: "cpu-only"}
-  ],
-  health_check_interval_ms: 30_000,
-  model_sync_interval_ms: 60_000,
-  health_failure_threshold: 3  # mark as :down after 3 consecutive failures
-
-config :agent_com, :task_classification,
-  # Keywords/patterns that hint at trivial tasks
-  trivial_patterns: ["write file", "git status", "heartbeat", "status report"],
-  # Default model for each tier
-  models: %{
-    trivial: "qwen3:8b",
-    standard: "qwen3:8b",
-    complex: nil  # nil = don't assign model, agent uses its own (Claude)
-  }
-```
-
----
-
-## Req Usage Patterns for Ollama
-
-### Health Check
-
-```elixir
-def check_health(endpoint) do
-  url = "http://#{endpoint.host}:#{endpoint.port}/api/version"
-
-  case Req.get(url, receive_timeout: 5_000, retry: false) do
-    {:ok, %{status: 200, body: %{"version" => version}}} ->
-      {:ok, version}
-    {:ok, %{status: status}} ->
-      {:error, {:unexpected_status, status}}
-    {:error, reason} ->
-      {:error, reason}
-  end
-end
-```
-
-### List Models
-
-```elixir
-def list_models(endpoint) do
-  url = "http://#{endpoint.host}:#{endpoint.port}/api/tags"
-
-  case Req.get(url, receive_timeout: 10_000) do
-    {:ok, %{status: 200, body: %{"models" => models}}} ->
-      {:ok, models}
-    {:error, reason} ->
-      {:error, reason}
-  end
-end
-```
-
-### List Running Models (VRAM)
-
-```elixir
-def list_running(endpoint) do
-  url = "http://#{endpoint.host}:#{endpoint.port}/api/ps"
-
-  case Req.get(url, receive_timeout: 10_000) do
-    {:ok, %{status: 200, body: %{"models" => models}}} ->
-      # Each model has: name, size, size_vram, digest, details, expires_at
-      {:ok, models}
-    {:error, reason} ->
-      {:error, reason}
-  end
-end
-```
-
----
-
-## Sidecar ollama npm Usage Patterns
-
-### Trivial Task Execution
-
-```javascript
-const { Ollama } = require('ollama');
-
-const ollama = new Ollama({ host: config.ollama_host || 'http://127.0.0.1:11434' });
-
-async function executeTrivial(task) {
-  const response = await ollama.chat({
-    model: task.model || config.trivial_model || 'qwen3:8b',
-    messages: [
-      { role: 'system', content: 'You are a task executor. Respond with JSON.' },
-      { role: 'user', content: task.description }
-    ],
-    format: 'json',
-    stream: false
-  });
-
-  return JSON.parse(response.message.content);
-}
-```
-
-### Self-Verification
-
-```javascript
-async function selfVerify(task, result) {
-  const response = await ollama.chat({
-    model: config.verification_model || 'qwen3:8b',
-    messages: [
-      {
-        role: 'system',
-        content: 'You are a verification checker. Given a task and its result, check each acceptance criterion. Respond with JSON: { "passed": boolean, "checks": [{"criterion": "...", "passed": boolean, "reason": "..."}] }'
-      },
-      {
-        role: 'user',
-        content: `Task: ${task.description}\nCriteria: ${JSON.stringify(task.acceptance_criteria)}\nResult: ${JSON.stringify(result)}`
+# Verify tool calling works via API
+curl -s http://localhost:11434/api/chat -d '{
+  "model": "qwen3:8b",
+  "messages": [{"role": "user", "content": "What is 2+2?"}],
+  "tools": [{
+    "type": "function",
+    "function": {
+      "name": "calculator",
+      "description": "Calculate a math expression",
+      "parameters": {
+        "type": "object",
+        "required": ["expression"],
+        "properties": {"expression": {"type": "string"}}
       }
-    ],
-    format: {
-      type: 'object',
-      properties: {
-        passed: { type: 'boolean' },
-        checks: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              criterion: { type: 'string' },
-              passed: { type: 'boolean' },
-              reason: { type: 'string' }
-            },
-            required: ['criterion', 'passed', 'reason']
-          }
-        }
-      },
-      required: ['passed', 'checks']
-    },
-    stream: false
-  });
+    }
+  }],
+  "stream": false
+}'
 
-  return JSON.parse(response.message.content);
-}
+# Expected: response.message.tool_calls should contain calculator call
 ```
 
 ---
@@ -393,93 +649,69 @@ async function selfVerify(task, result) {
 
 | Package | Compatible With | Notes |
 |---------|----------------|-------|
-| Req ~> 0.5.0 | Elixir >= 1.13, OTP >= 25 | Project requires Elixir ~> 1.14 (compatible). Uses Finch internally. No conflict with existing deps. |
-| ollama npm ^0.6.3 | Node.js >= 18 | Uses native fetch (Node 18+). Check sidecar Node version. Accepts custom fetch for older runtimes. |
-| Ollama server 0.15.x | Qwen3 8B, structured output, /api/ps | Stable REST API. `format` parameter accepts JSON Schema since v0.5. `/api/ps` includes `size_vram` field. |
-| Qwen3 8B Q4_K_M | RTX 3080 Ti 12GB | ~6-7GB VRAM including KV cache. Leaves 5-6GB headroom. Supports structured output and tool calling. |
+| Req ~> 0.5.0 | Elixir >= 1.13, OTP >= 25 | Already present from Milestone 2. No version change needed. |
+| ollama npm ^0.6.3 | Node.js >= 18 | Already present from Milestone 2. Tool calling supported via `tools` parameter in `chat()`. |
+| Ollama server 0.15.x | Tool calling, Qwen3 8B | Tool calling has been stable since Ollama 0.3.x. Current 0.15.x is fully compatible. |
+| Qwen3 8B Q4_K_M | RTX 3080 Ti 12GB VRAM | ~6-7GB VRAM. Tool calling verified working. F1 score 0.933 on tool calling benchmarks. |
 
 ---
 
 ## Dependency Count Impact
 
-| Before Milestone 2 | After Milestone 2 |
+| Before Milestone 3 | After Milestone 3 |
 |--------------------|--------------------|
-| Hub: 7 runtime deps in mix.exs | Hub: 8 deps (+Req) |
-| Sidecar: 3 deps in package.json | Sidecar: 4 deps (+ollama) |
-| Total new runtime deps: **2** | |
+| Hub: 8 runtime deps in mix.exs | Hub: 8 deps (unchanged) |
+| Sidecar: 4 deps in package.json | Sidecar: 4 deps (unchanged) |
+| Total new runtime deps: **0** | |
 
-Req brings Finch and Mint as transitive deps, but Mint is already present (used by
-fresh for WebSocket testing). Net new transitive deps are minimal.
-
-Compared to previous research: dropped ex_json_schema (-1 dep) because extending
-existing `AgentCom.Validation` is more consistent and avoids dual validation paradigms.
+This milestone adds ZERO new external dependencies. All new functionality is built on
+libraries already added in Milestone 2 (Req, ollama npm) plus OTP/Node.js standard library.
 
 ---
 
-## New Validation Schemas (Extending Existing System)
+## Migration Path: ClaudeClient to HubLLMClient
 
-The enriched task format requires new schemas in `AgentCom.Validation.Schemas`:
+**Phase 1: Add HubLLMClient alongside existing ClaudeClient.Cli**
 
 ```elixir
-# New HTTP schema for enriched task submission
-post_enriched_task: %{
-  required: %{
-    "description" => :string
-  },
-  optional: %{
-    "priority" => :string,
-    "metadata" => :map,
-    "max_retries" => :integer,
-    "complete_by" => :integer,
-    "needed_capabilities" => {:list, :string},
-    # NEW enriched fields:
-    "context" => :map,
-    "acceptance_criteria" => {:list, :string},
-    "complexity_hint" => :string,
-    "preferred_model" => :string,
-    "self_verify" => :boolean
-  },
-  description: "Submit an enriched task with context, criteria, and model hints."
-}
-
-# New WS schema for verification results from sidecar
-"task_verification" => %{
-  required: %{
-    "type" => :string,
-    "task_id" => :string,
-    "generation" => :integer,
-    "passed" => :boolean
-  },
-  optional: %{
-    "checks" => {:list, :map},
-    "model_used" => :string,
-    "tokens_used" => :integer
-  },
-  description: "Sidecar reports self-verification results."
-}
+# ClaudeClient handle_call changes to check config:
+case Application.get_env(:agent_com, [:hub_llm, :backend], :claude) do
+  :ollama -> AgentCom.HubLLMClient.invoke(prompt_type, params, state)
+  :claude -> AgentCom.ClaudeClient.Cli.invoke(prompt_type, params, state)
+end
 ```
 
-This follows the exact pattern used by all 27 existing schemas -- no new validation
-infrastructure needed.
+**Phase 2: Validate Ollama produces equivalent results**
+
+Run both backends in parallel, compare outputs. Log discrepancies.
+
+**Phase 3: Default to Ollama, keep Claude as opt-in fallback**
+
+Set `config :agent_com, :hub_llm, backend: :ollama` as default.
+
+**Phase 4: Remove ClaudeClient.Cli** (future milestone)
+
+Once Ollama routing is proven stable, remove the CLI wrapper code.
 
 ---
 
 ## Sources
 
-- [Req v0.5.17 on Hex](https://hex.pm/packages/req) -- version, dependencies, release date Jan 2026 (HIGH confidence)
-- [Req documentation](https://hexdocs.pm/req/Req.html) -- streaming `into:`, retry, JSON support, Finch pool config (HIGH confidence)
-- [Elixir Forum: Req vs HTTPoison](https://elixirforum.com/t/preferred-http-library-req-or-httpoison/71163) -- community consensus favoring Req (HIGH confidence)
-- [ollama npm v0.6.3](https://www.npmjs.com/package/ollama) -- version, 412 dependents (HIGH confidence)
-- [ollama-js GitHub README](https://github.com/ollama/ollama-js) -- API methods: chat, generate, list, ps, host config, format parameter (HIGH confidence)
-- [Ollama API docs on GitHub](https://github.com/ollama/ollama/blob/main/docs/api.md) -- all endpoints, /api/ps response fields including size_vram (HIGH confidence)
-- [Ollama releases](https://github.com/ollama/ollama/releases) -- v0.15.6 current as of Feb 7, 2026 (HIGH confidence)
-- [Ollama structured outputs docs](https://docs.ollama.com/capabilities/structured-outputs) -- format parameter, JSON Schema support (HIGH confidence)
-- [Ollama VRAM requirements guide](https://localllm.in/blog/ollama-vram-requirements-for-local-llms) -- Q4_K_M at 6-7GB for 8B models (MEDIUM confidence)
-- [Qwen3 8B on Ollama](https://ollama.com/library/qwen3:8b) -- model details, structured output, tool calling (HIGH confidence)
-- [ollama hex package v0.9.0](https://hex.pm/packages/ollama) -- alternative considered, last updated Sep 2025 (HIGH confidence)
-- [Tailscale MagicDNS](https://tailscale.com/blog/magicdns-why-name) -- hostname resolution (HIGH confidence)
+- [Ollama Tool Calling Documentation](https://docs.ollama.com/capabilities/tool-calling) -- Request/response format, tool schemas, tool role messages (HIGH confidence)
+- [Ollama Streaming Tool Calling Blog](https://ollama.com/blog/streaming-tool) -- Streaming with tool calls, chunk accumulation (HIGH confidence)
+- [Ollama API Reference (GitHub)](https://github.com/ollama/ollama/blob/main/docs/api.md) -- /api/chat endpoint, tools parameter, response format (HIGH confidence)
+- [ollama-js GitHub](https://github.com/ollama/ollama-js) -- npm library API, chat() with tools, streaming (HIGH confidence)
+- [ollama npm v0.6.3](https://www.npmjs.com/package/ollama) -- Current version, 416 dependents (HIGH confidence)
+- [Ollama VRAM Requirements Guide](https://localllm.in/blog/ollama-vram-requirements-for-local-llms) -- Q4_K_M memory requirements (MEDIUM confidence)
+- [Qwen3 8B Tool Calling](https://collabnix.com/best-ollama-models-for-function-calling-tools-complete-guide-2025/) -- F1 0.933, model comparison (MEDIUM confidence)
+- [Docker LLM Tool Calling Evaluation](https://www.docker.com/blog/local-llm-tool-calling-a-practical-evaluation/) -- Practical tool calling benchmarks (MEDIUM confidence)
+- [Elixir GenServer Testing Patterns](https://www.freshcodeit.com/blog/how-to-design-and-test-elixir-genservers) -- start_supervised, callback testing (HIGH confidence)
+- [Architecting GenServers for Testability](https://tylerayoung.com/2021/09/12/architecting-genservers-for-testability/) -- Thin GenServer pattern (HIGH confidence)
+- [gen_statem vs GenServer comparison](https://potatosalad.io/2017/10/13/time-out-elixir-state-machines-versus-servers) -- Why GenServer is sufficient for simple FSMs (HIGH confidence)
+- [GenStateMachine hex package](https://hexdocs.pm/gen_state_machine/GenStateMachine.html) -- Alternative considered, not recommended (HIGH confidence)
 
 ---
-*Stack research for: AgentCom Milestone 2 -- LLM Mesh Routing & Enriched Tasks*
-*Researched: 2026-02-12 (revision of 2026-02-11 research)*
-*Changes from v1: dropped ex_json_schema (extend existing validation instead), updated Ollama server to v0.15.x, added Req usage patterns, added sidecar ollama npm patterns, added validation schema examples*
+
+*Stack research for: AgentCom Milestone 3 -- Agentic Tool Calling, Self-Healing FSM, Hub LLM Routing*
+*Researched: 2026-02-14*
+*Key finding: Zero new dependencies required. All new capabilities built on Milestone 2 stack (Req, ollama npm) plus custom implementations.*

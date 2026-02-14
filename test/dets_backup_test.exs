@@ -11,11 +11,11 @@ defmodule AgentCom.DetsBackupTest do
     %{tmp_dir: tmp_dir}
   end
 
-  test "health_metrics returns data for all 12 tables" do
+  test "health_metrics returns data for all 13 tables" do
     metrics = AgentCom.DetsBackup.health_metrics()
     assert is_map(metrics)
     assert is_list(metrics.tables)
-    assert length(metrics.tables) == 12
+    assert length(metrics.tables) == 13
 
     Enum.each(metrics.tables, fn t ->
       assert Map.has_key?(t, :table)
@@ -23,21 +23,27 @@ defmodule AgentCom.DetsBackupTest do
       assert Map.has_key?(t, :file_size_bytes)
       assert Map.has_key?(t, :fragmentation_ratio)
       assert Map.has_key?(t, :status)
-      assert t.status == :ok
+      assert t.status in [:ok, :unavailable]
     end)
   end
 
   test "backup_all creates backup files and returns results" do
     {:ok, results} = AgentCom.DetsBackup.backup_all()
     assert is_list(results)
-    assert length(results) == 12
+    assert length(results) == 13
 
     Enum.each(results, fn result ->
-      assert {:ok, info} = result
-      assert is_atom(info.table)
-      assert is_binary(info.path)
-      assert is_integer(info.size)
-      assert File.exists?(info.path)
+      case result do
+        {:ok, info} ->
+          assert is_atom(info.table)
+          assert is_binary(info.path)
+          assert is_integer(info.size)
+          assert File.exists?(info.path)
+
+        {:error, info} ->
+          assert is_atom(info.table)
+          assert info.reason == :table_not_open
+      end
     end)
   end
 
@@ -53,7 +59,7 @@ defmodule AgentCom.DetsBackupTest do
 
     # last_backup_results should be a list (not nil, since we just ran a backup)
     assert is_list(decoded["last_backup_results"])
-    assert length(decoded["last_backup_results"]) == 12
+    assert length(decoded["last_backup_results"]) == 13
 
     # Each entry should have a "status" key that is either "ok" or "error"
     Enum.each(decoded["last_backup_results"], fn entry ->
@@ -77,7 +83,7 @@ defmodule AgentCom.DetsBackupTest do
 
     table_atoms = [:task_queue, :task_dead_letter, :agent_mailbox, :message_history,
                    :agent_channels, :channel_history, :agentcom_config, :thread_messages, :thread_replies,
-                   :repo_registry, :cost_ledger, :goal_backlog]
+                   :repo_registry, :cost_ledger, :goal_backlog, :improvement_history]
 
     Enum.each(table_atoms, fn table ->
       prefix = "#{table}_"

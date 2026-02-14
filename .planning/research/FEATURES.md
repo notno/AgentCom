@@ -1,613 +1,408 @@
-# Feature Landscape: AgentCom v1.3 -- Hub FSM Loop of Self-Improvement
+# Feature Landscape: AgentCom v1.4 -- Agentic Local LLM Execution, Self-Healing, and Pipeline Reliability
 
-**Domain:** Autonomous agent orchestration with goal-driven FSM brain, LLM-powered decomposition, codebase self-improvement, and tiered autonomy
-**Researched:** 2026-02-12
-**Overall Confidence:** MEDIUM-HIGH (Ralph loop patterns well-documented with multiple implementations; goal decomposition patterns established; tiered autonomy is emerging but with clear industry consensus on risk tiers; codebase self-improvement is newer territory with fewer battle-tested implementations)
+**Domain:** Agentic tool-calling LLM execution, distributed system self-healing, pipeline reliability hardening
+**Researched:** 2026-02-14
+**Overall Confidence:** MEDIUM-HIGH (Ollama tool calling API is documented and verified; ReAct/agentic loop patterns well-established; self-healing patterns standard in OTP; pipeline reliability patterns are standard distributed systems engineering)
+
+---
 
 ## Table Stakes
 
-Features the system must deliver for the milestone to achieve its stated goal: "Make the hub an autonomous thinker that cycles through executing goals, improving codebases, contemplating future features, and resting -- with Ralph-style inner loops and LLM-powered decomposition."
+Features users expect. Missing = the milestone fails its stated goal.
+
+### 1. Ollama Tool-Calling Agent Loop
 
 | Feature | Why Expected | Complexity | Depends On (Existing) | Notes |
 |---------|--------------|------------|----------------------|-------|
-| **Hub FSM with 4 states** | The hub needs a brain -- a top-level state machine that decides what to do next. Without this, the hub is reactive (waits for task submission) not proactive (generates its own work). The four states (Executing, Improving, Contemplating, Resting) create a bounded autonomy loop. | High | Scheduler, TaskQueue, PubSub, Application supervisor | New GenServer (or GenStateMachine). NOT the per-agent AgentFSM -- this is the HUB's brain, one singleton process. State transitions driven by queue depth, time-of-day, goal backlog status. Must integrate with existing PubSub for event-driven transitions. |
-| **Goal backlog with multi-source input** | Goals need to come from somewhere: Nathan's CLI commands, API submissions, file-watched GOALS.md, and self-generated improvement ideas. Without centralized intake, the FSM has nothing to execute. | Medium | TaskQueue (downstream consumer), Config, Router (HTTP endpoints) | New GenServer: GoalBacklog. DETS-backed like TaskQueue. Goals are higher-level than tasks -- a goal decomposes into 1-N tasks. Multiple input channels (HTTP API, CLI tool, file watcher, internal generation). Priority ordering like RepoRegistry pattern. |
-| **LLM-powered goal decomposition** | A goal like "add rate limiting to the API" must become 3-8 enriched tasks with descriptions, success criteria, verification steps, and complexity tiers. The existing pipeline (v1.2) expects enriched tasks -- decomposition bridges the gap between human intent and machine-executable work. | High | GoalBacklog, TaskQueue.submit/1, Complexity.build/1, existing enriched task format | Claude API call from hub-side (not sidecar). Structured prompt engineering to produce enriched task JSON. "Elephant carpaccio" slicing: each task must be completable in one agent context window. Uses existing task format (v1.2 enrichment fields). |
-| **Ralph-style inner loop per goal** | After decomposing a goal into tasks, the hub must track completion across all tasks and verify the goal is "done" -- not just "all subtasks completed" but "the high-level intent is satisfied." This is the observe-act-verify cycle at the goal level. | High | GoalBacklog, TaskQueue, HubFSM, decomposition | Goal has its own lifecycle: submitted -> decomposing -> executing -> verifying -> complete/failed. Hub monitors task_completed events for goal's child tasks. When all tasks complete, run goal-level verification (LLM evaluates whether success criteria are met). Retry/redecompose if verification fails. |
-| **Queue-driven state transitions** | The FSM must transition based on observable system state, not timers alone. Executing -> Resting when queue empty AND no goals pending. Resting -> Executing when new goal arrives. Resting -> Improving when idle too long. This makes transitions deterministic and testable. | Medium | HubFSM, GoalBacklog, TaskQueue.stats/0 | FSM subscribes to PubSub topics: "tasks", "goals" (new topic). Transition predicates are pure functions: can_transition?(current_state, system_state) -> :ok or :stay. Dashboard shows current FSM state and transition history. |
+| **Tool definition registry** | The LLM needs to know what tools exist. Without a registry of available tools (file read/write, shell exec, git operations, hub API calls), the model cannot request actions. This is the foundation of agentic execution. | Medium | OllamaExecutor (sidecar), dispatcher.js | New module in sidecar: `tool-registry.js`. Each tool has: name, description, parameter JSON schema. Ollama API accepts `tools` array in `/api/chat` request body. Keep tool count under 5 for Qwen3 8B -- above 5 tools, Qwen3 switches from native JSON tool calls to XML-in-content, which breaks parsing. |
+| **Tool execution engine** | When the LLM returns `tool_calls` in its response, something must actually execute those calls (read a file, run a command, call an API) and return results. Without execution, tool calling is theater. | Medium | ShellExecutor (existing), workspace-manager.js | New module: `tool-executor.js`. Maps tool names to execution functions. Sandboxed: tools operate within the agent's workspace directory only. File operations use workspace-manager paths. Shell operations use existing ShellExecutor patterns with timeout enforcement. |
+| **Observation-reasoning loop (ReAct pattern)** | The core agentic pattern: LLM thinks, calls tool, observes result, thinks again, calls next tool, until done. Without the loop, tool calling is single-shot (call one tool and stop). Real tasks require 3-15 tool calls in sequence. | High | OllamaExecutor, tool registry, tool executor | Modify OllamaExecutor to implement multi-turn conversation. After receiving `tool_calls`, execute tools, append `role: "tool"` messages with results, call `/api/chat` again. Loop until LLM returns content without tool_calls (final answer) or iteration limit hit. This is the ReAct Thought-Action-Observation cycle. |
+| **Loop safety guardrails** | LLMs get stuck in infinite loops: calling the same tool repeatedly, ignoring stop signals, re-processing old information. Without external enforcement, a stuck agent burns tokens and blocks the pipeline indefinitely. | Medium | ReAct loop, CostLedger | External enforcement (not LLM self-policing): (1) Max iteration limit (default 15, configurable per task), (2) Repetition detection -- if same tool+args called 3 times consecutively, force-stop, (3) Token budget per task from CostLedger, (4) Wall-clock timeout (existing 5min, extend to 10min for agentic tasks), (5) Monotonic progress check -- if no new file modifications or test results in 5 iterations, force-stop. |
+| **Structured output parsing** | Ollama returns tool calls as `message.tool_calls[]` with `function.name` and `function.arguments`. The parser must handle: normal content responses (no tools), single tool call, multiple tool calls, and malformed responses from smaller models. | Medium | OllamaExecutor streaming parser | Extend existing NDJSON streaming parser in OllamaExecutor. Current parser only reads `message.content`. Must also read `message.tool_calls`. Handle edge case: Qwen3 with >5 tools returns XML tool calls in `content` field instead of `tool_calls` field -- parse both formats. |
+
+### 2. Hub FSM Healing State
+
+| Feature | Why Expected | Complexity | Depends On (Existing) | Notes |
+|---------|--------------|------------|----------------------|-------|
+| **Healing state in FSM** | The hub currently has no response to infrastructure failures beyond alerting. When Ollama endpoints go down, tasks get stuck, or agents disconnect, the system alerts but does not act. A Healing state lets the FSM detect problems and attempt automated remediation before human intervention. | Medium | HubFSM (4 states + transitions), Alerter (7 alert rules), MetricsCollector | Add 5th state `:healing` to HubFSM. Valid transitions: any state -> :healing (triggered by critical alerts), :healing -> :resting (remediation complete or failed). Healing preempts other states -- if infrastructure is broken, executing goals is pointless. |
+| **Health check aggregation** | The FSM needs a single "is the system healthy?" signal. Currently health data is scattered: Alerter has alert rules, MetricsCollector has metrics, LLM Registry has endpoint health, AgentFSM has agent states. Healing needs a unified health assessment. | Medium | Alerter, MetricsCollector, LLM Registry, AgentFSM | New module: `HealthAggregator`. Polls existing sources on tick. Returns structured health report: `{healthy: bool, issues: [{source, severity, detail}]}`. FSM transition predicate: `not healthy? and has_critical_issues? -> :healing`. |
+| **Stuck task detection and remediation** | Tasks assigned to agents that never complete are the most common pipeline failure. Current `stuck_tasks` alert fires but requires human intervention. Healing should automatically: reassign stuck tasks, restart unresponsive agents, or escalate to dead-letter. | Medium | Alerter stuck_tasks rule, TaskQueue, Scheduler, AgentFSM | Remediation actions: (1) If agent heartbeat missing > 2min: mark agent offline, unassign task, requeue. (2) If task assigned > 15min with no progress events: cancel and requeue with incremented retry count. (3) If task retried 3x and still stuck: move to dead-letter, alert human. All actions logged to healing history. |
+| **Ollama endpoint recovery** | When all Ollama endpoints go unhealthy (tier_down alert), the system stops processing tasks. Healing should attempt endpoint recovery: health check retries with backoff, endpoint restart commands (if configured), graceful degradation to Claude-only routing. | Low | LLM Registry health checks, tier_down alert rule | Remediation: (1) Retry health checks with exponential backoff (5s, 15s, 45s). (2) If endpoint has a configured restart command (e.g., `systemctl restart ollama`), execute via sidecar shell. (3) If recovery fails after 3 attempts, mark endpoints as down, route remaining tasks to Claude backend (cost increase accepted). (4) When endpoints recover, transition back to normal routing. |
+
+### 3. Pipeline Reliability Fixes
+
+| Feature | Why Expected | Complexity | Depends On (Existing) | Notes |
+|---------|--------------|------------|----------------------|-------|
+| **Wake failure recovery** | Sidecar wake (process spawn) fails silently when the target process crashes on startup. Currently the hub never learns the wake failed -- it marks the task as assigned and waits forever. | Low | sidecar/lib/wake.js, AgentFSM, Scheduler | Add wake acknowledgment: sidecar reports wake success/failure within 10s. If no ack received, hub marks agent as potentially offline and requeues task. Existing acceptance_timeout mechanism can be reused but needs shorter timeout for wake specifically. |
+| **Task timeout enforcement** | Tasks have no enforced wall-clock deadline. An LLM that generates output forever (or an Ollama endpoint that streams indefinitely) blocks the agent. The existing 5min timeout in OllamaExecutor is per-HTTP-request, not per-task. A task with 15 tool-call iterations could run for 75 minutes. | Medium | OllamaExecutor, verification-loop.js, dispatcher.js | Add task-level timeout in dispatcher.js: wraps entire execution (including verification retries) in a Promise.race with configurable deadline (default 30min for agentic tasks, 10min for simple tasks). On timeout: kill execution, report timeout failure, requeue if retries remain. |
+| **Graceful degradation on budget exhaustion** | CostLedger can block LLM calls when budget is exhausted, but tasks already in-flight have no way to learn this mid-execution. An agentic loop could start 15 iterations, exhaust the budget on iteration 3, and have the remaining iterations fail with cryptic errors. | Low | CostLedger, verification-loop.js | Check budget before each tool-calling iteration, not just at task start. If budget exhausted mid-loop: save partial progress, return partial result with clear "budget_exhausted" status, let hub decide whether to continue later or accept partial work. |
+| **Idempotent task requeue** | When tasks are requeued after failures (stuck, timeout, agent crash), duplicate execution can occur if the original execution is still running. Need fence tokens or generation counters to ensure only the latest assignment executes. | Medium | TaskQueue, Scheduler, sidecar queue.js | Add `assignment_generation` counter to tasks. Incremented on each assign. Sidecar checks generation before starting execution -- if stale, skip. Hub checks generation before accepting results -- if stale, discard. Prevents ghost results from zombie executions. |
+| **Sidecar reconnect with state recovery** | When a sidecar loses WebSocket connection and reconnects, it currently re-identifies but loses knowledge of in-flight tasks. If a task was mid-execution during disconnect, the result is lost. | Medium | sidecar/index.js, WebSocket handler, AgentFSM | On reconnect: sidecar reports its current state (idle, executing task_id X, completed task_id Y). Hub reconciles: if sidecar says "executing X" and hub agrees, continue waiting. If sidecar says "completed Y" but hub never got the result, accept the late result. If sidecar says "idle" but hub thinks it has a task, requeue the task. |
+
+---
 
 ## Differentiators
 
-Features that go beyond minimum viable. Not expected by the user but significantly increase the system's autonomy and value.
+Features that go beyond minimum viable. Not expected but significantly increase system capability.
 
-| Feature | Value Proposition | Complexity | Depends On (Existing) | Notes |
-|---------|-------------------|------------|----------------------|-------|
-| **Autonomous codebase improvement scanning** | When the goal queue is empty, the hub proactively scans registered repos for improvement opportunities: test coverage gaps, code duplication, missing docs, dead code, outdated dependencies. Transforms idle time into value. | High | RepoRegistry (priority-ordered repos), HubFSM (Improving state), GoalBacklog (self-generated goals), Claude API | Hub sends repo file listing + sample code to Claude with structured prompt: "Identify 3-5 improvement opportunities in this codebase." Responses become goals in the backlog. Scans repos in priority order from RepoRegistry. Rate-limited to prevent runaway token spend. |
-| **Tiered autonomy (auto-merge vs human review)** | Small, safe improvements (typo fixes, doc updates, test additions) should auto-merge. Larger changes (refactoring, new features, API changes) should create PRs for human review. This prevents the system from creating review bottlenecks while maintaining safety. | Medium | Git workflow (sidecar git-workflow.js), Complexity classification, HubFSM | Tier classification based on: (1) complexity_tier from task, (2) files touched count, (3) lines changed count, (4) whether tests exist for changed code, (5) whether it touches public API. Tier 1 (trivial+standard, <20 lines, test-covered): auto-merge. Tier 2 (everything else): create PR. Configurable thresholds via Config GenServer. |
-| **Goal completion verification (LLM judge)** | After all tasks for a goal complete, an LLM evaluates whether the goal's success criteria are actually met -- not just "did the tasks finish" but "was the intent achieved." This catches cases where tasks succeed individually but the goal fails holistically. | High | GoalBacklog, TaskQueue (completed tasks), Claude API | Prompt engineering: send goal description + success criteria + task results to Claude. Structured output: {complete: bool, evidence: string[], gaps: string[]}. If incomplete, hub can redecompose with gap context. Bounded: max 2 verification attempts per goal, then escalate to human. |
-| **Future feature contemplation and proposal writing** | In the Contemplating state, the hub thinks about what the system could become. It reviews the codebase, backlog patterns, and user feedback to generate feature proposals. Output: structured markdown proposals added to a proposals directory. | Medium | HubFSM (Contemplating state), RepoRegistry, Claude API | Lower priority than Improving. Output is passive (files, not actions). Proposals follow a template: problem, proposed solution, complexity estimate, dependencies. Human reviews and promotes to goal backlog. Not self-executing -- contemplation produces documents, not tasks. |
-| **Pre-publication repo cleanup** | Before a repo goes public, automated scanning for: leaked tokens/API keys (regex patterns), personal references (names, emails, paths), workspace-specific files (.planning/, .claude/), hardcoded IPs/hostnames, TODO/FIXME comments with sensitive context. Output: cleanup tasks or blocking report. | Medium | RepoRegistry, GoalBacklog, sidecar execution | Regex-based scanning (not LLM -- deterministic and fast). Pattern library: API key formats (sk-ant-*, ghp_*, etc.), email regex, IP address regex, path patterns (C:\Users\*, /home/*/). Can run as a pre-commit hook or as a hub-initiated scan goal. |
-| **Pipeline pipelining (front-loading research)** | When a goal requires research before execution (e.g., "add WebSocket compression"), decomposition produces a research task first. Research output feeds into subsequent implementation task context. This parallelizes the discussion/research phase with other goal execution. | Medium | GoalBacklog, decomposition, TaskQueue | Decomposition identifies research-dependent goals. Produces: (1) research task (complexity: complex, target: Claude), (2) implementation tasks with dependency on research task ID. TaskQueue needs a `depends_on` field (deferred from v1.0 scope). Research results stored in task result, injected into dependent task context. |
-| **Scalability analysis** | Hub periodically analyzes its own performance: task throughput, queue depth trends, agent utilization, bottleneck identification. Produces structured reports identifying whether to add machines, add agents, or optimize existing pipeline. | Low | MetricsCollector (ETS-backed metrics), Alerter, HubFSM | Reads from existing ETS metrics tables. Pure analysis -- no LLM needed for basic stats. Trend detection: is queue depth growing over time? Is agent utilization >80%? Are specific complexity tiers bottlenecked? Output: structured JSON report + optional Claude analysis for recommendations. |
+| Feature | Value Proposition | Complexity | Depends On | Notes |
+|---------|-------------------|------------|------------|-------|
+| **Workspace-aware file tools** | Tools that understand the project structure: read file with line numbers, write file with diff preview, search codebase with ripgrep, list directory with gitignore awareness. Goes beyond "shell exec" to structured file manipulation that smaller LLMs handle better. | Medium | Tool registry, workspace-manager.js | Structured tools produce structured observations. Instead of `tool: shell, args: "cat foo.ex"` returning raw text, `tool: read_file, args: {path: "lib/foo.ex", lines: "1-50"}` returns `{content: "...", total_lines: 120, language: "elixir"}`. Structured observations help smaller models (Qwen3 8B) reason more effectively than raw shell output. |
+| **Tool call streaming to dashboard** | Real-time visibility into what the agentic LLM is doing: which tools it calls, what it observes, what it reasons. Without this, agentic execution is a black box -- you submit a task and wait. | Low | Dashboard WebSocket, progress-emitter.js | Extend existing progress events: add `type: "tool_call"` with tool name, args, and result summary. Dashboard shows live tool-call timeline per task. Invaluable for debugging stuck agents and understanding LLM decision patterns. |
+| **Adaptive iteration limits** | Instead of fixed max iterations, adjust based on task complexity tier. Trivial tasks get 5 iterations max. Standard get 10. Complex get 20. Prevents overthinning on simple tasks while allowing complex tasks enough room. | Low | Task complexity classification (existing), ReAct loop | Map complexity_tier to iteration budget: `{trivial: 5, standard: 10, complex: 20}`. Configurable via Config GenServer. Simple lookup, no LLM involved. |
+| **Healing playbook system** | Instead of hardcoded remediation, a configurable playbook of condition-action pairs. "If stuck_tasks > 3 for > 5min, then requeue all stuck tasks." "If no_agents_online for > 10min, then send push notification." Allows Nathan to define remediation strategies without code changes. | Medium | HealthAggregator, HubFSM healing state | DETS-backed playbook with rules: `{condition: {alert_rule, duration_ms}, actions: [{:requeue_stuck}, {:notify, :push}], cooldown_ms: 300_000}`. Evaluated in Healing state on each tick. Auditable: all playbook actions logged with context. |
+| **Partial result acceptance** | When an agentic task times out or exhausts budget mid-way, the partial work (files already modified, tests already written) should be preserved and reported, not discarded. Hub can decide: accept partial, create follow-up task for remainder, or discard. | Medium | ReAct loop, verification-loop.js, GoalBacklog | On forced stop: run verification on current workspace state. If some checks pass, report as `partial_pass` with list of completed vs remaining work. Hub creates follow-up task for remaining work with context from partial result. Avoids wasting completed work on timeout. |
+| **LLM output format correction** | When Qwen3 8B returns malformed tool calls (common with smaller models), attempt auto-correction before failing: fix JSON syntax errors, extract tool calls from markdown code blocks, handle XML-format tool calls from Qwen3's >5-tool fallback mode. | Medium | Structured output parser | Three-layer parsing: (1) Native `tool_calls` field (preferred), (2) JSON extraction from content (regex for `{"name":..., "arguments":...}` patterns), (3) XML extraction from content (Qwen3 fallback format: `<tool_call>...</tool_call>`). Log which layer succeeded for model quality tracking. |
+
+---
 
 ## Anti-Features
 
-Features to explicitly NOT build. Documented to prevent scope creep and re-discussion.
+Features to explicitly NOT build. Documented to prevent scope creep.
 
 | Anti-Feature | Why Avoid | What to Do Instead |
 |--------------|-----------|-------------------|
-| **Fully autonomous multi-agent orchestration** | The Ralph loop pattern explicitly warns against over-engineering multi-agent systems. "Ralph is monolithic. Ralph works autonomously in a single repository as a single process that performs one task per loop." Adding agent-to-agent delegation, dynamic team formation, or multi-agent consensus bypasses the central scheduler and creates untrackable work. | Keep the hub as the single brain. Agents are execution units, not decision-makers. The hub decomposes goals, creates tasks, and monitors completion. Agents execute assigned tasks. |
-| **LLM-based complexity classifier for decomposition** | Using an LLM to classify whether a goal needs decomposition at all is a chicken-and-egg problem. The decomposition prompt already handles this -- if the goal is atomic, the LLM returns a single task. Adding a pre-classifier burns tokens for routing. | Always attempt decomposition. If the LLM determines the goal is already atomic, it returns one task. The decomposition prompt handles this gracefully. Cost: one extra Claude call per atomic goal (acceptable). |
-| **Real-time streaming of FSM state to external systems** | Exposing FSM state via a streaming API (SSE, WebSocket to external consumers) adds protocol complexity for zero internal value. The dashboard already gets state via PubSub. | Use PubSub internally. Dashboard reads FSM state like it reads all other state. Add HTTP GET endpoint for external polling if needed. |
-| **Dynamic goal priority rebalancing by LLM** | Having the LLM re-prioritize the goal backlog introduces non-determinism into scheduling. Priority should be explicit (human-set) or rule-based (FIFO within priority lanes), not LLM-judged. | Use the same priority lane system as TaskQueue: urgent/high/normal/low. Human sets priority on goal submission. Self-generated improvement goals default to "low" priority. |
-| **Cross-repo goal dependencies** | Goals that span multiple repos with inter-repo dependencies (repo A's change requires repo B's change first) add DAG scheduling complexity that is out of scope. | Decompose cross-repo work into separate goals per repo. Execute in priority order (RepoRegistry ordering). If ordering matters, human submits goals sequentially. |
-| **Autonomous deployment/release** | The system should NOT autonomously deploy, release, or publish code. Even with tiered autonomy, deployment is a human decision. Auto-merge to a branch is acceptable; deploying that branch is not. | Auto-merge merges to the configured branch (usually a feature branch or main). Deployment/release is triggered by human action or separate CI/CD pipeline. |
-| **Persistent LLM conversation memory** | Maintaining a long-running conversation context with the LLM across decomposition, verification, and contemplation calls creates context window pressure and stale context risk. | Each LLM call is stateless. Context is constructed fresh from: goal description, success criteria, task results, codebase snapshots. This is the Ralph pattern: fresh context per iteration with state persisted in files/DETS. |
+| **Multi-agent tool collaboration** | Two agents calling tools on the same workspace creates race conditions, merge conflicts, and non-deterministic state. The blast radius of a bad tool call doubles. | One agent per task per workspace. If a task needs results from another task, use task dependencies (existing `depends_on` from v1.3 Phase 28). |
+| **LLM-generated tool definitions** | Having the LLM create new tools at runtime (metaprogramming) is a security risk and debugging nightmare. "The model decided to create a `delete_all_files` tool and then called it." | Fixed tool registry defined in code. All tools are known, tested, and sandboxed. The LLM chooses which tools to call, not which tools exist. |
+| **Autonomous Ollama model pulling** | In Healing state, auto-downloading new Ollama models to replace broken ones. Downloads are large (4-8GB), slow, and could fill disk. | Alert when models are unavailable. Human pulls models. Healing can retry health checks and restart the Ollama process, not download new models. |
+| **Distributed healing consensus** | Multiple hub instances voting on healing actions via Raft/Paxos. AgentCom has one hub. Adding distributed consensus for a singleton is pure over-engineering. | Single hub, single healing decision-maker. If the hub itself crashes, OTP supervisor restarts it. The hub IS the single brain (established in v1.3 anti-features). |
+| **Tool call caching/memoization** | Caching tool results (e.g., "file X was read, cache the content for next read") introduces stale data bugs. The LLM might modify a file via `write_file` and then read stale cached content on the next `read_file`. | Every tool call executes fresh. File reads always read from disk. Shell commands always execute. The overhead of re-reading a file is negligible compared to LLM inference time. |
+| **Healing self-healing (recursive)** | If the Healing state itself fails (remediation action crashes), do NOT attempt to heal the healer. Infinite recursion risk. | Healing has a watchdog timeout (5min). If remediation does not complete in 5min, transition to Resting, fire critical alert. Human investigates. OTP supervisor handles process crashes. |
+| **Custom tool protocols (MCP/A2A)** | Model Context Protocol and Agent-to-Agent protocol are emerging standards but add protocol negotiation complexity for zero benefit when you control both the LLM client and the tool server. | Direct function calls within the sidecar process. Tools are JavaScript functions called by the executor. No protocol overhead. Revisit MCP only if integrating external tool providers (not in scope). |
+
+---
 
 ## Feature Dependencies
 
 ```
-GoalBacklog (centralized goal intake + priority ordering)
+Tool-Calling Agent Loop (sidecar-side, JavaScript)
   |
-  +--> Multi-Source Input (API, CLI, file watcher, internal generation)
-  |
-  +--> LLM Goal Decomposition (Claude API, structured prompt -> enriched tasks)
+  +--> Tool Definition Registry
   |      |
-  |      +--> Elephant Carpaccio Slicing (each task fits one context window)
-  |      |
-  |      +--> Task Submission to existing TaskQueue.submit/1
+  |      +--> File tools (read, write, list, search)
+  |      +--> Shell tools (exec with timeout, git commands)
+  |      +--> Hub API tools (task status, goal info -- future)
   |
-  +--> Goal Completion Tracking (monitor child task events, aggregate status)
+  +--> Tool Execution Engine
+  |      |
+  |      +--> Workspace sandboxing (existing workspace-manager.js)
+  |      +--> Timeout enforcement per tool call
+  |
+  +--> ReAct Loop in OllamaExecutor
+  |      |
+  |      +--> Multi-turn conversation management
+  |      +--> Tool result injection as role:"tool" messages
+  |      +--> Loop termination detection (no tool_calls = done)
+  |
+  +--> Safety Guardrails (EXTERNAL to loop)
          |
-         +--> LLM Completion Verification (goal-level success criteria check)
+         +--> Max iteration limit
+         +--> Repetition detection
+         +--> Token/cost budget check per iteration
+         +--> Wall-clock timeout
 
-HubFSM (4-state loop: Executing, Improving, Contemplating, Resting)
+Hub FSM Healing State (hub-side, Elixir)
   |
-  +--> Queue-Driven Transitions (predicates on TaskQueue + GoalBacklog state)
-  |
-  +--> Executing State: Process goals from backlog, decompose, execute via pipeline
-  |
-  +--> Improving State: Scan repos, generate improvement goals
+  +--> HealthAggregator (unifies existing health sources)
   |      |
-  |      +--> Autonomous Codebase Scanning (Claude API, repo file analysis)
+  |      +--> Reads: Alerter, MetricsCollector, LLM Registry, AgentFSM
+  |
+  +--> Healing state added to HubFSM
   |      |
-  |      +--> Pre-Publication Repo Cleanup (regex-based, deterministic)
+  |      +--> Transition: any state -> :healing (critical issue detected)
+  |      +--> Transition: :healing -> :resting (remediation done or failed)
   |
-  +--> Contemplating State: Generate feature proposals, scalability analysis
-  |
-  +--> Resting State: Idle, wait for new goals or transition triggers
+  +--> Remediation Actions
+         |
+         +--> Stuck task requeue
+         +--> Agent offline cleanup
+         +--> Ollama endpoint recovery
+         +--> Escalation to human (push notification)
 
-Tiered Autonomy (risk-based merge vs PR decision)
+Pipeline Reliability (cross-cutting, both hub and sidecar)
   |
-  +--> Requires: Complexity classification (existing v1.2)
-  +--> Requires: Goal decomposition (task-level risk assessment)
-  +--> Requires: Git workflow (existing sidecar git-workflow.js)
-  +--> Configurable thresholds via Config GenServer
-
-Pipeline Pipelining (research-first decomposition)
-  |
-  +--> Requires: GoalBacklog + Decomposition
-  +--> Requires: TaskQueue task dependency field (NEW, deferred from v1.0)
+  +--> Wake failure recovery (sidecar ack + hub timeout)
+  +--> Task-level timeout (dispatcher.js wrapper)
+  +--> Budget check per iteration (CostLedger integration)
+  +--> Idempotent requeue (assignment_generation counter)
+  +--> Sidecar reconnect state recovery
 ```
 
-**Critical path:** GoalBacklog -> Decomposition -> Goal Completion Tracking -> HubFSM -> Improvement Scanning
+**Critical path:** Tool Registry -> Tool Executor -> ReAct Loop -> Safety Guardrails -> Healing State -> Pipeline Reliability
 
 **Why this order:**
-1. GoalBacklog first: the FSM needs something to execute. Without a goal intake, the FSM is an engine with no fuel.
-2. Decomposition second: goals must become tasks for the existing pipeline. This bridges intent to execution.
-3. Goal completion tracking third: the FSM needs to know when goals finish to transition states.
-4. HubFSM fourth: now it has fuel (goals), a converter (decomposition), and a gauge (completion tracking).
-5. Improvement scanning fifth: the Improving state needs the scanning capability. Only needed after FSM is running.
-
-## Detailed Feature Specifications
-
-### Hub FSM: The Four States
-
-The hub FSM is a singleton GenServer (or GenStateMachine) that represents the hub's "brain." It is distinct from the per-agent AgentFSM (which tracks individual agent work lifecycle). The hub FSM decides what the system should be DOING at a macro level.
-
-```
-                    +---> [Executing] ---+
-                    |         |          |
-                    |    (goals done,    |
- (new goal)        |     queue empty)   |
-                    |         v          |
- [Resting] <--------+--- [Improving] ---+
-      |             |         |          |
-      |             |    (scan done,     |
-      |             |     idle timer)    |
-      |             |         v          |
-      +-----------> +- [Contemplating] -+
-                              |
-                         (proposals done,
-                          long idle timer)
-                              |
-                              v
-                          [Resting]
-```
-
-**State: Executing**
-- Trigger: Goals exist in backlog
-- Behavior: Pick highest-priority goal, decompose into tasks, submit to pipeline, monitor completion
-- Exit: All goals completed (and none pending) -> Improving. New goal arrives -> stay Executing.
-- Inner loop: Ralph-style observe-act-verify per goal. Decompose -> execute -> verify completion -> next goal.
-
-**State: Improving**
-- Trigger: No goals in backlog, system is idle
-- Behavior: Scan repos from RepoRegistry in priority order. Identify improvement opportunities via Claude API. Generate improvement goals and add to backlog. Process generated goals.
-- Exit: New external goal arrives -> Executing. Scan of all repos complete AND generated goals complete -> Contemplating (or Resting if contemplation disabled).
-- Rate limit: Max 3 improvement scans per hour. Max 5 improvement goals generated per scan.
-
-**State: Contemplating**
-- Trigger: No goals (external or self-generated), all improvements processed
-- Behavior: Review codebase architecture, backlog history, and task patterns. Generate feature proposals as structured markdown. Write proposals to `.planning/proposals/` directory.
-- Exit: New goal arrives -> Executing. Proposals complete -> Resting.
-- Rate limit: Max 1 contemplation session per 4 hours.
-
-**State: Resting**
-- Trigger: Nothing to do, or cooldown period active
-- Behavior: Idle. Monitor for new goal submissions via PubSub.
-- Exit: New goal submitted -> Executing. Idle for >30 min and repos have pending improvements -> Improving.
-
-**Implementation decision: GenServer vs GenStateMachine**
-
-Use a GenServer with explicit state tracking (like existing AgentFSM), NOT GenStateMachine. Rationale:
-- AgentFSM already establishes the pattern of GenServer-based FSM with `@valid_transitions` map
-- The hub FSM has 4 states, not 40 -- GenStateMachine's callback-mode-per-state adds boilerplate without benefit
-- GenServer integrates more naturally with existing PubSub subscription pattern
-- Avoids Elixir 1.14 `:gen_statem` logger compatibility issue (known tech debt)
-
-**Confidence:** HIGH -- GenServer-based FSM pattern is proven in the codebase (AgentFSM). State transition logic is straightforward. The complexity is in the transition predicates, not the FSM mechanics.
-
-### Goal Backlog
-
-A centralized DETS-backed GenServer for high-level goal management. Goals are the unit of intent; tasks are the unit of execution.
-
-```elixir
-# Goal structure
-%{
-  id: "goal-" <> hex_id,
-  title: "Add rate limiting to the public API",
-  description: "Implement token bucket rate limiting...",
-  success_criteria: [
-    "All public endpoints have rate limiting",
-    "Rate limits are configurable per endpoint",
-    "Dashboard shows rate limit status"
-  ],
-  priority: 2,                    # 0=urgent, 1=high, 2=normal, 3=low
-  status: :pending,               # :pending | :decomposing | :executing | :verifying | :complete | :failed
-  source: :api,                   # :api | :cli | :file | :improvement | :contemplation
-  repo: "https://github.com/...", # Optional, for repo-specific goals
-  task_ids: [],                   # Populated after decomposition
-  decomposition_result: nil,      # Raw LLM decomposition response
-  verification_result: nil,       # Goal-level verification result
-  created_at: timestamp,
-  updated_at: timestamp,
-  completed_at: nil,
-  submitted_by: "nathan",
-  attempt_count: 0,               # Decomposition/verification attempts
-  max_attempts: 3,
-  history: [{:pending, timestamp, "submitted via CLI"}]
-}
-```
-
-**Input channels:**
-1. **HTTP API** -- `POST /api/goals` with title, description, success criteria, priority. Integrates with existing Router.
-2. **CLI tool** -- New `agentcom-goal.js` script in sidecar directory. `node agentcom-goal.js add "Title" --desc "..." --priority normal`.
-3. **File watcher** -- Watch `GOALS.md` or `goals/*.md` for changes. Parse markdown into goal structs. (Lowest priority -- defer if complex.)
-4. **Internal generation** -- `GoalBacklog.submit_internal/1` for improvement and contemplation goals. Tagged with `:improvement` or `:contemplation` source.
-
-**Confidence:** HIGH -- Follows established GenServer + DETS pattern (TaskQueue, RepoRegistry). Goal struct is a superset of existing patterns.
-
-### LLM-Powered Goal Decomposition
-
-The decomposition engine takes a goal and produces enriched tasks suitable for the existing v1.2 pipeline.
-
-**Decomposition prompt structure:**
-
-```
-You are a task decomposition engine for a distributed AI coding system.
-
-GOAL:
-Title: {goal.title}
-Description: {goal.description}
-Success Criteria:
-{formatted success_criteria}
-
-TARGET REPO: {goal.repo or "any"}
-AVAILABLE COMPLEXITY TIERS: trivial (zero-LLM shell commands), standard (local Ollama), complex (Claude API)
-
-CONSTRAINTS:
-- Each task must be completable in a SINGLE agent context window (one session)
-- Each task must be independently verifiable (tests, file checks, command output)
-- Tasks should be ordered by dependency (earlier tasks first)
-- Prefer many small tasks over few large tasks ("elephant carpaccio" - slice thin)
-- Include verification_steps for EVERY task (file_exists, test_passes, command_succeeds, git_clean)
-- Assign appropriate complexity_tier based on the work required
-
-OUTPUT FORMAT (JSON array):
-[
-  {
-    "description": "Clear, actionable description",
-    "complexity_tier": "trivial|standard|complex",
-    "priority": "normal",
-    "success_criteria": ["Criterion 1", "Criterion 2"],
-    "verification_steps": [
-      {"type": "test_passes", "command": "mix test test/specific_test.exs"},
-      {"type": "file_exists", "path": "lib/new_module.ex"}
-    ],
-    "file_hints": ["lib/relevant_file.ex"],
-    "depends_on_index": null | 0 | 1,
-    "estimated_complexity": "brief rationale"
-  }
-]
-```
-
-**Elephant Carpaccio principles applied:**
-- Each task = one thin vertical slice (not "build the module" but "add the struct definition," "add the GenServer init," "add the public API function," "add the test")
-- Each slice is independently deployable and verifiable
-- 15-30 minute tasks, not 2-hour tasks
-- If decomposition produces fewer than 3 tasks for a non-trivial goal, it is probably too coarse-grained
-
-**Cost management:**
-- One Claude API call per decomposition (~$0.05-0.15 per goal, depending on context)
-- Cache decomposition results in goal struct (no re-decomposition on hub restart)
-- Max 3 decomposition attempts per goal (with refined prompt on retry)
-- Decomposition result validation: must produce valid JSON, each task must have required fields
-
-**Confidence:** MEDIUM-HIGH -- LLM-based decomposition is well-established (GoalAct, HiPlan, TMS research). The prompt engineering is the critical path. Quality depends heavily on prompt tuning with real goals. First 10-20 decompositions will need manual review to calibrate.
-
-### Ralph-Style Inner Loop Per Goal
-
-Based on research into ralph (snarktank), ralph-loop-agent (Vercel), and the Ralph Wiggum technique, the inner loop follows this pattern:
-
-```
-Goal enters "executing" status
-  |
-  v
-DECOMPOSE: Claude API -> enriched task array
-  |
-  v
-SUBMIT: For each task, TaskQueue.submit/1
-  |
-  v
-MONITOR: Subscribe to task_completed/task_failed events
-  |         (existing PubSub "tasks" topic)
-  |
-  +---> Task completed: mark task done in goal tracking
-  |       |
-  |       +--> All tasks done? -> VERIFY
-  |       |
-  |       +--> Not all done? -> wait for next event
-  |
-  +---> Task failed (after retries exhausted):
-  |       |
-  |       +--> Retry budget remaining? -> resubmit with failure context
-  |       |
-  |       +--> Retry budget exhausted? -> FAIL goal
-  |
-  v
-VERIFY: LLM evaluates goal success criteria against task results
-  |
-  +--> Verified complete -> goal status = :complete, move to next goal
-  |
-  +--> Verification failed with gaps:
-        |
-        +--> Attempt count < max? -> REDECOMPOSE with gap context
-        |
-        +--> Attempt count >= max? -> goal status = :failed, notify human
-```
-
-**Key implementation decisions from Ralph pattern research:**
-
-1. **Fresh context per iteration** -- Each decomposition/verification call to Claude gets a fresh prompt with current state. No accumulated conversation context. State persists in DETS, not in LLM memory.
-
-2. **File-system as memory** -- Ralph uses progress.txt + prd.json. AgentCom equivalent: GoalBacklog DETS table + TaskQueue DETS table. The hub reads current state from DETS on each iteration, exactly like Ralph reads progress.txt.
-
-3. **Bounded iterations** -- Ralph defaults to max 10 iterations. AgentCom: max 3 decomposition attempts per goal (configurable). Max 2 verification attempts. Total: max 5 LLM calls per goal lifecycle.
-
-4. **Completion = external verification, not LLM self-assessment** -- Ralph's key insight over ReAct: completion is judged by external criteria (tests pass, files exist), not by the LLM saying "I'm done." AgentCom already has this via mechanical verification (v1.2 Phase 21-22). Goal-level verification adds LLM judgment ON TOP of mechanical checks, not instead of.
-
-**Confidence:** HIGH -- Pattern is well-documented across multiple implementations (snarktank/ralph, vercel-labs/ralph-loop-agent, ghuntley/loop). Implementation maps cleanly to existing PubSub event-driven architecture.
-
-### Autonomous Codebase Improvement Scanning
-
-When the FSM enters the Improving state, it scans repos for improvement opportunities.
-
-**Scan types (priority order):**
-
-1. **Test coverage gaps** -- List files with no corresponding test file. `lib/foo.ex` exists but `test/foo_test.exs` does not. Deterministic scan, no LLM needed.
-
-2. **Code duplication** -- Send file contents to Claude: "Identify significant code duplication in these files. Suggest extraction patterns." LLM-assisted.
-
-3. **Documentation gaps** -- Modules with `@moduledoc false` or no `@moduledoc`. Functions with no `@doc`. Deterministic scan.
-
-4. **Dead code** -- Modules not referenced by any other module. Functions not called anywhere. Partially deterministic (grep-based), partially LLM-assisted.
-
-5. **Dependency updates** -- Parse mix.exs and package.json for outdated dependencies. Check against hex.pm / npm registry. Deterministic.
-
-6. **Simplification opportunities** -- Send complex modules (high cyclomatic complexity, many functions) to Claude: "Suggest simplifications." LLM-assisted.
-
-**Output:** Each scan produces 0-N improvement goals submitted to GoalBacklog with source: `:improvement` and priority: `:low`. Human can promote priority if desired.
-
-**Rate limiting:**
-- Max 3 repo scans per hour
-- Max 5 improvement goals per scan
-- Max $1.00 Claude spend per improvement session
-- Cooldown: 15 minutes between scans of the same repo
-
-**Confidence:** MEDIUM -- Deterministic scans (test gaps, doc gaps, deps) are straightforward. LLM-assisted scans (duplication, simplification) require careful prompt engineering to avoid low-quality suggestions. Start with deterministic scans only; add LLM-assisted scans after calibrating quality.
-
-### Tiered Autonomy
-
-Risk-based decision matrix for auto-merge vs human review:
-
-**Tier 1: Auto-merge (low risk)**
-- Conditions (ALL must be true):
-  - complexity_tier is :trivial or :standard
-  - Lines changed <= 20
-  - Only modifies existing files (no new files in public API)
-  - All verification steps pass
-  - Test coverage exists for modified code
-  - No changes to: config files, security-related modules, public API surface
-- Action: Merge directly to target branch. Log merge event. Dashboard notification.
-
-**Tier 2: PR for review (elevated risk)**
-- Conditions (ANY triggers Tier 2):
-  - complexity_tier is :complex
-  - Lines changed > 20
-  - New files created
-  - Changes to config, auth, or router modules
-  - Verification steps have partial failures
-  - Self-generated improvement goal (source: :improvement)
-- Action: Create PR with description, verification report, and risk assessment. Assign human reviewer. Dashboard alert.
-
-**Tier 3: Block and escalate (high risk)**
-- Conditions (ANY triggers Tier 3):
-  - Changes to authentication or authorization code
-  - Changes to deployment configuration
-  - Cross-repo changes
-  - Goal verification failed after max attempts
-- Action: Do NOT merge. Create PR with "NEEDS REVIEW" label. Send push notification. Dashboard critical alert.
-
-**Configuration:**
-```elixir
-%{
-  auto_merge_max_lines: 20,
-  auto_merge_tiers: [:trivial, :standard],
-  protected_paths: ["lib/agent_com/auth.ex", "config/", "mix.exs"],
-  require_test_coverage: true,
-  improvement_goals_always_pr: true
-}
-```
-
-**Confidence:** MEDIUM -- Tiered autonomy is a clear industry pattern (risk-based human-in-the-loop). The specific thresholds (20 lines, protected paths) need calibration with real production data. Start conservative (everything is Tier 2 except explicitly trivial operations), then relax thresholds as confidence grows.
-
-### Goal Completion Verification
-
-After all tasks for a goal complete, the LLM evaluates whether the goal's intent was achieved.
-
-**Verification prompt:**
-
-```
-You are evaluating whether a development goal has been measurably completed.
-
-GOAL:
-Title: {goal.title}
-Description: {goal.description}
-Success Criteria:
-{numbered list of success_criteria}
-
-TASK RESULTS:
-{for each completed task: description + result summary + verification_report}
-
-EVALUATE each success criterion:
-1. Is it met? (YES/NO/PARTIAL)
-2. What evidence supports this? (specific task results, file changes, test outputs)
-3. If not met, what is missing?
-
-OUTPUT (JSON):
-{
-  "complete": true/false,
-  "criteria_results": [
-    {"criterion": "...", "status": "met|partial|unmet", "evidence": "...", "gap": null|"..."}
-  ],
-  "overall_assessment": "Brief assessment",
-  "suggested_follow_up": null | ["Follow-up action if gaps exist"]
-}
-```
-
-**Decision logic:**
-- All criteria "met" -> goal complete
-- Any criterion "unmet" and attempt_count < max_attempts -> redecompose with gap context
-- Any criterion "unmet" and attempt_count >= max_attempts -> goal failed, escalate to human
-- Any criterion "partial" -> LLM suggests whether to accept or retry (human makes final call for Tier 2+ goals)
-
-**Confidence:** MEDIUM -- LLM-as-judge is established but known to be unreliable for nuanced evaluation. Mitigation: mechanical verification (v1.2) provides the ground truth; LLM verification is an additional layer that catches semantic gaps. If LLM says "complete" but mechanical checks fail, mechanical checks win.
-
-### Pre-Publication Repo Cleanup
-
-Deterministic scanning for sensitive content before making a repo public.
-
-**Pattern library:**
-
-| Category | Patterns | Action |
-|----------|----------|--------|
-| API keys | `sk-ant-*`, `ghp_*`, `sk-*`, `AKIA*`, `xox[bpsa]-*` | BLOCK: must be removed |
-| Tokens | `eyJ*` (JWT), hex strings > 32 chars in config | WARN: review for sensitivity |
-| Personal info | Email regex, phone regex | WARN: review and redact |
-| Paths | `C:\Users\*`, `/home/*/`, `~/*` | WARN: make portable |
-| IPs | IPv4 regex in non-config files | WARN: replace with hostname or env var |
-| Workspace files | `.planning/`, `.claude/`, `SOUL.md`, `IDENTITY.md`, `HEARTBEAT.md` | BLOCK: add to .gitignore |
-| Hardcoded hostnames | Tailscale IPs (`100.64.*`), machine names | WARN: replace with env var |
-| Debug artifacts | `erl_crash.dump`, `nul`, `tmp/`, `commit_msg.txt` | BLOCK: add to .gitignore |
-
-**Output:** Structured report with file, line number, pattern matched, and severity (BLOCK vs WARN). BLOCK items prevent publication; WARN items need human review.
-
-**Confidence:** HIGH -- Regex-based scanning is deterministic and well-understood. Pattern libraries exist (GitHub secret scanning, gitleaks). Implementation is straightforward file-by-file scanning.
+1. Tool registry and executor first: the ReAct loop needs tools to call. Without them, the loop has nothing to act on.
+2. ReAct loop second: this is the core agentic capability. It transforms OllamaExecutor from a single-shot text generator into an agent that can actually DO things.
+3. Safety guardrails third: must be in place before agentic execution runs in production. An unguarded agentic loop is dangerous.
+4. Healing state fourth: depends on understanding what failures look like in practice. Building healing before the agentic pipeline runs means guessing at failure modes. Better to observe real failures first, then build targeted healing.
+5. Pipeline reliability last: these are fixes to existing failure modes. They make the system robust but don't unlock new capability. Some (like task timeout) naturally pair with agentic execution and can be built alongside.
+
+---
 
 ## MVP Recommendation
 
 Prioritize (in build order, respecting dependency chain):
 
-1. **Goal Backlog** -- Foundation. The FSM needs goals to process. DETS-backed GenServer following TaskQueue/RepoRegistry patterns. API endpoint for submission. Minimum: HTTP API + internal generation. Defer: CLI tool, file watcher.
+1. **Tool Definition Registry** -- Define 4-5 core tools: `read_file`, `write_file`, `list_directory`, `run_command`, `search_files`. Keep under Qwen3's 5-tool native JSON limit. Each tool has name, description, JSON schema for parameters. Pure data, no execution logic yet.
 
-2. **LLM Goal Decomposition** -- Bridge between intent and execution. Claude API call from hub-side. Structured prompt producing enriched tasks. Submit decomposed tasks to existing TaskQueue.submit/1. This is the highest-risk feature: prompt quality determines system quality.
+2. **Tool Execution Engine** -- Implement the execution functions for each registered tool. Sandboxed to workspace directory. Timeout per tool call (30s default). Structured return format: `{success: bool, output: string, error: string}`.
 
-3. **Goal Completion Tracking** -- Monitor task events for goal's child tasks. Aggregate completion status. Simple event-driven tracking via PubSub subscription. No LLM needed for tracking.
+3. **ReAct Loop in OllamaExecutor** -- Modify `_streamChat` to handle multi-turn: detect `tool_calls` in response, execute tools, append results, call Ollama again. Loop until final answer or limit hit. This is the highest-complexity feature and the core deliverable.
 
-4. **Hub FSM (4-state loop)** -- The brain. GenServer with state transitions driven by GoalBacklog and TaskQueue state. Start with 2 states (Executing, Resting) for MVP. Add Improving and Contemplating after the core loop works.
+4. **Safety Guardrails** -- Max iterations, repetition detection, budget checks, wall-clock timeout. Build alongside or immediately after the ReAct loop. Non-negotiable for production use.
 
-5. **Queue-Driven State Transitions** -- Wire FSM to PubSub events. Transition predicates as pure functions. Dashboard integration for FSM state visibility.
+5. **Task-Level Timeout** -- Wraps entire agentic execution in a deadline. Essential now that a single task can involve 15+ LLM calls. Pairs naturally with the ReAct loop work.
 
-6. **Goal Completion Verification (LLM judge)** -- After core loop works, add LLM-based verification of goal-level success criteria. This is the "verify" in observe-act-verify.
+6. **Stuck Task Remediation** -- The most impactful pipeline reliability fix. Stuck tasks are the #1 reported failure mode. Detect and requeue automatically.
 
-7. **Tiered Autonomy** -- Risk-based merge/PR decision. Start conservative: everything creates PRs. Gradually enable auto-merge for trivial+standard with passing verification.
+7. **HealthAggregator + Healing State** -- Unify health signals, add 5th FSM state. Build after agentic pipeline is running so you can observe real failure patterns.
 
-Defer to follow-up phases:
+Defer to follow-up:
+- **Wake failure recovery**: Important but lower frequency than stuck tasks. Can be addressed by shorter acceptance timeout in the interim.
+- **Sidecar reconnect state recovery**: Complex state reconciliation. Acceptable to lose in-flight work on disconnect for now (task requeue handles it).
+- **Idempotent requeue**: Only matters at scale with frequent failures. Add when ghost results become a real problem.
+- **Healing playbook system**: Build hardcoded remediation first. Extract to configurable playbook after patterns stabilize.
+- **Tool call streaming to dashboard**: Nice to have for debugging. Add after core agentic loop works.
 
-- **Autonomous codebase improvement scanning**: Needs the FSM + Improving state working first. Start with deterministic scans (test gaps, doc gaps), defer LLM-assisted scans.
-- **Pre-publication repo cleanup**: Can be built independently, lower priority than core loop.
-- **Pipeline pipelining**: Requires task dependency field in TaskQueue (new schema change). Build after core loop proves stable.
-- **Future feature contemplation**: Lowest priority. Build after Improving state is calibrated.
-- **Scalability analysis**: Nice-to-have, builds on existing metrics. Can be added anytime.
+---
 
-## User Workflows
+## Detailed Feature Specifications
 
-### Workflow 1: Nathan Submits a Goal via API
+### Tool-Calling Agent Loop: How It Works
 
-```
-1. Nathan: POST /api/goals
-   {
-     title: "Add WebSocket compression",
-     description: "Enable permessage-deflate for WebSocket connections to reduce bandwidth",
-     success_criteria: [
-       "WebSocket connections use permessage-deflate when client supports it",
-       "Existing agents connect without issues (backward compatible)",
-       "Dashboard shows compression ratio"
-     ],
-     priority: "normal"
-   }
-
-2. Hub GoalBacklog: persists goal, broadcasts :goal_submitted on "goals" PubSub topic
-
-3. Hub FSM (was in Resting state): receives event, transitions to Executing
-   - Picks goal from backlog (highest priority first)
-   - Calls Claude API with decomposition prompt
-   - Claude returns 5 tasks:
-     a. "Add permessage-deflate option to Bandit config" (trivial, 3 lines)
-     b. "Update Socket module to advertise compression support" (standard)
-     c. "Add compression ratio tracking to Telemetry" (standard)
-     d. "Update dashboard to show compression metrics" (standard)
-     e. "Add integration test for compressed WebSocket connection" (standard)
-
-4. Hub submits 5 tasks to TaskQueue.submit/1 (existing pipeline takes over)
-   - Scheduler assigns to idle agents by complexity tier
-   - Agents execute, verify, complete
-   - PubSub events flow back to HubFSM
-
-5. All 5 tasks complete. Hub runs goal verification:
-   - Claude evaluates: "All 3 success criteria met. Evidence: [test results, config change, dashboard update]"
-   - Goal marked :complete
-   - Hub FSM: no more goals -> transitions to Improving (or Resting)
-
-6. Dashboard shows: Goal completed, 5/5 tasks done, verification passed
-```
-
-### Workflow 2: Autonomous Improvement Cycle
+The standard agentic pattern is ReAct (Reasoning + Acting). The loop operates as:
 
 ```
-1. Hub FSM is in Resting state. No goals in backlog. Timer: idle for 30 minutes.
-
-2. FSM transitions to Improving:
-   - Queries RepoRegistry.list_repos() for active repos in priority order
-   - First repo: AgentCom (this repo)
-
-3. Hub scans AgentCom for improvement opportunities:
-   a. Deterministic: finds 3 modules without test files:
-      - lib/agent_com/dashboard_notifier.ex (no test)
-      - lib/agent_com/dashboard_state.ex (no test)
-      - lib/agent_com/alerter.ex (no test)
-   b. Deterministic: finds 2 modules with @moduledoc false:
-      - lib/agent_com/endpoint.ex
-      - lib/mix/tasks/gen_token.ex
-
-4. Hub generates 5 improvement goals:
-   - "Add tests for DashboardNotifier module" (priority: low, source: improvement)
-   - "Add tests for DashboardState module" (priority: low, source: improvement)
-   - "Add tests for Alerter module" (priority: low, source: improvement)
-   - "Add @moduledoc to Endpoint module" (priority: low, source: improvement)
-   - "Add @moduledoc to GenToken mix task" (priority: low, source: improvement)
-
-5. FSM transitions to Executing to process improvement goals
-   - Each goal decomposed into tasks
-   - Tasks execute through normal pipeline
-   - Tiered autonomy: test additions are standard complexity, <20 lines -> auto-merge
-   - Doc additions are trivial complexity, <5 lines -> auto-merge
-
-6. All improvement goals complete. No more repos to scan.
-   FSM transitions to Resting (or Contemplating if enabled).
-
-7. Nathan returns to find: 5 PRs merged, test coverage improved, docs updated.
-   Dashboard shows full improvement cycle history.
+User submits task with description + context
+  |
+  v
+[1] Build initial messages:
+    system: "You are a coding agent. Use tools to complete the task."
+    user: task.description + context
+  |
+  v
+[2] Call Ollama /api/chat with messages[] + tools[]
+  |
+  v
+[3] Parse response:
+    - Has tool_calls? -> Execute tools, go to [4]
+    - No tool_calls (content only)? -> Final answer, go to [6]
+    - Malformed? -> Attempt auto-correction, retry once
+  |
+  v
+[4] Execute each tool call:
+    - Look up tool in registry
+    - Validate arguments against schema
+    - Execute with timeout (30s)
+    - Capture result or error
+  |
+  v
+[5] Append to messages:
+    - assistant message (with tool_calls)
+    - tool result message(s): {role: "tool", content: JSON.stringify(result)}
+    - Check guardrails (iteration count, repetition, budget, timeout)
+    - If guardrails tripped -> force stop, go to [6]
+    - Otherwise -> go to [2]
+  |
+  v
+[6] Return final result:
+    - Collect all file modifications made via tools
+    - Run verification (existing verification-loop.js)
+    - Report: {status, output, tool_calls_made, iterations, tokens_used}
 ```
 
-### Workflow 3: Goal Fails Verification
+**Ollama API format for tool calling (verified from official docs):**
+
+Request:
+```json
+{
+  "model": "qwen3:8b",
+  "messages": [
+    {"role": "system", "content": "You are a coding agent..."},
+    {"role": "user", "content": "Add error handling to parser.js"}
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "read_file",
+        "description": "Read contents of a file in the workspace",
+        "parameters": {
+          "type": "object",
+          "required": ["path"],
+          "properties": {
+            "path": {"type": "string", "description": "Relative path from workspace root"}
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+Response with tool call:
+```json
+{
+  "message": {
+    "role": "assistant",
+    "tool_calls": [
+      {
+        "type": "function",
+        "function": {
+          "name": "read_file",
+          "arguments": {"path": "lib/parser.js"}
+        }
+      }
+    ]
+  }
+}
+```
+
+Tool result fed back:
+```json
+{
+  "role": "tool",
+  "content": "{\"success\": true, \"output\": \"const parse = (input) => {\\n...\"}"
+}
+```
+
+**Confidence:** HIGH -- Ollama tool calling API format verified from official docs. Qwen3 8B support confirmed. The 5-tool limit for native JSON format is a known constraint (Qwen3-coder issues documented on GitHub).
+
+### Core Tool Definitions
+
+| Tool | Description | Parameters | Returns | Safety |
+|------|-------------|------------|---------|--------|
+| `read_file` | Read file contents, optionally specific line range | `{path: string, start_line?: number, end_line?: number}` | `{content: string, total_lines: number}` | Read-only. Path must be within workspace. |
+| `write_file` | Write or overwrite file contents | `{path: string, content: string}` | `{success: bool, bytes_written: number}` | Write within workspace only. No writing to paths containing `..`. |
+| `list_directory` | List files in a directory | `{path?: string, recursive?: bool, pattern?: string}` | `{files: string[], directories: string[]}` | Read-only. Respects .gitignore. |
+| `run_command` | Execute a shell command | `{command: string, timeout_ms?: number}` | `{exit_code: number, stdout: string, stderr: string}` | Runs in workspace dir. Blocked commands: `rm -rf /`, `sudo`, `curl` (configurable blocklist). Timeout enforced. |
+| `search_files` | Search file contents with regex | `{pattern: string, path?: string, file_glob?: string}` | `{matches: [{file, line, content}]}` | Read-only. Bounded result count (max 50 matches). |
+
+**Why these 5 tools and not more:**
+- Qwen3 8B handles 5 or fewer tools reliably with native JSON tool calls. Above 5, it falls back to XML-in-content format, which requires a separate parser and is less reliable.
+- These 5 cover the full read-write-execute loop needed for coding tasks.
+- `search_files` replaces what would otherwise be `run_command("grep ...")` with structured output that smaller models parse more reliably.
+
+### Hub FSM Healing State
+
+**New state transitions:**
 
 ```
-1. Goal: "Refactor TaskQueue to use ETS for priority index"
-   Success criteria:
-   - "Priority index stored in ETS, not in GenServer state"
-   - "Dequeue performance improves (benchmark test)"
-   - "All existing TaskQueue tests pass"
+Current transitions (v1.3):
+  resting:       -> [executing, improving]
+  executing:     -> [resting]
+  improving:     -> [resting, executing, contemplating]
+  contemplating: -> [resting, executing]
 
-2. Decomposition produces 4 tasks. All complete successfully.
-
-3. Goal verification:
-   Claude evaluates task results:
-   - Criterion 1: MET (ETS table created, index stored there)
-   - Criterion 2: UNMET ("No benchmark test was created. Cannot verify performance improvement.")
-   - Criterion 3: MET (all tests pass)
-
-4. Verification returns {complete: false, gaps: ["Missing benchmark test"]}
-
-5. Hub: attempt_count < max_attempts (3). Redecompose with gap context:
-   "Previous attempt completed refactoring but missed: benchmark test for dequeue performance.
-    Create a benchmark test comparing ETS-based vs state-based priority index performance."
-
-6. Decomposition produces 1 additional task. Task executes, creates benchmark.
-
-7. Re-verification: all criteria now MET. Goal complete.
-
-8. Total LLM cost: 3 Claude calls (decompose + verify + redecompose) + 1 task execution
+New transitions (v1.4):
+  resting:       -> [executing, improving, healing]
+  executing:     -> [resting, healing]
+  improving:     -> [resting, executing, contemplating, healing]
+  contemplating: -> [resting, executing, healing]
+  healing:       -> [resting]
 ```
+
+Any state can transition to `:healing` when critical issues are detected. Healing always exits to `:resting` (not directly to executing/improving) to allow a clean health re-evaluation before resuming work.
+
+**Transition predicate for entering Healing:**
+```elixir
+def should_heal?(system_state) do
+  health = HealthAggregator.assess()
+  health.has_critical_issues and not health.healing_cooldown_active
+end
+```
+
+**Healing cooldown:** After a healing cycle completes, enforce a 5-minute cooldown before allowing re-entry to healing. Prevents healing oscillation (heal -> detect same issue -> heal -> repeat).
+
+**Remediation priority order:**
+1. Stuck tasks (most common, highest impact on throughput)
+2. Offline agents (cleanup stale state, requeue their tasks)
+3. Unhealthy Ollama endpoints (retry health checks, attempt restart)
+4. Budget warnings (log, alert, but don't remediate -- human decision)
+
+**Watchdog:** Healing state has a 5-minute watchdog. If remediation has not completed in 5 minutes, force-transition to `:resting` and fire critical alert. Prevents the healer from getting stuck.
+
+**Confidence:** HIGH -- Adding a state to an existing GenServer FSM is straightforward. The transition logic follows established patterns from v1.3. Remediation actions are well-understood (requeue, cleanup, retry).
+
+### Pipeline Reliability: Stuck Task Detection
+
+**Current state:** Alerter fires `stuck_tasks` alert when tasks are assigned longer than threshold. Human must manually intervene.
+
+**New behavior:** In Healing state, automatically remediate stuck tasks:
+
+```elixir
+def remediate_stuck_tasks do
+  stuck = TaskQueue.stuck_tasks(threshold_ms: 15 * 60 * 1_000)  # 15 min
+
+  for task <- stuck do
+    agent_id = task.assigned_to
+
+    case AgentFSM.status(agent_id) do
+      :offline ->
+        # Agent gone. Requeue immediately.
+        TaskQueue.requeue(task.id, reason: :agent_offline)
+
+      :working ->
+        # Agent alive but task stalled. Check heartbeat age.
+        if heartbeat_stale?(agent_id, threshold_ms: 120_000) do
+          AgentFSM.force_offline(agent_id)
+          TaskQueue.requeue(task.id, reason: :agent_unresponsive)
+        else
+          # Agent responsive, task legitimately slow. Extend deadline.
+          TaskQueue.extend_deadline(task.id, additional_ms: 10 * 60 * 1_000)
+        end
+
+      _ ->
+        # Agent in unexpected state. Requeue defensively.
+        TaskQueue.requeue(task.id, reason: :agent_state_unknown)
+    end
+  end
+end
+```
+
+**Confidence:** HIGH -- Stuck task detection already exists in Alerter. Converting from alert-only to alert-and-remediate is a small extension. The TaskQueue already supports requeue operations.
+
+---
+
+## Qwen3 8B Specific Considerations
+
+The primary local LLM target is Qwen3 8B via Ollama. Key characteristics that affect feature design:
+
+| Characteristic | Impact | Mitigation |
+|----------------|--------|------------|
+| 5-tool limit for native JSON | Cannot provide large tool sets | Keep core tools to exactly 5. Use tool descriptions to guide multi-step usage. |
+| XML fallback above 5 tools | Different parsing format, less reliable | Implement XML parser as fallback but design for 5-tool native path. |
+| Smaller context window than Claude | Cannot dump entire codebase as context | Tools must return focused, relevant content. `read_file` with line ranges. `search_files` with bounded results. |
+| Lower reasoning capability | More likely to loop, call wrong tools, misparse results | Stronger system prompts with explicit step-by-step instructions. More aggressive guardrails (lower iteration limits). Structured tool results (JSON, not raw text). |
+| Fast inference locally | Can afford more iterations than Claude (no API cost) | Token budget is effectively unlimited for local models. Wall-clock time is the real constraint. |
+| Thinking mode (enable_thinking) | Qwen3 supports explicit chain-of-thought before tool calls | Enable thinking mode for complex tasks. Disable for trivial tasks (overhead not worth it). |
+
+**Confidence:** MEDIUM -- Qwen3 8B tool calling capability verified from Ollama docs and Hugging Face model card. The 5-tool limit is from GitHub issues (multiple reports). Specific behavioral characteristics (loop propensity, XML fallback) come from community reports and may vary across Qwen3 versions.
+
+---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- AgentCom codebase -- agent_fsm.ex, scheduler.ex, task_queue.ex, repo_registry.ex, complexity.ex, sidecar/index.js, sidecar/lib/execution/verification-loop.js, sidecar/lib/execution/dispatcher.js (direct code examination, 2026-02-12)
-- [snarktank/ralph](https://github.com/snarktank/ralph) -- Autonomous AI agent loop implementation: prd.json, progress.txt, 10-iteration default, passes: true/false tracking (official implementation, verified via WebFetch)
-- [vercel-labs/ralph-loop-agent](https://github.com/vercel-labs/ralph-loop-agent) -- Continuous Autonomy for AI SDK: inner/outer loop, verifyCompletion function, iterationCountIs/tokenCountIs/costIs stop conditions (official Vercel Labs, verified via WebFetch)
-- [Ralph Wiggum Loop - beuke.org](https://beuke.org/ralph-wiggum-loop/) -- Detailed loop structure: perception-action-feedback-iteration cycle, fresh context per iteration, stopping criteria, failure modes (oscillation, context overload, hallucination entrenchment) (verified via WebFetch)
-- [Everything is a Ralph Loop - ghuntley.com](https://ghuntley.com/loop/) -- Core insight: monolithic, single-process-per-task, context engineering as primary mechanism, CTRL+C checkpoints (verified via WebFetch)
-- [From ReAct to Ralph Loop - Alibaba Cloud](https://www.alibabacloud.com/blog/from-react-to-ralph-loop-a-continuous-iteration-paradigm-for-ai-agents_602799) -- Detailed comparison: Ralph shifts control from internal LLM judgment to external verification, stop hook interception, completion promise pattern (verified via WebFetch)
+- [Ollama Tool Calling Documentation](https://docs.ollama.com/capabilities/tool-calling) -- Official API format for tool definitions, tool_calls response, multi-turn tool use (verified via WebFetch, 2026-02-14)
+- [Ollama Streaming Tool Calls Blog](https://ollama.com/blog/streaming-tool) -- Streaming response format with tool calls (official Ollama blog)
+- AgentCom codebase -- hub_fsm.ex, alerter.ex, ollama-executor.js, verification-loop.js, dispatcher.js (direct code examination, 2026-02-14)
 
 ### Secondary (MEDIUM confidence)
-- [Elephant Carpaccio - Henrik Kniberg](https://blog.crisp.se/2013/07/25/henrikkniberg/elephant-carpaccio-facilitation-guide) -- Original facilitation guide: 15-20 thin vertical slices, nano-incremental development, risk reduction through small batches (established Agile practice)
-- [Agent Goal Decomposition - SparkCo](https://sparkco.ai/blog/mastering-agent-goal-decomposition-in-ai-systems) -- Planner Agent pattern: dependency graphs (DAGs), complexity thresholds, four-step workflow (task assignment, planning, iterative improvement, integration) (verified via WebFetch)
-- [GoalAct - NCIIP 2025 Best Paper](https://github.com/cjj826/GoalAct) -- Hierarchical decomposition into high-level skills, reducing planning complexity (academic, peer-reviewed)
-- [Backlog.md](https://github.com/MrLesk/Backlog.md) -- Markdown-native task management for Git repos with MCP integration, CLI commands, priority/status/dependency tracking (open source, verified via WebFetch)
-- [Eight Trends - Claude Blog 2026](https://claude.com/blog/eight-trends-defining-how-software-gets-built-in-2026) -- Human oversight model: 60% AI collaboration, 0-20% full delegation, four priority areas for safety (official Anthropic, verified via WebFetch)
-- [OODA Loop for Agentic AI - Sogeti Labs](https://labs.sogeti.com/harnessing-the-ooda-loop-for-agentic-ai-from-generative-foundations-to-proactive-intelligence/) -- Observe-Orient-Decide-Act framework for autonomous agents
-- [Task Completion Metric - DeepEval](https://deepeval.com/docs/metrics-task-completion) -- Success rate measurement, partial completion scoring for multi-step tasks
-- [GitHub: Removing Sensitive Data](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository) -- git-filter-repo, BFG Repo-Cleaner, .gitignore prevention (official GitHub docs)
-- [Cogent: Self-Evolving Software 2026](https://www.cogentinfo.com/resources/ai-driven-self-evolving-software-the-rise-of-autonomous-codebases-by-2026) -- AI agents monitoring code health, fixing bugs, refactoring architecture, generating docs autonomously
+- [Qwen3 Function Calling Documentation](https://qwen.readthedocs.io/en/latest/framework/function_call.html) -- Hermes-style tool use recommended for Qwen3 (official Qwen docs)
+- [LLM Tool-Calling in Production: Infinite Loop Failure Mode](https://medium.com/@komalbaparmar007/llm-tool-calling-in-production-rate-limits-retries-and-the-infinite-loop-failure-mode-you-must-2a1e2a1e84c8) -- Loop guardrail patterns: max iterations, repetition detection, resource monitors (Jan 2026)
+- [Why AI Agents Get Stuck in Loops](https://www.fixbrokenaiapps.com/blog/ai-agents-infinite-loops) -- Root causes: misinterpretation of termination signals, repetitive actions, inconsistent state
+- [Self-Healing Patterns for Distributed Systems (GeeksforGeeks)](https://www.geeksforgeeks.org/important-self-healing-patterns-for-distributed-systems/) -- Retry, circuit breaker, health check, watchdog patterns
+- [ReAct Prompting Guide](https://www.promptingguide.ai/techniques/react) -- Thought-Action-Observation cycle definition
+- [Building AI Agents with ReAct Pattern (TypeScript, 2026)](https://noqta.tn/en/tutorials/ai-agent-react-pattern-typescript-vercel-ai-sdk-2026) -- Implementation reference for ReAct in TypeScript
+- [Qwen3-coder Tool Calling Fails with Many Tools (GitHub Issue)](https://github.com/block/goose/issues/6883) -- Qwen3 XML fallback with >5 tools documented
 
 ### Tertiary (LOW confidence)
-- [Autonomous Enterprise 2026 - CNCF](https://www.cncf.io/blog/2026/01/23/the-autonomous-enterprise-and-the-four-pillars-of-platform-control-2026-forecast/) -- Platform control pillars for autonomous systems (industry forecast)
-- [OpenAgentSafety Framework](https://arxiv.org/pdf/2507.06134) -- Comprehensive framework for agent safety evaluation (academic)
-- [Agents At Work: 2026 Playbook](https://promptengineering.org/agents-at-work-the-2026-playbook-for-building-reliable-agentic-workflows/) -- Verification-aware planning patterns (community guide)
+- [Agent Deployment Gap (ZenML)](https://www.zenml.io/blog/the-agent-deployment-gap-why-your-llm-loop-isnt-production-ready-and-what-to-do-about-it) -- Production readiness gaps for agent loops
+- [Event-Driven Agentic Loops (BoundaryML)](https://boundaryml.com/podcast/2025-11-05-event-driven-agents) -- Event log architecture for agent state management
+- [Rearchitecting Agent Loops (Letta)](https://www.letta.com/blog/letta-v1-agent) -- Lessons from ReAct, MemGPT, Claude Code agent architectures
 
 ---
-*Research completed: 2026-02-12*
-*Focus: Hub FSM autonomous brain features for v1.3 milestone*
-*Predecessor: v1.2 FEATURES.md covered Smart Agent Pipeline (shipped)*
+*Research completed: 2026-02-14*
+*Focus: Agentic local LLM tool calling, Hub FSM Healing state, pipeline reliability for v1.4 milestone*
+*Predecessor: v1.3 FEATURES.md covered Hub FSM Loop of Self-Improvement (shipped)*

@@ -1,299 +1,355 @@
 # Domain Pitfalls
 
-**Domain:** Adding autonomous Hub FSM brain to existing distributed agent coordination system
-**Researched:** 2026-02-12
-**Codebase analyzed:** AgentCom v1.2 (Elixir/BEAM hub ~22K LOC, Node.js sidecars ~4.5K LOC, 10 DETS tables, 24 supervised GenServers, PubSub coordination, 5 AI agents on Tailscale mesh)
+**Domain:** Adding agentic local LLM tool calling, Hub FSM Healing state, pipeline reliability to existing distributed agent coordination system
+**Researched:** 2026-02-14
+**Codebase analyzed:** AgentCom v2.0 milestone scope (Elixir/BEAM hub, Node.js sidecars, RTX 3080 Ti 12GB VRAM, Ollama + Qwen3 8B, existing 4-state Hub FSM, existing OllamaExecutor producing text-only output)
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause rewrites, data loss, or runaway costs.
+Mistakes that cause system-wide failures, data loss, or runaway resource consumption.
 
 ---
 
-### Pitfall 1: Token Cost Spiral from Autonomous Thinking
+### Pitfall 1: Tool-Calling Infinite Loop (The Runaway Agent)
 
-**What goes wrong:** The Hub FSM enters Contemplating or Improving and makes Claude API calls for strategic thinking -- goal decomposition, improvement identification, completion verification, contemplation proposals. Without hard caps, a single contemplation session can burn $50-200 in API credits. The problem compounds because the LLM may identify improvements that require more LLM calls to evaluate, creating recursive spending. A contemplation that spawns 10 improvement scans, each requiring Claude analysis, each producing 5 sub-tasks needing decomposition -- the cost tree fans out exponentially.
+**What goes wrong:** The OllamaExecutor currently sends a prompt and collects text output. When upgraded to support Ollama's `/api/chat` tool-calling format, the LLM can request tool calls, receive results, then request more tool calls indefinitely. Without a hard iteration cap, a single task consumes the GPU indefinitely, blocks all other tasks on that sidecar, and potentially fills disk with log output. With Qwen3 8B at ~84 seconds per tool-calling round, a 10-iteration loop takes 14 minutes. A runaway loop takes hours.
 
-**Why it happens:** The Hub FSM is designed to think autonomously. Unlike the existing sidecar execution (where a human submitted a task with known scope), the hub generates its own work. There is no human gating the volume of LLM calls. The existing `cost-calculator.js` tracks cost per task execution, but the Hub's strategic thinking happens outside the task pipeline -- it is meta-work with no natural cost boundary.
+**Why it happens in THIS codebase:** The current `OllamaExecutor._streamChat()` (lines 129-232 of `ollama-executor.js`) is fire-and-forget: one request, one streaming response, done. Tool calling requires a multi-turn conversation loop where the executor must:
+1. Send initial prompt with tools definition
+2. Receive response with `tool_calls` array (not text content)
+3. Execute the tool locally
+4. Send tool results back as `role: "tool"` messages
+5. Receive next response (which may contain MORE tool calls)
+6. Repeat until model returns text content without tool calls
 
-**Warning signs (concrete examples):**
-- Hub enters Contemplating, generates 12 improvement proposals at ~$0.50 each ($6), then decomposes each into 4 tasks at ~$0.30 each ($14.40), then verifies each decomposition at ~$0.20 ($9.60) = $30 for a single contemplation cycle
-- Hub identifies "cost tracking could be improved" as an improvement, spending $5 in API calls to analyze its own API spending patterns -- meta-loop
-- Weekend operation: 48 contemplation cycles x $30 each = $1,440 unattended
+There is no loop structure in the current executor. Adding one without guards creates the infinite loop risk.
+
+**Warning signs (concrete to this system):**
+- Sidecar process memory climbs steadily as conversation history accumulates in the messages array
+- Task stays in `working` status for >5 minutes when typical Ollama tasks complete in 1-2 minutes
+- GPU utilization locked at 100% with no progress events being emitted to hub
+- `ollama_attempt_failed` log entries stop appearing (the executor is not failing, it is looping)
+- Hub's `AgentFSM` for the affected agent stays in `:working` state, never transitions to `:idle`
+
+**Consequences:** Single runaway task blocks the entire sidecar (queue model is max 1 active task). Hub cannot assign new work to that agent. If multiple agents hit the same loop-inducing prompt, all sidecars lock up simultaneously. GPU thermal throttling under sustained load degrades even the loop itself.
 
 **Prevention:**
-1. **CostLedger GenServer.** Track cumulative Claude API spend per hour/day/session. The Hub FSM checks the ledger before every API call. If budget exhausted, FSM transitions to Resting regardless of queue state. This is new infrastructure the Hub phase must build.
-2. **Per-state token budgets.** Executing = $10/hour, Improving = $3/hour, Contemplating = $2/hour. The Hub checks budget before entering each state.
-3. **Tiered model usage for meta-thinking.** Use Haiku ($1/$5 per M tokens) for triage ("Is this worth decomposing?"), Sonnet ($3/$15) for decomposition, Opus ($5/$25) only for final verification of complex completions. The existing complexity tier routing (trivial/standard/complex in `tier_resolver.ex`) should extend to the Hub's own thinking.
-4. **Cost telemetry.** Emit `[:agent_com, :hub_fsm, :api_call]` with token counts and estimated cost. Wire into existing Alerter with a `hub_api_spend` alert rule. The Alerter (5 existing rules) supports adding new rules dynamically.
-5. **Hard cap in code, not prompts.** The LLM cannot be trusted to honor "don't spend more than $X" instructions. The CostLedger must be a GenServer that the Hub FSM queries synchronously before every API call.
+1. **Hard iteration cap.** Maximum 10 tool-call rounds per task execution. After 10 rounds, force a final response by sending without the `tools` parameter. This is the single most important guard.
+2. **Wall-clock timeout per task.** The existing `_streamChat` has a 5-minute timeout (line 147). For tool-calling loops, each round resets the per-round timer but a total task timeout of 10 minutes kills the entire conversation.
+3. **Token budget per task.** Track cumulative `prompt_eval_count` + `eval_count` across all rounds. Cap at 16K tokens total (reasonable for 8B model with 32K context). Stop when budget exhausted.
+4. **Repetition detection.** If the model calls the same tool with identical arguments twice in a row, break the loop. This catches the most common degenerate case (model keeps calling `read_file` on the same file).
+5. **Progress emission per round.** Emit a `tool_call_round` progress event to the hub on each iteration. This makes loops visible in the dashboard immediately, even before the cap triggers.
 
-**Detection:** `hub_fsm_api_cost_usd` metric in MetricsCollector. Dashboard panel showing Hub API spend over time, separate from task execution costs. Alert when hourly spend exceeds threshold.
+**Detection:** New telemetry: `tool_call_rounds` field in task completion result. Dashboard alert if any task exceeds 5 rounds. Log each tool call with round number.
 
-**Phase to address:** Hub FSM core phase. Cost controls must exist before the FSM makes its first API call. Do not ship autonomous thinking without budget limits.
+**Phase to address:** Agentic tool-calling phase. The loop guard MUST ship in the same PR as the tool-calling loop itself. Not as a follow-up.
 
-**Confidence:** HIGH. Every production autonomous LLM agent deployment from 2025-2026 cites uncontrolled API spending as the most common and most expensive failure mode. The CodieSHub prevention guide states: "Hard caps on iterations, tokens, time, and spend are non-negotiable in production."
+**Confidence:** HIGH. Every production LLM agent deployment documents this as the primary failure mode. The Medium article "LLM Tool-Calling in Production" (Jan 2026) states: "Hard caps on iterations, tokens, time, and spend are non-negotiable in production."
 
 ---
 
-### Pitfall 2: Infinite Improvement Loop (The Sisyphus Pattern)
+### Pitfall 2: Tool Execution Sandboxing Failure (Agentic Escape)
 
-**What goes wrong:** The Hub's Improving state scans a codebase, identifies improvement X, generates a task, the task gets executed, and on the next scan the Hub identifies improvement Y (caused by improvement X). Or worse: the Hub identifies X as an improvement, executes it, then identifies "undo X" as the next improvement. The system oscillates between two states forever, consuming resources and producing no net value.
+**What goes wrong:** When the LLM gains tool-calling ability, it can request file reads, command execution, or other system operations. If the tool implementations do not sandbox properly, the LLM can read sensitive files (`config.json` with hub tokens, `.env` files), modify code outside the task scope, or execute destructive commands. The current `ShellExecutor` (line 47-67 of `dispatcher.js`) already has a shell execution path -- connecting this to LLM-directed tool calls without sandboxing creates a remote code execution surface.
 
-**Warning signs (concrete examples):**
-- Scan 1: "Extract helper function `format_timestamp/1` from `scheduler.ex`" -- executed, function extracted
-- Scan 2: "Inline trivial helper `format_timestamp/1` for readability" -- executed, function inlined
-- Scan 3: "Extract helper function `format_timestamp/1` from `scheduler.ex`" -- loop detected too late
-- Git history: commits alternate between "extract" and "inline" changes to the same code
+**Why it happens in THIS codebase:** The sidecar runs as the user's process with full filesystem access. The existing `wake.js` uses `exec(command, { shell: true })` with no sandboxing. When the LLM requests `execute_command("rm -rf /")` as a tool call, the question is whether the tool implementation honors it. The temptation is to reuse existing shell execution infrastructure because it already works.
 
-**Why it happens:** LLMs have no stable "good enough" threshold. Each scan produces a fresh context window with no memory of previous improvements. The LLM sees current code state and generates opinions about it. Those opinions are not deterministic -- the same code can trigger different improvement suggestions on different runs. The existing system has no improvement history tracking.
+**Warning signs:**
+- Tool definitions include `execute_shell_command` or `run_command` without path/command restrictions
+- LLM-generated tool calls reference paths outside `repo_dir` (e.g., `../../config.json`)
+- Tool results contain content from files the task should not access
 
-**Consequences:** Task queue fills with contradictory improvement tasks. Agents churn on improvements that cancel each other out. Git history becomes a mess of "refactor X" / "refactor X back" commits. If auto-merge is enabled for small improvements, main branch accumulates pointless churn.
+**Consequences:** Data exfiltration (hub tokens, API keys), codebase corruption (files modified outside task scope), system damage (destructive commands).
 
 **Prevention:**
-1. **Improvement history with deduplication.** New DETS table (or namespaced key in a hub_state table) storing attempted improvements: `{hash_of_description, status, timestamp, outcome, files_touched}`. Before generating a new improvement task, check if a semantically similar improvement was attempted in the last N hours.
-2. **Improvement cooldown per file/module.** After improving file X, do not scan file X again for at least 24 hours. Track last-improved timestamps per file path.
-3. **Net-value gate.** Before committing an improvement, compare before/after codebase state against objective metrics: test count, test pass rate, total line count, number of functions. If metrics are neutral or worse, reject the improvement.
-4. **Improvement budget per scan cycle.** Limit the Improving state to generating at most 3-5 improvement tasks per cycle. After that, transition to Contemplating or Resting.
-5. **Anti-oscillation detection.** If the same file is modified by two consecutive improvement tasks, flag and halt. Compare git diffs of consecutive improvements to the same file -- if the second diff is the inverse of the first, block it.
+1. **Allowlist tool operations, not denylist.** Define exactly 4-6 tools: `read_file` (within repo_dir only), `write_file` (within repo_dir only), `run_test` (predefined command), `search_code` (within repo_dir). No generic `execute_command` tool.
+2. **Path canonicalization.** Every file path argument must be resolved with `path.resolve(repo_dir, tool_arg)` and verified to start with `repo_dir` after resolution. Reject path traversal (`../`).
+3. **Read-only for non-task files.** The tool implementation for `read_file` should have an explicit allowlist of readable directories. Write operations only to the task's working branch.
+4. **No shell: true.** Tool-executed commands use `execFile` (not `exec`) with explicit argument arrays. No shell interpretation of LLM-provided strings.
+5. **Audit log.** Every tool call and its result is logged with task_id, tool_name, arguments, and truncated result. This is both a debugging and security measure.
 
-**Detection:** Track the ratio of improvements accepted vs. reverted. Monitor git log for "undo" or "revert" patterns in auto-generated commits. Dashboard chart: improvements per file over time.
+**Detection:** Log analysis for tool calls referencing paths outside repo_dir. Alert on any tool call failure due to permission/path violation.
 
-**Phase to address:** Improvement scanning phase. The history table and cooldown must ship with the scanner from day one.
+**Phase to address:** Agentic tool-calling phase. Tool definitions and sandboxing are the FIRST thing to implement, before the tool-calling loop.
 
-**Confidence:** HIGH. The Ralph Loop pattern explicitly addresses this by using external verification (file system state, test results) rather than LLM self-assessment. Geoffrey Huntley's work on Ralph Loops emphasizes: "The self-assessment mechanism of LLMs is unreliable -- it exits when it subjectively thinks it is 'complete' rather than when it meets objectively verifiable standards."
+**Confidence:** HIGH. Direct consequence of giving an LLM execution capabilities on a system with existing shell access.
 
 ---
 
-### Pitfall 3: Hub FSM State Corruption from Concurrent Events
+### Pitfall 3: Self-Healing State Causing Cascade Failures (The Healing Storm)
 
-**What goes wrong:** The Hub FSM is a single GenServer receiving events from multiple sources: PubSub task events, timer-based state transitions, API-triggered goal submissions, improvement scan completions. If the FSM processes a timer-based transition to Resting while simultaneously receiving a goal-complete event that should trigger a transition to Executing, the state machine enters an inconsistent state or silently drops the goal-complete event.
+**What goes wrong:** The proposed `:healing` state for HubFSM triggers corrective actions when problems are detected (hung tasks, unresponsive agents, stale state). If the healing logic itself triggers errors or interacts with the same systems it is trying to heal, it creates a cascade: healing action A fails, triggering healing action B, which conflicts with A's partial completion, both now need healing, and the system oscillates between `:healing` and `:executing` at the tick rate (1 second).
 
-**Warning signs (concrete examples):**
-- Hub is in Executing state. A `Process.send_after` Resting timer fires (from the previous cycle). The GenServer mailbox has: `[:resting_timeout, {:goal_complete, goal_id}]`. The `:resting_timeout` is processed first, transitions to Resting, and the `:goal_complete` event hits a "wrong state" guard and is silently dropped. The goal is never marked complete.
-- Hub receives two PubSub events in quick succession: `{:task_event, :task_completed}` (last task in a goal) and `{:improvement_scan_complete, results}`. Both trigger state transitions. The second event arrives before the first transition completes, causing the FSM to attempt an invalid transition.
+**Why it happens in THIS codebase:** The HubFSM runs a 1-second tick (`@tick_interval_ms 1_000`, line 56 of `hub_fsm.ex`). The `Predicates.evaluate/2` function is pure (no side effects), but `do_transition/3` has side effects: it spawns `Task.start` for improvement/contemplation cycles (lines 488-502), broadcasts PubSub events, and updates ClaudeClient state. If `:healing` transitions trigger corrective Task.start operations, and those tasks fail, the failures feed back into the next tick's system state, potentially triggering another healing transition.
 
-**Why it happens:** The existing `AgentFSM` is per-agent (one process per agent, events come from one WebSocket). The Hub FSM is a singleton receiving events from the entire system -- much higher event volume and diversity. The `AgentFSM` already handles stale timers (line 493 of `agent_fsm.ex`: ignoring acceptance timeouts for wrong task IDs). The Hub FSM needs similar handling but with a larger state space and more timer types.
+The existing watchdog timer (2 hours, line 57) is a crude version of self-healing -- it force-transitions to `:resting` when stuck. But a dedicated `:healing` state needs to do more targeted work: cancel hung tasks, restart unresponsive agents, clear stale queue entries. Each of these operations can fail independently.
 
-**Consequences:** Hub stuck in wrong state. Goals complete but FSM does not transition. Resting timer interrupts active execution. FSM transitions to Improving while still Executing, causing improvement scanner to run on code that is mid-modification by an active task.
+**Warning signs (concrete to this system):**
+- HubFSM history shows rapid oscillation: `:executing` -> `:healing` -> `:executing` -> `:healing` at 1-second intervals
+- `hub_fsm_transition` log entries flood with `reason: "healing triggered"` interleaved with `reason: "healing complete, goals pending"`
+- GoalOrchestrator's `pending_async` is never nil because healing keeps spawning new tasks before previous ones complete
+- PubSub `"hub_fsm"` topic broadcasts 60+ state change events per minute
+
+**Consequences:** Hub FSM burns CPU on rapid transitions. PubSub floods connected dashboards. GoalOrchestrator state becomes inconsistent. Agents receive conflicting signals (task assigned, then cancelled, then re-assigned).
 
 **Prevention:**
-1. **Consider `gen_statem` instead of GenServer.** Erlang's `:gen_statem` provides state-specific callbacks, state timeouts (auto-cancelled on state change), and `postpone` semantics (deferring events to a later state). The DockYard article on state timeouts shows how `:gen_statem` eliminates the stale-timer problem entirely.
-2. **If using GenServer:** Implement a transition function identical to `AgentFSM.transition/2` (line 508) with a `@valid_transitions` map. Guard every `handle_info` and `handle_cast` with a state check. Cancel ALL pending timers on every state transition (not just one timer as in `agent_fsm.ex`).
-3. **Event queuing with priorities.** If an event arrives during a state where it cannot be processed, queue it (do not drop it). Process queued events after completing the current state's work. `gen_statem`'s `postpone` action handles this automatically.
-4. **Watchdog timer.** If the Hub FSM has been in any single state for more than a configurable maximum duration (e.g., 2 hours in Executing, 30 minutes in Contemplating), force-transition to Resting with a warning log. This prevents stuck states.
-5. **State transition telemetry.** Emit `[:agent_com, :hub_fsm, :transition]` on every state change with `from_state`, `to_state`, `trigger`, `duration_in_previous_state_ms`. Wire into dashboard.
+1. **Healing cooldown.** After entering `:healing`, enforce a minimum duration (30 seconds) before transitioning out. Use `gen_statem` state timeout or a manual timer. This prevents rapid oscillation.
+2. **Healing attempt limit.** Track consecutive healing entries. If `:healing` is entered 3 times within 10 minutes without a successful `:executing` or `:resting` period between, transition to `:resting` with an alert. The system needs human intervention.
+3. **Healing actions are idempotent.** Every healing action must be safe to run multiple times: "cancel task X" must succeed (or no-op) even if X is already cancelled. "Reclaim task from agent Y" must handle Y already being offline.
+4. **Healing does not spawn async work.** Unlike `:improving` and `:contemplating` which spawn `Task.start`, healing actions should be synchronous within the GenServer `do_transition`. This prevents the "healing task fails and creates more healing work" feedback loop.
+5. **Separate healing predicates from normal predicates.** Add healing-specific predicates to `Predicates.evaluate/2` that check for concrete conditions: `hung_task_count > 0`, `unresponsive_agent_count > 0`. Do NOT use LLM assessment for healing triggers.
+6. **Valid transitions for healing must be restrictive.** Add to `@valid_transitions`: `healing: [:resting, :executing]`. Healing cannot transition to `:improving` or `:contemplating` -- it must return to a stable state first.
 
-**Detection:** Dashboard panel showing current Hub FSM state with time-in-state. Alert if time-in-state exceeds threshold. Log every transition with the trigger that caused it.
+**Detection:** New telemetry event `[:agent_com, :hub_fsm, :healing_triggered]` with metadata about what was detected and what corrective action was taken. Dashboard panel showing healing frequency over time.
 
-**Phase to address:** Hub FSM core phase. This is architectural and must be decided before implementation begins.
+**Phase to address:** Hub FSM Healing state phase. The cooldown and attempt limit must ship with the initial implementation.
 
-**Confidence:** HIGH. The existing codebase already demonstrates the timer race pattern in `AgentFSM` (stale acceptance timeout handling). The Hub FSM's event diversity guarantees this problem will manifest without explicit handling.
+**Confidence:** HIGH. The Statsig article on distributed system failure patterns documents this as "retry storm" -- the exact same pattern applied to self-healing. GeeksforGeeks' self-healing patterns article explicitly warns: "Implementing self-healing without proper guards can cause more damage than the original failure."
 
 ---
 
-### Pitfall 4: Auto-Merge Regression Introduction
+### Pitfall 4: LLM Backend Migration Breaking Response Parsing (Silent Output Loss)
 
-**What goes wrong:** The Hub's tiered autonomy feature auto-merges "small" improvements (style fixes, docs, simple refactors) without human review. An improvement passes verification checks (tests pass, files exist, git clean) but introduces a subtle regression: a refactored function changes return value semantics, a "style fix" changes indentation that breaks YAML parsing, a "documentation update" overwrites important context.
+**What goes wrong:** The hub-side `ClaudeClient.Cli` invokes `claude -p` and parses stream-json output (content_block_delta events, result events with usage stats). Replacing this with Ollama calls changes EVERYTHING about the response format: different JSON structure, different token counting fields, different streaming protocol (NDJSON vs stream-json), and critically, tool-calling responses have `tool_calls` array instead of `content` text. If the parsing code is updated for Ollama but tested only with text responses, tool-calling responses silently produce empty output.
 
-**Warning signs (concrete examples):**
-- Hub auto-merges "simplify `normalize_capabilities/1` in `agent_fsm.ex`" -- the simplification removes the `nil` rejection clause (line 537). Now `nil` capabilities leak through, causing downstream `agent_matches_task?/2` to crash when matching against `nil`.
-- Hub auto-merges "update error messages in `task_queue.ex`" -- changes `:not_assigned` error atom to `"not_assigned"` string. The `reclaim_task/1` caller pattern-matches on the atom and silently falls through to a catch-all.
-- Tests pass because no test covers the `nil` capability case or the error atom matching.
+**Why it happens in THIS codebase:** The `ClaudeClient` GenServer (lines 130-168 of `claude_client.ex`) delegates to `ClaudeClient.Cli.invoke/3` which handles prompt construction AND response parsing. The sidecar's `claude-executor.js` parses `content_block_delta` events (line 153) and `result` events (line 166). The sidecar's `ollama-executor.js` parses NDJSON with `parsed.message.content` (line 186) and `parsed.done` (line 175).
 
-**Why it happens:** The existing verification system (`verification.js`) runs mechanical checks: `file_exists`, `test_passes`, `git_clean`, `command_succeeds`. These are necessary but not sufficient for semantic regressions. The LLM-generated code passes tests because tests do not cover every edge case. Test suites are never complete.
+These are completely different response formats:
+- Claude: `{"type": "content_block_delta", "delta": {"type": "text_delta", "text": "..."}}`
+- Ollama text: `{"message": {"content": "..."}, "done": false}`
+- Ollama tool call: `{"message": {"tool_calls": [{"function": {"name": "...", "arguments": {...}}}]}, "done": true}`
 
-**Consequences:** Main branch accumulates subtle regressions. Because changes are small and auto-merged, they are hard to bisect. The compounding effect of many small regressions makes the codebase progressively worse while each individual change looks harmless.
+The danger: refactoring to use Ollama on the hub side (replacing `ClaudeClient.Cli`) while keeping the existing response shape expectations in `GoalOrchestrator.Decomposer` and `GoalOrchestrator.Verifier`.
+
+**Warning signs:**
+- `decompose_goal` returns `{:ok, []}` (empty task list) instead of `{:error, ...}` -- the LLM responded but the response was not parsed
+- `verify_completion` returns `{:ok, :pass}` on every verification because the parsed output is empty and the default path is optimistic
+- `tokens_in: 0, tokens_out: 0` in CostLedger despite Ollama processing (because Ollama uses `prompt_eval_count`/`eval_count`, not `input_tokens`/`output_tokens`)
+- No errors in logs -- the system appears to work but produces empty/default results
+
+**Consequences:** Goal decomposition produces no tasks (goals sit in `:decomposing` forever). Verification always passes (broken code ships). Cost tracking shows zero spend (budget controls ineffective). The system appears functional but accomplishes nothing.
 
 **Prevention:**
-1. **Never auto-merge to main directly.** Even "safe" auto-merges go to an integration branch (`hub-improvements`). Batch merge to main on a schedule or after human spot-check.
-2. **Conservative size gates.** Auto-merge only if: fewer than 10 lines changed, zero new files, zero deleted files, all existing tests pass, no changes to public function signatures (detect via AST comparison for `.ex` files). Any condition failure creates a PR instead.
-3. **Semantic diff analysis.** Before auto-merging, compare before/after test counts. If any test was removed or renamed, escalate to PR. If any function signature changed, escalate.
-4. **Auto-merge quota.** Maximum 3 auto-merges per day per repo. After that, all improvements become PRs. Limits blast radius.
-5. **Auto-revert mechanism.** Tag each auto-merge commit with `[auto-merge] hub-improvement-{id}`. Run full test suite 5 minutes after merge. If tests fail, auto-revert immediately and alert.
-6. **Start with PR-only mode.** Ship the entire improvement pipeline with PR creation only. Add auto-merge as a later enhancement after the PR pipeline proves reliable with 20+ successful improvements.
+1. **Adapter pattern.** Create an `LLMAdapter` behaviour/interface with `call/2` returning a normalized response: `{:ok, %{content: String.t(), tool_calls: list(), tokens_in: integer(), tokens_out: integer()}}`. Implement `ClaudeAdapter` and `OllamaAdapter` separately. GoalOrchestrator consumes the normalized shape.
+2. **Response validation.** After every LLM call, assert the response is non-empty. `decompose_goal` must return at least 1 task or an explicit error. Empty responses are errors, never successes.
+3. **Integration test with real Ollama.** Before shipping the migration, run the full decompose-execute-verify cycle against actual Ollama with Qwen3 8B. Mock-based tests will not catch response format mismatches.
+4. **Parallel run period.** Keep ClaudeClient functional alongside OllamaClient for 1 week. Run decomposition through both, compare results. This catches semantic quality differences (Qwen3 8B may decompose differently than Claude Sonnet).
+5. **Token field mapping.** Explicit mapping: Ollama `prompt_eval_count` -> normalized `tokens_in`, Ollama `eval_count` -> normalized `tokens_out`. Note: Ollama caches prompt evaluations and returns `prompt_eval_count: 0` on cache hits (the existing `ollama-executor.js` already handles this on line 177 with `|| 0`). This is NOT an error.
 
-**Detection:** Track test count over time. Alert if test count decreases after auto-merge. Track test execution time -- unexpected increases indicate added complexity.
+**Detection:** Assertion in CostLedger: if an LLM call was made but tokens_in + tokens_out == 0, log a warning. Non-zero duration with zero tokens means the response was not parsed correctly.
 
-**Phase to address:** Tiered autonomy phase. Start with PR-only; add auto-merge later.
+**Phase to address:** LLM backend migration phase. The adapter pattern must be designed BEFORE the migration begins, not retrofitted after.
 
-**Confidence:** HIGH. GitLab's AI Merge Agent (November 2025) reports 85% success rate -- meaning 15% require human intervention. For a smaller system without GitLab's sophistication, the failure rate will be higher.
+**Confidence:** HIGH. The existing codebase already has TWO different response parsers (claude-executor.js and ollama-executor.js) demonstrating the format divergence. The Medium article "When Your Dev and Prod LLM Backends Don't Match" (Dec 2025) documents exactly this failure mode.
 
 ---
 
-### Pitfall 5: Goal Decomposition Hallucination (Phantom Tasks)
+### Pitfall 5: Qwen3 8B Tool-Calling Quality on 12GB VRAM (Hallucinated Tool Calls)
 
-**What goes wrong:** The Hub FSM uses Claude to decompose a high-level goal into concrete tasks. The LLM generates tasks referencing files, modules, or patterns that do not exist. Example: "Refactor `lib/agent_com/error_handler.ex` to use structured error types" -- but `error_handler.ex` does not exist. The task enters the queue, gets assigned, and the agent either fails or worse, creates the fictional file from scratch.
+**What goes wrong:** Qwen3 8B achieves 0.933 F1 on tool-calling benchmarks, which sounds excellent until you realize this means ~7% of tool calls are incorrect. On a 12GB RTX 3080 Ti running the Q4_K_M quantized version (required to fit in VRAM), accuracy drops further. Hallucinated tool calls include: calling non-existent tools, providing wrong argument types, calling tools with plausible but incorrect arguments (e.g., `read_file("src/main.rs")` in an Elixir project).
 
-**Warning signs (concrete examples):**
-- Goal: "improve error handling." Decomposed task: "Add Ecto changesets to the Agent schema" -- this project does not use Ecto.
-- Goal: "add monitoring." Decomposed task: "Configure Prometheus exporter in `config/prod.exs`" -- there is no `prod.exs` in this project (single `config.exs`).
-- Goal: "clean up deprecated code." Decomposed task: "Remove usage of `Phoenix.Channel`" -- this project uses raw WebSocket via WebSock, not Phoenix Channels.
+**Why it happens in THIS codebase:** The tool definitions sent to Ollama describe available tools. But the 8B model has limited instruction-following capacity compared to larger models. With 4-6 tools defined, the model sometimes:
+- Invents a 7th tool that does not exist
+- Calls `write_file` when it should call `read_file` (similar names)
+- Provides arguments as a string instead of an object
+- Generates tool call JSON that is syntactically valid but semantically wrong
 
-**Why it happens:** The LLM decomposes goals based on training data about "typical Elixir projects," not this specific codebase. Without grounding in the actual file tree and module structure, the LLM invents plausible-sounding but fictional work items. This codebase is non-standard: DETS instead of Ecto, Bandit instead of Phoenix, flat GenServer state machines instead of `gen_statem`. The LLM will pattern-match to typical conventions.
+Quantization to Q4_K_M (necessary for 12GB VRAM with Qwen3 8B's 16GB FP16 size) further degrades instruction following. The model may produce malformed `tool_calls` JSON that the Ollama server cannot parse, resulting in a text response that LOOKS like a tool call but is not structured as one.
 
-**Consequences:** Phantom tasks fill the queue and consume real resources (agent time, API tokens, git branches). If an agent "succeeds" at a phantom task by creating new files the LLM described, the codebase grows unnecessary code.
+**Warning signs:**
+- Ollama returns `message.content` containing text that looks like a function call (e.g., `I'll call read_file("config.exs")`) instead of a proper `message.tool_calls` array
+- Tool call arguments fail JSON schema validation
+- Model calls tools in illogical order (write before read, delete before create)
+- Model repeatedly calls the same tool with slightly different arguments, fishing for the "right" response
+
+**Consequences:** Tool execution fails (non-existent tool), produces wrong results (wrong arguments), or corrupts state (write to wrong file). The tool-calling loop retries with the error message, but the model may not learn from the error and repeats the same mistake.
 
 **Prevention:**
-1. **Ground decomposition in actual file tree.** Before decomposing, feed the LLM: `ls lib/agent_com/*.ex`, `ls sidecar/lib/`, module names and public function signatures. Prompt: "ONLY reference files and modules that appear in the file tree above."
-2. **Post-decomposition validation.** After the LLM generates tasks, mechanically verify: for each file path mentioned, check `File.exists?`. For each module name, verify it is defined. Reject tasks referencing non-existent entities.
-3. **Two-pass decomposition.** First pass: abstract tasks ("improve error handling in auth module"). Second pass: provide actual `auth.ex` contents and ask for concrete, grounded task with specific line numbers.
-4. **Include codebase context.** The existing `.planning/codebase/ARCHITECTURE.md` describes the actual architecture. Include it in every decomposition prompt. Add a "what this project does NOT use" section: no Ecto, no Phoenix, no PostgreSQL.
-5. **Decomposition confidence scoring.** Ask LLM to rate confidence (1-5) per task. Tasks with confidence < 3 go to "needs human review" queue.
+1. **Strict tool call validation.** Before executing any tool call, validate: tool name exists in defined tools, arguments match expected schema (type check each field), required arguments are present. Return a structured error to the model if validation fails.
+2. **Minimize tool count.** With an 8B model, fewer tools = higher accuracy. Start with 3 tools maximum: `read_file`, `write_file`, `list_files`. Add more only if accuracy remains acceptable.
+3. **Simple tool schemas.** Each tool should have at most 2-3 parameters. Complex nested schemas confuse small models. `read_file(path: string)` not `read_file(path: string, encoding: string, start_line: int, end_line: int)`.
+4. **Fallback to text mode.** If tool calling fails 3 times in a row (invalid calls), fall back to text-only mode for that task. Parse structured output from text using regex/JSON extraction. The current text-only pipeline already works -- it is the fallback.
+5. **Model testing before deployment.** Run a tool-calling evaluation suite against the specific quantized model on the specific GPU. Benchmark: 20 predefined prompts with expected tool calls. If accuracy < 85%, consider a different model or quantization level.
+6. **Think mode.** Qwen3 supports `think=true` which enables chain-of-thought before tool calling. This significantly improves tool-calling accuracy at the cost of ~2x latency. Enable for tool-calling tasks, disable for simple text generation.
 
-**Detection:** Track task failure rate by source. If hub-decomposed tasks fail at higher rate than human-submitted tasks, decomposition prompts need grounding.
+**Detection:** Track tool call validation failure rate per model. Dashboard metric: `tool_calls_valid / tool_calls_total`. Alert if ratio drops below 0.85.
 
-**Phase to address:** Goal decomposition phase. Grounding must be built into the decomposition pipeline from day one.
+**Phase to address:** Agentic tool-calling phase. Validation is part of the tool-calling loop implementation.
 
-**Confidence:** HIGH. Amazon Science's 2025 paper on task decomposition specifically calls out "sub-tasks that don't map to available tools or agent capabilities" as a primary failure mode. The arXiv paper on multi-agent failures identifies 14 distinct failure modes, with "decomposition inaccuracies" among the most impactful.
+**Confidence:** MEDIUM. Qwen3 8B benchmarks are strong, but quantized performance on specific tasks varies. The Docker blog evaluation (2025) shows Qwen3 8B as the best local model for tool calling, but notes configuration-dependent issues.
 
 ---
 
 ## Moderate Pitfalls
 
-Mistakes that cause significant debugging time or partial rewrites.
+Mistakes that cause significant debugging time or partial rework.
 
 ---
 
-### Pitfall 6: Supervisor Tree Disruption When Adding Hub FSM
+### Pitfall 6: Adding :healing to @valid_transitions Without Updating All Consumers
 
-**What goes wrong:** Adding a new GenServer (Hub FSM) to `application.ex`'s supervision tree with wrong restart strategy or position causes cascading failures. The Hub FSM depends on TaskQueue, Scheduler, RepoRegistry, and DetsBackup -- all must be started first. If placed before dependencies in the `children` list, it crashes on init. With `strategy: :one_for_one` (line 61), the crash is isolated but the Hub FSM never starts.
+**What goes wrong:** The HubFSM's `@valid_transitions` map (line 49-54 of `hub_fsm.ex`) defines which state transitions are legal. Adding `:healing` requires updating this map, but also every piece of code that handles FSM states exhaustively:
+- `Predicates.evaluate/2` has pattern matches for all 4 states (`:resting`, `:executing`, `:improving`, `:contemplating`). Missing `:healing` falls through to the catch-all `evaluate(_unknown, _system_state), do: :stay` (line 89) -- healing state evaluations are silently ignored.
+- `do_transition/3` has conditional logic for `:improving` and `:contemplating` (lines 485-502). If `:healing` needs entry actions (like `:improving` spawns `SelfImprovement.run_improvement_cycle()`), they must be added here.
+- `ClaudeClient.set_hub_state/1` only accepts `[:executing, :improving, :contemplating]` (line 34). Calling it with `:healing` crashes. The `do_transition` guard (line 441) currently skips `:resting`; it must also skip `:healing` or add `:healing` to `@valid_hub_states`.
+- `gather_system_state/0` does not collect healing-relevant data (hung task count, unresponsive agents). The `:healing` predicates will need new data points.
+- `broadcast_state_change/1` works generically but dashboard consumers may not render `:healing` state.
 
-**Why it happens:** The supervisor tree has 24 children (lines 32-58 of `application.ex`). Ordering is deliberate: PubSub first, then Registries, then GenServers. The Hub FSM needs TaskQueue and Scheduler running before it subscribes to PubSub topics.
+**Why it happens:** The current 4-state FSM was designed as a complete set. Pattern matching in Elixir is exhaustive only if the developer adds catch-all clauses. The Predicates module uses specific atoms, not a generic handler, so a new state is silently caught by the catch-all.
+
+**Warning signs:**
+- After adding `:healing`, the FSM enters healing but tick evaluation always returns `:stay` (predicates do not handle it)
+- `ClaudeClient` crashes with `FunctionClauseError` when hub enters `:healing` state
+- Dashboard shows blank/unknown state when hub is healing
 
 **Prevention:**
-1. Place Hub FSM after Scheduler and RepoRegistry but before Bandit in the children list.
-2. Use `restart: :transient` -- restart on abnormal termination but not normal shutdown.
-3. Defensive init: if dependencies not yet available, use `Process.send_after(self(), :retry_init, 1000)` rather than crashing.
-4. Test the boot sequence: start full application and verify all children running.
+1. **Enumerate all touch points before coding.** Search for `:resting`, `:executing`, `:improving`, `:contemplating` across the entire codebase. Every file that references these atoms needs review.
+2. **Add `:healing` to `@valid_hub_states` in ClaudeClient** OR exclude it from the `do_transition` ClaudeClient notification (like `:resting` is excluded).
+3. **Add healing predicates explicitly.** New `evaluate(:healing, system_state)` clause in Predicates.evaluate/2 that checks healing completion criteria.
+4. **Add healing-specific system state fields** to `gather_system_state/0`: `hung_task_count`, `stale_agent_count`, `queue_anomalies`.
+5. **Compile-time validation.** Add a module attribute listing all valid FSM states: `@all_states [:resting, :executing, :improving, :contemplating, :healing]`. Use it in tests to verify Predicates handles every state.
 
-**Detection:** Application crash on startup with `{:noproc, {GenServer, :call, [AgentCom.TaskQueue, ...]}}`.
+**Detection:** Test that calls `Predicates.evaluate(state, system_state)` for every state in `@valid_transitions` keys. If any returns unexpected `:stay`, the predicate is missing.
 
-**Phase to address:** Hub FSM core phase.
+**Phase to address:** Hub FSM Healing state phase. This is the first task: enumerate all touch points.
 
-**Confidence:** HIGH. Basic OTP, but the large supervisor tree makes ordering mistakes easy.
+**Confidence:** HIGH. Mechanical correctness issue. The codebase patterns make the touch points identifiable but easy to miss.
 
 ---
 
-### Pitfall 7: DETS Table Proliferation and Backup Coverage Gap
+### Pitfall 7: Pipeline Silent Failure -- No wake_command Causes Permanent Task Hang
 
-**What goes wrong:** The Hub FSM needs persistent state: goal backlog, improvement history, contemplation log, cost ledger. Each could be a new DETS table. The existing `DetsBackup` has a hardcoded `@tables` list of 10 tables (line 20-31 of `dets_backup.ex`). If new tables are added but `@tables` is not updated, new tables are not backed up, not compacted, not monitored, and not recoverable.
+**What goes wrong:** When `wake_command` is not configured in sidecar `config.json`, the `wakeAgent` function (lines 96-104 of `index.js`) sets `task.status = 'working'` and returns. But no agent process actually starts working. The task sits in `working` status forever. The hub's `AgentFSM` shows the agent as `:working`, so the scheduler does not assign new tasks. The task never completes, never fails, never times out.
 
-**Why it happens:** `@tables` is a compile-time constant. Adding a new DETS table requires updating three places: (1) the new GenServer that opens it, (2) `@tables` in DetsBackup, (3) `table_owner/1` (line 321-330 of `dets_backup.ex`) for compaction. Missing any one creates a silent gap.
+This is an EXISTING bug, not a new one. But it becomes critical in v2.0 because:
+- The routing dispatcher (line 722-728 of `index.js`) only uses direct execution when `routing.target_type !== 'wake'`. Tasks without routing decisions fall through to `wakeAgent`.
+- Hub-generated tasks (from goal decomposition) may not have routing decisions if the decomposer does not set them.
+- The healing state is supposed to detect and fix this -- but if the healing implementation does not know about this failure mode, it cannot fix it.
+
+**Warning signs:**
+- Task status is `working` for >30 minutes with no progress events
+- Agent FSM shows `:working` but sidecar logs show no activity after `wake_skipped`
+- GoalOrchestrator's `active_goals` count grows but never decreases
+- `check_goal_task_progress` (line 342 of `goal_orchestrator.ex`) always returns tasks as "still pending"
+
+**Consequences:** Agent permanently blocked. Goal never completes. If all agents hit this, the entire system halts. The Hub FSM stays in `:executing` because `active_goals > 0`, never transitions to `:resting` or `:improving`.
 
 **Prevention:**
-1. **Minimize new tables.** Use one `hub_state` DETS table with namespaced keys: `{:goals, goal_id}`, `{:improvements, hash}`, `{:cost_ledger, date}`. One table to register.
-2. **Registration validation at startup.** Add a function querying `:dets.all()` at boot and comparing against `@tables`. Log warning for unregistered tables.
-3. **Implementation checklist.** Every plan adding a DETS table must include "Update DetsBackup @tables and table_owner/1" as a verification step.
+1. **Execution timeout on all tasks.** Every task must have a maximum execution duration. After timeout, sidecar reports `task_failed` with reason `execution_timeout`. Add a `setTimeout` in `handleTaskAssign` that fires after `config.execution_timeout_ms || 600000` (10 minutes default).
+2. **Require routing_decision for all tasks.** Hub-side: GoalOrchestrator.Decomposer must attach `routing_decision` to every task. Sidecar-side: reject tasks without routing_decision (or default to `target_type: 'ollama'`).
+3. **Eliminate the wake_command path for v2.0.** If all execution goes through the dispatcher (Ollama/Claude/Shell), the wake_command path becomes dead code. Remove it or gate it behind an explicit feature flag.
+4. **Hub-side task timeout.** The hub already has a 60-second acceptance timeout in AgentFSM (line 39). Add an execution timeout: if a task is in `:working` state for >N minutes, reclaim it. This is a healing action.
 
-**Detection:** Health endpoint (`/api/health/dets`) shows per-table metrics. New table absent from health response means it is unregistered.
+**Detection:** Health check: query all tasks in `working` status with `duration > threshold`. Alert on any. The existing `gather_system_state/0` should include `stale_working_tasks_count`.
 
-**Phase to address:** Hub FSM core or goal backlog phase.
+**Phase to address:** Pipeline reliability phase. This is the highest-priority reliability fix -- it is a bug that exists TODAY.
 
-**Confidence:** HIGH. Mechanical integration concern unique to this codebase.
+**Confidence:** HIGH. The code path is visible in `index.js` lines 96-104. The comment "agent expected to self-start" acknowledges the gap.
 
 ---
 
-### Pitfall 8: Goal Completion Verification False Positives
+### Pitfall 8: Ollama Replacing ClaudeClient on Hub Side -- Prompt Format Mismatch
 
-**What goes wrong:** The Hub FSM uses LLM-powered verification to determine if a goal is complete. The LLM says "yes" when the goal is not complete, because verification prompt lacks context or the LLM optimistically interprets partial completion as full. Hub marks goal as done, moves to next goal, incomplete work is never revisited.
+**What goes wrong:** The hub's `ClaudeClient.Cli` constructs prompts specifically for Claude Code CLI's capabilities: it passes `-p` flag for prompt, `--output-format stream-json`, and `--model sonnet`. The prompts in `Decomposer` and `Verifier` are written for Claude's instruction-following quality. Replacing Claude with Qwen3 8B for hub-side operations (decomposition, verification, improvement scanning) produces dramatically different results because:
+- Qwen3 8B follows instructions less precisely than Claude Sonnet
+- Claude's context window is 200K tokens; Qwen3 8B is 32K tokens (with effective quality at ~16K for quantized)
+- Claude's structured output quality is significantly higher
+- Prompts tuned for Claude may not work with Qwen3 8B (different system prompt conventions, different tool-calling syntax)
 
-**Warning signs (concrete examples):**
-- Goal: "Improve error handling across all GenServers." Sub-tasks completed for 4 of 12 GenServers. LLM verification: "Error handling has been significantly improved across the codebase" = true. Goal marked complete with 8 GenServers untouched.
-- Goal: "Add telemetry to all public API endpoints." LLM verification checks current codebase and sees telemetry exists (it was already there from v1.1). Reports goal complete even though no new telemetry was added.
+**Why it happens in THIS codebase:** The `ClaudeClient` GenServer is the hub's LLM interface. All three hub operations flow through it: `decompose_goal/2`, `verify_completion/2`, `identify_improvements/2`. The prompts inside `ClaudeClient.Cli.invoke/3` are authored for Claude. Simply swapping the backend to Ollama while keeping the same prompts will produce degraded output.
 
-**Why it happens:** The existing verification system (Phase 21-22) uses mechanical checks that are deterministic. Goal completion is semantic judgment. "Is error handling improved across the codebase?" cannot be answered by checking file existence. The Ralph Loop insight applies: LLM self-assessment is unreliable.
+**Warning signs:**
+- Goal decomposition produces 1-2 vague tasks instead of 3-5 specific ones
+- Verification always returns `:pass` because the model cannot follow the structured verification rubric
+- Improvement scanning returns generic suggestions not grounded in actual code
+- JSON parsing fails because Qwen3 8B outputs markdown-wrapped JSON (```json ... ```) instead of raw JSON
+
+**Consequences:** Hub decision quality drops. Goals are poorly decomposed. Verification is unreliable. The system technically works but produces low-quality results.
 
 **Prevention:**
-1. **Require mechanical success criteria for every goal.** At creation time, require at least one verifiable criterion: "tests pass," "file X exists," "endpoint Y returns 200." Goals without mechanical criteria cannot be auto-completed.
-2. **Two-judge verification.** LLM for semantic assessment plus mechanical checks. Both must agree. If LLM says complete but mechanical checks fail, goal stays open.
-3. **Sub-task completion tracking.** A goal is complete only when ALL decomposed sub-tasks are completed (not just "most"). The Hub tracks sub-task completion percentage and requires 100%.
-4. **Human review for complex goals.** Goals with more than 5 sub-tasks or touching more than 3 files must be human-verified. Hub transitions them to "pending review" state.
+1. **Separate hub-side and sidecar-side LLM concerns.** Hub operations (decomposition, verification) may need to stay on Claude API if quality requirements demand it. Sidecar task execution can use Ollama. These are different use cases with different quality bars.
+2. **If migrating hub to Ollama:** Re-write all prompts for Qwen3 8B. Shorter, more explicit instructions. Include JSON format examples in every prompt. Use Ollama's `format: "json"` parameter to force JSON output.
+3. **Structured output via Ollama.** Use Ollama's structured output capability (`format` parameter with JSON schema) instead of hoping the model outputs valid JSON. This eliminates the markdown-wrapped JSON problem.
+4. **Evaluation before migration.** Run 20 representative goal decompositions through both Claude and Qwen3 8B. Compare: task count, task specificity, file reference accuracy, JSON validity rate. Set a quality threshold -- if Qwen3 8B falls below, keep Claude for hub operations.
+5. **Hybrid approach.** Use Ollama for low-stakes operations (improvement scanning triage) and Claude for high-stakes operations (goal decomposition, verification). The CostLedger already tracks per-state budgets, so this maps naturally.
 
-**Detection:** Track re-opened goals (marked complete then found incomplete). Re-open rate > 10% means verification is too loose.
+**Detection:** A/B comparison metrics: decomposition quality score, verification accuracy, improvement relevance score. Track over time as prompts are tuned.
 
-**Phase to address:** Goal lifecycle phase.
+**Phase to address:** LLM backend migration phase. Prompt rewriting is the majority of the work, not the API integration.
 
-**Confidence:** MEDIUM. The existing verification infrastructure provides patterns, but semantic verification is harder than mechanical.
+**Confidence:** HIGH. Model capability differences are well-documented. The Ryz Labs article on LLM tuning mistakes (2025) emphasizes: "Test relentlessly with your actual data before going live."
 
 ---
 
-### Pitfall 9: Improvement Scanner Bikeshedding
+### Pitfall 9: Agent Self-Awareness Creating Identity Confusion in pm2
 
-**What goes wrong:** The improvement scanner identifies cosmetic improvements instead of substantive ones: variable renames, import reordering, type spec additions to internal helpers, comment reformatting. The task queue fills with bikeshedding that consumes agent capacity while high-value work waits.
+**What goes wrong:** Making agents self-aware of their process management (knowing they are managed by pm2, knowing their own agent_id, being able to request restarts) creates a feedback loop risk. If the sidecar can detect its own unhealthy state and trigger a pm2 restart, and the restart condition is still present after restart (e.g., hub unreachable), the agent enters a restart loop. pm2's `max_restarts: 50` (line 34 of `ecosystem.config.js`) means 50 rapid restarts before pm2 gives up.
 
-**Warning signs (concrete examples):**
-- 10 improvement tasks generated: 7 are "rename variable `x` to `more_descriptive_name`", 2 are "add @doc to private function", 1 is "fix potential race condition in timer handling." The race condition fix (actual value) is buried under style noise.
-- Scanner generates "add @moduledoc to `AgentCom.TaskRouter.TierResolver`" -- the module already has adequate documentation.
+**Why it happens in THIS codebase:** The sidecar currently has no self-awareness. It connects, processes tasks, and relies on pm2 for lifecycle management. Adding self-awareness means the sidecar could:
+- Detect it has been in `working` state for too long and self-restart
+- Detect Ollama is unresponsive and request a restart
+- Detect memory usage above threshold and exit
+- Report its own health status to the hub
 
-**Why it happens:** LLMs are trained on code review discussions disproportionately about style and naming. When asked "what could be improved?", the LLM defaults to easiest observations. Structural improvements require deeper analysis.
+Each of these is individually reasonable. But combined with pm2's autorestart, they create complex restart dynamics.
+
+**Warning signs:**
+- pm2 logs show rapid restart cycles: `restart_count` climbing quickly
+- Hub sees agent disconnect/reconnect events every few seconds
+- Agent's recovering task is repeatedly reported and reassigned
+- `_queue.recovering` is always populated (sidecar crashes during task execution, task moves to recovering, sidecar restarts, reports recovery, gets reassigned, crashes again)
+
+**Consequences:** Agent becomes permanently unstable. Hub wastes time on recovery protocol for every restart. Task assigned to the agent is repeatedly failed and reassigned, consuming retry budget.
 
 **Prevention:**
-1. **Category-priority mapping.** security > correctness > performance > reliability > observability > readability > style. Security = `urgent`, style = `low`. Scanner must categorize each improvement.
-2. **Minimum impact threshold.** Reject improvements affecting fewer than 3 lines or only changing comments/whitespace.
-3. **Prompt engineering.** Scanner prompt: "Focus on bugs, security issues, error handling gaps, and performance problems. Do NOT suggest variable renames, comment changes, import reordering, or formatting changes."
-4. **Rate limit by category.** Maximum 1 style improvement per day, unlimited security/correctness.
-5. **Value scoring.** Ask LLM to estimate impact (1-10). Discard below 5.
+1. **Self-awareness is read-only.** The sidecar can observe its own state (memory, CPU, connection status, task duration) and REPORT it to the hub. It does NOT take corrective action itself. Corrective action is the hub's responsibility (via the healing state).
+2. **No self-restart.** The sidecar never calls `process.exit()` based on its own health assessment. It reports unhealthy status to the hub, and the hub decides whether to reassign the task or ask the agent to restart.
+3. **Crash budget.** Track restarts within a window. If the sidecar has restarted 3 times in 5 minutes, enter a "degraded" mode: connect to hub, report degraded status, refuse new tasks, wait for manual intervention.
+4. **Health reporting via existing resource_report.** The sidecar already sends `resource_report` messages every 30 seconds (lines 956-968 of `index.js`). Extend this with self-awareness metrics: `task_duration_ms`, `restart_count`, `last_error`. No new protocol messages needed.
+5. **Hub-driven lifecycle.** If the hub detects an agent is unhealthy (via resource reports or healing state analysis), it sends a `restart_requested` message. The sidecar cleanly shuts down, pm2 restarts it. This is unidirectional: hub commands, sidecar obeys.
 
-**Detection:** Tag improvement tasks by category. Dashboard chart showing improvements by category over time. Style/naming dominance means prompt recalibration needed.
+**Detection:** pm2's restart count visible in `pm2 jlist`. Hub tracks agent reconnection frequency. Alert if reconnections exceed 3 per hour.
 
-**Phase to address:** Improvement scanning phase.
+**Phase to address:** Agent self-awareness phase. Design the self-awareness scope BEFORE implementing any of it.
 
-**Confidence:** HIGH. Every code review tool based on LLMs (CodeRabbit, Sourcery, etc.) has had to explicitly filter out bikeshedding.
+**Confidence:** MEDIUM. The restart loop is a known pm2 pattern, but the specific interaction with hub recovery protocol is unique to this architecture.
 
 ---
 
-### Pitfall 10: Secret Scrubbing Breaks Git History and Agent Collaboration
+### Pitfall 10: Ollama Tool-Calling Response Format Differs from Text Response Format
 
-**What goes wrong:** Pre-publication cleanup uses `git filter-repo` to scrub secrets from history. This rewrites every commit hash, breaking: (1) all existing clones (5 agents must re-clone), (2) all open PRs, (3) all branch tracking, (4) all commit references in planning files (`.planning/MILESTONES.md` references git ranges like `107f592a..a529eed`).
+**What goes wrong:** The current `OllamaExecutor._streamChat` (lines 129-232) expects every NDJSON chunk to have `parsed.message.content`. When tool calling is enabled, the response format changes: `message.content` is empty (or absent), and `message.tool_calls` is present instead. The existing parser will collect empty strings as the "full response", produce an output of `""`, and report success with empty output.
 
-**Warning signs (concrete examples):**
-- `git filter-repo --invert-paths --path priv/tokens.json` rewrites the entire history. All 337+ commits get new hashes. The milestone audit records (`v1.1..v1.2`, commit ranges) become invalid.
-- Sidecar's `agentcom-git.js` runs `git pull --rebase origin main`. After filter-repo, this fails with diverged history. All 5 sidecars crash-loop.
-- On Windows (this project's platform): case-insensitive filesystem causes `git filter-repo` to silently choose wrong version of files differing only in case.
+**Why it happens in THIS codebase:** The streaming parser (lines 165-198) has this logic:
+```javascript
+if (parsed.message && parsed.message.content) {
+  fullResponse += parsed.message.content;
+}
+```
+When Ollama returns a tool-calling response, `parsed.message.content` is `""` (empty string), which is falsy in JavaScript. The content is never collected. The `tool_calls` array is never checked. The response resolves with `{ fullResponse: '', tokensIn: N, tokensOut: M }`.
 
-**Why it happens:** `git filter-repo` is destructive by design. The `git filter-repo` man page explicitly warns: "using git filter-repo is destructive and will rewrite the entire history of the original repository."
+This is not a hypothetical -- it is exactly what will happen with the current code when tools are added to the request.
 
-**Prevention:**
-1. **Scrub on a fork, not the original.** Create a fresh clone, scrub, push as public repo. Keep unscrubbed repo as internal development repo.
-2. **Coordinate with agents.** Before scrubbing: pause all repos in RepoRegistry, wait for in-flight tasks to complete. After: update sidecar configs, re-clone on each machine.
-3. **Inventory secrets first.** Use `gitleaks detect --log-opts="--all"` to scan full history. Verify completeness. After scrubbing, run again to confirm removal.
-4. **Test on throwaway copy.** Clone, scrub, verify compilation and tests pass, verify no secrets remain. Then execute on real target.
-5. **Expect secrets in unexpected places.** Check: commit messages (tokens in debug output), `priv/tokens.json` (plaintext tokens), sidecar `config.json` files (API keys), log files (if committed), DETS backup files (if committed).
-6. **Pre-commit hook after scrub.** Add `gitleaks` as a pre-commit hook and CI step to prevent re-introduction.
+**Warning signs:**
+- Task completes with `status: 'success'` but `output: ''`
+- Token counts are non-zero (the model DID generate output), but output is empty
+- No errors in logs (the parser did not fail, it just collected nothing)
 
-**Detection:** `gitleaks detect --log-opts="--all"` before and after. Compare results.
-
-**Phase to address:** Pre-publication cleanup phase (last phase). Must be planned as coordinated operation.
-
-**Confidence:** HIGH. The `git filter-repo` documentation explicitly warns about these issues.
-
----
-
-### Pitfall 11: Scheduler Starvation from Hub-Generated Task Volume
-
-**What goes wrong:** The Hub FSM generates improvement tasks and decomposes goals into sub-tasks. These flow into the existing TaskQueue and Scheduler. If the Hub generates 20 improvement tasks while 5 human-submitted tasks wait, the scheduler may match agents to improvement tasks first (equal or higher priority), starving human-submitted work.
-
-**Warning signs (concrete examples):**
-- Nathan submits "Fix authentication bug on endpoint X" at priority `normal`. Hub has already queued 15 improvement tasks at priority `normal`. The 15 hub tasks were submitted first (lower `created_at`), so FIFO ordering puts Nathan's task 16th in line. With 5 agents, Nathan waits for 3 improvement cycles before his bug fix gets picked up.
-- Hub's Improving state generates 10 tasks in a batch. These immediately consume all 5 agents. The queue is "busy" but not productive from Nathan's perspective.
-
-**Why it happens:** The scheduler's `try_schedule_all` (line 258 of `scheduler.ex`) iterates tasks in priority+FIFO order. It does not distinguish task sources. Hub-generated tasks compete equally with human-submitted tasks.
+**Consequences:** Tasks appear to succeed but produce no useful output. The verification loop may pass the empty output. The hub records the task as complete with empty results.
 
 **Prevention:**
-1. **Task source field.** Add `source` to task schema: `"human"`, `"hub_goal"`, `"hub_improvement"`, `"hub_contemplation"`. Use for filtering and priority adjustments.
-2. **Source-aware priority boost.** Human-submitted tasks get implicit priority boost (-1 to priority integer). Hub improvement tasks get priority floor (minimum `low` = 3).
-3. **Reserved agent capacity.** At least 1 agent must always be available for non-hub work. Scheduler skips hub tasks if assigning would leave zero agents for human tasks.
-4. **Hub task rate limiting.** Hub submits max N tasks per hour. Batch decomposition outputs (15 tasks released as 3 batches of 5 with delays).
-5. **Preemption for urgent human tasks.** If human task with `urgent` priority enters queue and all agents work on hub tasks, reclaim least-important hub task.
+1. **Detect tool_calls in streaming response.** Add a check: `if (parsed.message && parsed.message.tool_calls)`. When detected, accumulate tool calls in a separate array. This is the fundamental change needed.
+2. **New response shape.** The executor's return value needs a new field: `tool_calls: []` alongside `output`. The dispatcher must handle this new shape.
+3. **Non-empty output assertion.** After streaming completes, if both `fullResponse === ''` AND `tool_calls.length === 0`, treat as an error, not success. The model produced nothing usable.
+4. **Separate streaming parsers.** Create `_streamToolChat` for tool-calling conversations (multi-turn) and keep `_streamChat` for text-only tasks. Do not try to make one parser handle both -- the control flow is fundamentally different (one-shot vs. loop).
 
-**Detection:** Dashboard: average wait time for human-submitted vs. hub-generated tasks. If human wait time increases after hub FSM enabled, priority scheme needs adjustment.
+**Detection:** Assert in the executor: if tokens_out > 0 but output is empty and no tool_calls, log an error and return failure.
 
-**Phase to address:** Goal decomposition and improvement scanning phases. `source` field added in first phase.
+**Phase to address:** Agentic tool-calling phase. This is the first integration task -- before any tool execution logic.
 
-**Confidence:** HIGH. Basic resource contention, becomes visible immediately when hub starts generating tasks.
+**Confidence:** HIGH. The code path is unambiguous. Lines 186-190 of ollama-executor.js will produce empty output for tool-calling responses.
 
 ---
 
@@ -303,78 +359,63 @@ Mistakes that cause inconvenience or need small fixes.
 
 ---
 
-### Pitfall 12: Over-Decomposition of Goals
+### Pitfall 11: VRAM Exhaustion During Tool-Calling Conversations
 
-**What goes wrong:** LLM decomposes a simple goal into excessive tiny tasks. "Add health check endpoint" becomes 8 tasks: "create route", "add handler", "return JSON", "add tests", "add docs", "update dashboard", "add telemetry", "add to operations guide". Each task is too small, and coordination overhead (branch creation, PR, merge) exceeds the work itself.
+**What goes wrong:** Each round of tool calling adds to the conversation history sent to Ollama. With a 32K context window and 12GB VRAM, the conversation history for a 10-round tool-calling session can exhaust available context. Ollama will either truncate the conversation (losing earlier context) or return an error.
 
 **Prevention:**
-1. Minimum task size: if describable in fewer than 20 words and touching 1 file, merge with related tasks.
-2. Prompt: "Generate 2-5 tasks per goal. Each should represent 10-60 minutes of work."
-3. Post-decomposition consolidation: "These tasks are too granular. Merge related tasks into cohesive units."
+1. Summarize previous tool results instead of including full output. `read_file` result of 200 lines -> summary of 5 lines for conversation history.
+2. Monitor `prompt_eval_count` per round. If approaching 24K tokens (75% of 32K), force final response.
+3. Consider Qwen3 8B with `num_ctx: 32768` explicitly set in Ollama model parameters.
 
-**Phase to address:** Goal decomposition phase.
+**Phase to address:** Agentic tool-calling phase.
 
-**Confidence:** MEDIUM. Impact depends on prompt engineering quality.
+**Confidence:** MEDIUM. Depends on actual task complexity and tool output sizes.
 
 ---
 
-### Pitfall 13: Contemplation State Producing Vaporware Proposals
+### Pitfall 12: Healing State Masking Real Failures
 
-**What goes wrong:** Contemplating state generates feature proposals that sound impressive but are infeasible, redundant with existing features, or out of scope. Proposals consume review time and create backlog noise.
+**What goes wrong:** The healing state automatically resolves problems (cancels hung tasks, reclaims from unresponsive agents). But some "problems" are symptoms of real bugs: a task hangs because of a deadlock in the executor, an agent is unresponsive because of a memory leak. Healing clears the symptom (cancels the task) but the root cause persists. The same task will hang again when re-assigned.
 
 **Prevention:**
-1. Include "Out of Scope" section from PROJECT.md in contemplation prompt so LLM does not re-propose rejected ideas. The existing out-of-scope list has 15 items with explicit rationale.
-2. Each proposal must include: estimated complexity, dependencies, required infrastructure.
-3. Maximum 1 proposal per contemplation cycle.
+1. Track healing actions per task/agent. If the same task requires healing 3 times, mark it as `needs_investigation` instead of re-queuing.
+2. Track healing actions per agent. If the same agent triggers healing 3 times in an hour, mark it as degraded and stop assigning work.
+3. Log healing actions with enough context for post-mortem: which task, which agent, what state, how long stuck.
 
-**Phase to address:** Contemplation phase.
+**Phase to address:** Hub FSM Healing state phase.
 
-**Confidence:** MEDIUM.
+**Confidence:** MEDIUM. Standard observability concern.
 
 ---
 
-### Pitfall 14: Pipeline Pipelining Creating Branch Conflicts
+### Pitfall 13: Race Between Task Execution Timeout and Task Completion
 
-**What goes wrong:** Pipeline pipelining front-loads research/planning so multiple goals are in-flight simultaneously. If two goals touch the same files (both modify `scheduler.ex`), the second goal's execution branch has merge conflicts the agents cannot resolve autonomously.
+**What goes wrong:** Adding execution timeouts (to fix Pitfall 7) creates a race condition: the sidecar's timeout fires and sends `task_failed`, but the Ollama response arrives milliseconds later. The sidecar tries to send `task_complete` after already sending `task_failed`. The hub receives both messages and must handle the conflict.
 
 **Prevention:**
-1. File-level locking: record which files each goal will modify (from `file_hints`). Prevent scheduling tasks with overlapping file targets.
-2. Sequential execution for conflicting goals. Pipeline research/planning but serialize execution.
-3. Small, focused tasks minimize conflict surface.
+1. Use a flag: `let completed = false`. Set on first resolution (success or timeout). Ignore subsequent events.
+2. Clear the timeout timer in the success path before sending task_complete.
+3. Hub-side: if `task_complete` arrives for a task already in `failed` status, log a warning but accept the result (last writer wins, and success is better than failure).
 
-**Phase to address:** Pipeline pipelining phase.
+**Phase to address:** Pipeline reliability phase.
 
-**Confidence:** MEDIUM. Requires new infrastructure to track expected file modifications.
+**Confidence:** HIGH. Classic async race condition.
 
 ---
 
-### Pitfall 15: LLM Context Window Overflow in Codebase Scanning
+### Pitfall 14: Ollama Server Restart Invalidating In-Flight Requests
 
-**What goes wrong:** Improvement scanner tries to feed the entire codebase to the LLM. At ~22K LOC Elixir + ~4.5K LOC JavaScript, the codebase plus prompt hits 60-80K tokens. LLM truncates or loses context, producing incomplete analysis.
-
-**Prevention:**
-1. Scan per-file or per-module, not per-codebase.
-2. Prioritize by recency: scan recently modified files first (most likely to benefit).
-3. Two-pass: first pass sends file names/sizes/dates for triage; second pass sends only flagged files.
-
-**Phase to address:** Improvement scanning phase.
-
-**Confidence:** HIGH. At 22K LOC, this is already a constraint.
-
----
-
-### Pitfall 16: Hub FSM Timer Drift in Resting State
-
-**What goes wrong:** Hub FSM enters Resting with `Process.send_after` timer. Under BEAM load, timer message is delayed. Over many cycles, drift accumulates and effective work rate drops.
+**What goes wrong:** Ollama server restarts (model reload, OOM, manual restart) kill any in-flight `/api/chat` requests. The OllamaExecutor's retry logic (lines 28-76) retries the failed request, but if the model is still loading (Ollama loads models on first request after restart), the retry hits a timeout. All retries exhaust before the model finishes loading.
 
 **Prevention:**
-1. Monotonic time for scheduling: `System.monotonic_time(:millisecond)`.
-2. Track expected vs. actual wake time. Alert if drift exceeds 10%.
-3. Do not compound timers -- schedule from current time, not expected previous end.
+1. Add Ollama health check before task execution: `GET /api/tags` to verify Ollama is responding.
+2. Increase retry delays for Ollama: current delays are minimal (no backoff). Add 10s, 20s, 30s backoff for Ollama model loading time.
+3. Pre-load the model: `POST /api/generate {"model": "qwen3:8b", "keep_alive": "24h"}` on sidecar startup.
 
-**Phase to address:** Hub FSM core phase.
+**Phase to address:** Pipeline reliability phase.
 
-**Confidence:** LOW. Unlikely at current scale (5 agents, single BEAM node).
+**Confidence:** MEDIUM. Depends on Ollama restart frequency.
 
 ---
 
@@ -382,84 +423,69 @@ Mistakes that cause inconvenience or need small fixes.
 
 | Phase Topic | Likely Pitfall | Mitigation | Severity |
 |---|---|---|---|
-| **Hub FSM Core** | State corruption from concurrent events (P3) | Use `gen_statem` or implement comprehensive timer cancellation | Critical |
-| **Hub FSM Core** | Supervisor tree ordering (P6) | Place after Scheduler, `restart: :transient`, defensive init | Moderate |
-| **Hub FSM Core** | Timer drift (P16) | Monotonic time, drift tracking | Minor |
-| **Hub FSM Core** | Cost spiral before controls exist (P1) | CostLedger GenServer must exist before first API call | Critical |
-| **Goal Backlog** | DETS table not registered with backup (P7) | Single table with namespaced keys, update DetsBackup | Moderate |
-| **Goal Decomposition** | Hallucinated tasks (P5) | Ground in file tree, post-decomposition validation | Critical |
-| **Goal Decomposition** | Over-decomposition (P12) | Min task size heuristic, prompt guidance | Minor |
-| **Goal Decomposition** | Scheduler starvation from volume (P11) | Source field, priority boost, reserved capacity | Moderate |
-| **Goal Completion** | False positive verification (P8) | Mechanical criteria required, two-judge verification | Moderate |
-| **Improvement Scanning** | Infinite loop / Sisyphus pattern (P2) | Cooldown, dedup, net-value gate, anti-oscillation | Critical |
-| **Improvement Scanning** | Bikeshedding (P9) | Category priority, min impact threshold, prompt engineering | Moderate |
-| **Improvement Scanning** | Context window overflow (P15) | Per-module scanning, metadata triage | Minor |
-| **Tiered Autonomy** | Auto-merge regressions (P4) | Integration branch, size gating, canary period, start PR-only | Critical |
-| **Pipeline Pipelining** | Branch conflicts (P14) | File-level locking, sequential for overlapping goals | Moderate |
-| **Contemplation** | Vaporware proposals (P13) | Scope constraints, feasibility check, rate limit | Minor |
-| **Pre-publication** | Git history breaking (P10) | Fork-based scrub, coordinated agent pause | Moderate |
-| **Cost Control (all)** | Token cost spiral (P1) | CostLedger, per-state budgets, tiered model usage | Critical |
+| **Agentic Tool Calling** | Infinite loop (P1) | Hard cap at 10 rounds + wall-clock timeout + token budget | Critical |
+| **Agentic Tool Calling** | Tool execution sandbox escape (P2) | Allowlist tools, path canonicalization, no shell:true | Critical |
+| **Agentic Tool Calling** | Qwen3 8B hallucinated tool calls (P5) | Strict validation, minimize tool count, think mode | Critical |
+| **Agentic Tool Calling** | Empty output from tool-call responses (P10) | Detect tool_calls in parser, separate streaming paths | Moderate |
+| **Agentic Tool Calling** | VRAM exhaustion in multi-round (P11) | Summarize tool results, monitor token count | Minor |
+| **Hub FSM Healing** | Healing cascade storm (P3) | Cooldown timer, attempt limit, synchronous actions | Critical |
+| **Hub FSM Healing** | Missing predicate/transition coverage (P6) | Enumerate all touch points, compile-time state list | Moderate |
+| **Hub FSM Healing** | Masking real failures (P12) | Per-task/per-agent healing counters | Minor |
+| **LLM Backend Migration** | Silent output loss from format mismatch (P4) | Adapter pattern, response validation, integration test | Critical |
+| **LLM Backend Migration** | Prompt quality degradation (P8) | Separate hub/sidecar concerns, prompt rewriting, evaluation | Moderate |
+| **Pipeline Reliability** | No-wake_command permanent hang (P7) | Execution timeout, require routing_decision | Critical |
+| **Pipeline Reliability** | Timeout/completion race (P13) | Completion flag, timer cleanup | Minor |
+| **Pipeline Reliability** | Ollama restart invalidating requests (P14) | Health check, backoff, model pre-load | Minor |
+| **Agent Self-Awareness** | Restart loop with pm2 (P9) | Read-only self-awareness, hub-driven lifecycle | Moderate |
 
 ---
 
 ## Integration Pitfalls Specific to Existing Architecture
 
-These arise specifically from how the Hub FSM integrates with existing AgentCom components.
+### Tool-Calling Loop vs. Single-Task Queue Model
 
-### Existing AgentFSM vs. Hub FSM Naming Confusion
+The sidecar's queue model is `max 1 active + 1 recovering` (line 81 of `index.js`). A tool-calling loop that takes 14 minutes for 10 rounds blocks the entire sidecar for that duration. The hub may timeout the agent's acceptance window for a subsequent task before the current one completes. Consider: should tool-calling tasks have a different timeout profile? The current `confirmation_timeout_ms` (30 seconds) and implicit execution expectations are calibrated for text-only responses.
 
-The codebase already has `AgentFSM` (per-agent state machine, `lib/agent_com/agent_fsm.ex`). Adding a `HubFSM` creates ambiguity. The Hub FSM is a singleton orchestrator; the Agent FSM is per-connection. Name the module clearly: `AgentCom.HubBrain` or `AgentCom.Autonomy` rather than `AgentCom.HubFSM` to avoid confusion.
+### CostLedger Budget Checks with Ollama
 
-### PubSub Topic Management
+The existing `CostLedger.check_budget/1` (called on line 133 of `claude_client.ex`) gates LLM calls based on hub state budgets. If hub operations move to Ollama (local, zero API cost), the budget checks become meaningless for cost but still serve as rate limiters. Decide: should the CostLedger track Ollama calls for rate limiting even though they are free? The answer is yes -- GPU time and electricity are finite resources even if there is no per-token API cost.
 
-The system already uses 6+ PubSub topics: "tasks", "presence", "llm_registry", "messages", "backups", "repo_registry". The Hub FSM needs its own topic for state changes and goal events. Keep it to one topic: `"hub_brain"`. Do not create per-state or per-goal topics.
+### HubFSM @valid_transitions Asymmetry
 
-### DETS Auto-Save Timing
+The current transition map has asymmetric paths:
+- `:resting` -> `[:executing, :improving]` (cannot go directly to `:contemplating`)
+- `:improving` -> `[:resting, :executing, :contemplating]` (can go to `:contemplating`)
 
-Existing tables use `auto_save: 5_000` (5 seconds). Hub FSM state changes may occur faster. Use explicit `:dets.sync/1` after critical changes (goal completion, improvement acceptance) as `persist_task/2` does in `task_queue.ex`.
+Adding `:healing` must decide: can ANY state transition to `:healing`? Or only specific states? If `:executing` -> `:healing` is valid but `:improving` -> `:healing` is not, a problem detected during improvement scanning cannot trigger healing. Recommendation: `:healing` should be reachable from ALL active states (`:executing`, `:improving`, `:contemplating`) but NOT from `:resting` (nothing to heal if resting).
 
-### Rate Limiter Interaction
+### Existing Test Suite Fragility
 
-The Hub FSM submits tasks to TaskQueue on behalf of itself. The existing `RateLimiter` is per-agent-id. If Hub uses a pseudo-agent-id (e.g., "hub-brain"), it could trigger rate limiting. Either exempt hub submissions or configure generous limits for the hub's pseudo-agent-id.
+The test suite already had 300+ failures from HubFSM cascading crashes (commit b2f9fa6). Adding a 5th state and tool-calling will require updating many tests. The risk is not the new features failing tests -- it is the new features making existing tests flaky by changing timing, adding PubSub events, or altering GenServer state shapes. Run the full test suite after each incremental change, not just at the end.
 
-### Alerter Configuration
+### Dispatcher Target Type Expansion
 
-The Alerter has 5 configured rules. Hub FSM needs new rules: high API spend, stuck state, excessive task generation. Add without disrupting existing rules. The Alerter supports dynamic addition.
-
-### Existing Sidecar Compatibility
-
-The Hub FSM generates tasks that flow through the existing pipeline to sidecars. Sidecars do not need to know about the Hub FSM -- tasks look the same to them. However, if hub-generated tasks have different `metadata` shapes (e.g., `metadata.source: "hub_improvement"`), the sidecar's `handleTaskAssign` must handle this gracefully. New metadata fields nested inside the existing `metadata` map are safe (JavaScript ignores unknown properties).
-
-### Dashboard Impact
-
-The existing dashboard (`dashboard.ex`, `dashboard_state.ex`, `dashboard_socket.ex`) shows task queue, agent states, and system health. The Hub FSM adds a new dimension: hub state, goal progress, improvement history, cost tracking. This is new dashboard UI, but it should use the existing WebSocket push pattern (`DashboardNotifier`) rather than adding a new transport.
+The `dispatcher.js` switch statement (lines 34-72) handles `'ollama'`, `'claude'`, and `'sidecar'`. If tool-calling execution requires a different dispatch path (e.g., `'ollama_agentic'` vs. `'ollama'` for simple text), a new case is needed. Alternatively, tool-calling vs. text-only can be determined within OllamaExecutor based on whether `task.tools` is defined.
 
 ---
 
 ## Sources
 
-- [Preventing Infinite Loops and Cost Spirals in Autonomous Agent Deployments](https://codieshub.com/for-ai/prevent-agent-loops-costs)
-- [LLM-based Agents Suffer from Hallucinations: A Survey](https://arxiv.org/html/2509.18970v1)
-- [Why Do Multi-Agent LLM Systems Fail (Galileo)](https://galileo.ai/blog/multi-agent-llm-systems-fail)
-- [Why Do Multi-Agent LLM Systems Fail (arXiv)](https://arxiv.org/html/2503.13657v1)
-- [From ReAct to Ralph Loop: Continuous Iteration for AI Agents](https://www.alibabacloud.com/blog/from-react-to-ralph-loop-a-continuous-iteration-paradigm-for-ai-agents_602799)
-- [Ralph Loops in Software Engineering (LinearB)](https://linearb.io/blog/ralph-loop-agentic-engineering-geoffrey-huntley)
-- [Everything is a Ralph Loop (ghuntley)](https://ghuntley.com/loop/)
-- [Ralph Loop Agent (Vercel Labs)](https://github.com/vercel-labs/ralph-loop-agent)
-- [The Agentic Recursive Deadlock: LLM Orchestration Collapses](https://tech-champion.com/artificial-intelligence/the-agentic-recursive-deadlock-llm-orchestration-collapses/)
-- [Agentic AI Pitfalls: Loops, Hallucinations, Ethical Failures & Fixes](https://medium.com/@amitkharche/agentic-ai-pitfalls-loops-hallucinations-ethical-failures-fixes-77bd97805f9f)
-- [Self-Modifying AI Risks (ISACA)](https://www.isaca.org/resources/news-and-trends/isaca-now-blog/2025/unseen-unchecked-unraveling-inside-the-risky-code-of-self-modifying-ai)
-- [LLM Task Decomposition Strategies](https://apxml.com/courses/agentic-llm-memory-architectures/chapter-4-complex-planning-tool-integration/task-decomposition-strategies)
-- [Systematic Decomposition of Complex LLM Tasks (arXiv)](https://arxiv.org/html/2510.07772v1)
-- [How Task Decomposition Makes AI More Affordable (Amazon Science)](https://www.amazon.science/blog/how-task-decomposition-and-smaller-llms-can-make-ai-more-affordable)
-- [Scrubbing Secrets with Gitleaks and git filter-repo](https://medium.com/@sreejithv13055/scrubbing-secrets-a-practical-poc-using-gitleaks-and-git-filter-repo-08c64b8d246c)
-- [git-filter-repo Documentation](https://www.mankier.com/1/git-filter-repo)
-- [State Timeouts with gen_statem (DockYard)](https://dockyard.com/blog/2020/01/31/state-timeouts-with-gen_statem)
-- [GenStateMachine Elixir Wrapper](https://hexdocs.pm/gen_state_machine/GenStateMachine.html)
-- [GitLab AI Merge Agent](https://www.webpronews.com/gitlabs-ai-merge-agent-automating-chaos-in-code-merges/)
-- [Claude API Pricing 2026](https://www.metacto.com/blogs/anthropic-api-pricing-a-full-breakdown-of-costs-and-integration)
-- [Taming AI Agents: The Autonomous Workforce of 2026 (CIO)](https://www.cio.com/article/4064998/taming-ai-agents-the-autonomous-workforce-of-2026.html)
+- [Ollama Tool Calling Documentation](https://docs.ollama.com/capabilities/tool-calling)
+- [Ollama Streaming Tool Calling Blog](https://ollama.com/blog/streaming-tool)
+- [Qwen3 on Ollama](https://ollama.com/library/qwen3)
+- [Qwen3 Function Calling Docs](https://qwen.readthedocs.io/en/latest/framework/function_call.html)
+- [Docker Blog: Local LLM Tool Calling Evaluation](https://www.docker.com/blog/local-llm-tool-calling-a-practical-evaluation/)
+- [LLM Tool-Calling in Production: Rate Limits, Retries, and Infinite Loops (Medium, Jan 2026)](https://medium.com/@komalbaparmar007/llm-tool-calling-in-production-rate-limits-retries-and-the-infinite-loop-failure-mode-you-must-2a1e2a1e84c8)
+- [Agentic Resource Exhaustion: The Infinite Loop Attack (Medium, Feb 2026)](https://medium.com/@instatunnel/agentic-resource-exhaustion-the-infinite-loop-attack-of-the-ai-era-76a3f58c62e3)
+- [Preventing Infinite Loops and Cost Spirals in Agent Deployments](https://codieshub.com/for-ai/prevent-agent-loops-costs)
+- [Self-Healing Patterns for Distributed Systems (GeeksforGeeks)](https://www.geeksforgeeks.org/computer-networks/important-self-healing-patterns-for-distributed-systems/)
+- [Handling Failures in Distributed Systems: Patterns and Anti-Patterns (Statsig)](https://www.statsig.com/perspectives/handling-failures-in-distributed-systems-patterns-and-anti-patterns)
+- [State Machine State Explosion (Statecharts)](https://statecharts.dev/state-machine-state-explosion.html)
+- [When Dev and Prod LLM Backends Don't Match (Medium, Dec 2025)](https://medium.com/@michael.hannecke/when-your-dev-and-prod-llm-backends-dont-match-and-why-that-s-okay-3bf2cb1c55c2)
+- [7 Common Mistakes When Tuning LLMs for Commercial Use (Ryz Labs)](https://learn.ryzlabs.com/llm-development/7-common-mistakes-when-tuning-llms-for-commercial-use)
+- [Qwen3 8B Tool Calling Issues (SGLang GitHub)](https://github.com/sgl-project/sglang/issues/18102)
+- [Ollama API Documentation (GitHub)](https://github.com/ollama/ollama/blob/main/docs/api.md)
 
 ---
-*Pitfalls research for: v1.3 Hub FSM Loop of Self-Improvement*
-*Researched: 2026-02-12*
+*Pitfalls research for: v2.0 Agentic Tool Calling, Hub FSM Healing, Pipeline Reliability*
+*Researched: 2026-02-14*

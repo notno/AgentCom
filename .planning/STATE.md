@@ -2,26 +2,26 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-13)
+See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.3 Hub FSM Loop of Self-Improvement -- Phase 26 in progress
+**Current focus:** Phase 37 - CI Fix (v1.4 Reliable Autonomy)
 
 ## Current Position
 
-Phase: 33 of 36 (Contemplation and Scalability)
-Plan: 3/3 complete
-Status: Complete
-Last activity: 2026-02-14 -- Phase 33: HubFSM 4-state expansion, proposal schema enrichment, TDD suite (6 tasks, 10 commits incl. regression fix)
+Phase: 37 of 44 (CI Fix)
+Plan: 0 of TBD in current phase
+Status: Ready to plan
+Last activity: 2026-02-14 -- Roadmap created for v1.4 (8 phases, 39 requirements)
 
-Progress: [███████████████] 100% (3/3 plans)
+Progress: [░░░░░░░░░░] 0% (v1.4)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 94 (19 v1.0 + 32 v1.1 + 25 v1.2 + 18 v1.3)
+- Total plans completed: 111 (19 v1.0 + 32 v1.1 + 25 v1.2 + 35 v1.3)
 - Average duration: 4 min
-- Total execution time: ~5.5 hours
+- Total execution time: ~8 hours
 
 **Milestones:**
 
@@ -30,106 +30,32 @@ Progress: [███████████████] 100% (3/3 plans)
 | v1.0 | 1-8 | 19 | 48 | 65 | +12,858 | 2 days |
 | v1.1 | 9-16 | 32 | 153 | 195 | +35,732 | 4 days |
 | v1.2 | 17-23 | 25 | 136 | 147 | +26,075 | 1 day |
-| v1.3 | 24-36 | TBD | - | - | - | In progress |
+| v1.3 | 24-36 | 35 | 167 | 242 | +39,920 | 2 days |
 
 ## Accumulated Context
 
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.
-v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions across 32 plans).
-v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions across 25 plans).
-- [Phase 28]: tasks_for_goal must scan both tasks and dead_letter tables for accurate goal_progress counts
-- [Phase 29]: Tick-based evaluation at 1s intervals (not per-event) for HubFSM transitions
-- [Phase 29]: Pure Predicates module separated from GenServer for testability
-- [Phase 29]: ETS ordered_set with negated timestamps for newest-first History reads
-- [Phase 29]: Hub FSM state/history endpoints unauthenticated (dashboard reads); pause/resume require auth
-- [Phase 29]: async: true for Predicates tests (pure), async: false for History/HubFSM (shared ETS/GenServer)
-- [Phase 29]: Real GenServer deps in integration tests (not mocks) -- follows existing test patterns
-
-### Decisions (v1.3)
-
-- Convention-based XML validation via Elixir structs (not XSD) -- internal-only docs don't need formal schemas
-- Custom Saxy.Builder protocol implementations for list fields -- @derive doesn't handle nested lists
-- SimpleForm-based parsing with shared Parser helpers -- simpler than raw SAX for small flat docs
-- All 77 XML tests passed on first run -- Plan 01 implementation was correct, no source fixes needed in TDD phase
-- CostLedger fail-open on ETS/Config unavailability -- safety during startup outweighs cost risk
-- Dual-layer DETS+ETS for CostLedger: DETS durability + ETS hot-path O(1) budget checks without GenServer.call
-- try/rescue around budget_exhausted telemetry so telemetry failure never blocks budget checking
-- catch :exit in Alerter evaluate_hub_invocation_rate for CostLedger not-yet-started safety
-- All 36 CostLedger tests passed on first run -- 25-01/02 implementation was complete, no source fixes needed in TDD phase
-- GoalBacklog follows TaskQueue pattern: DETS+sync, priority index, PubSub broadcast
-- Lifecycle state machine with 6 states: submitted->decomposing->executing->verifying->complete/failed
-- Priority index only tracks :submitted goals; dequeue pops and transitions to :decomposing atomically
-- RepoScanner as library module (not GenServer) -- stateless scanning, no supervision overhead
-- Module attribute patterns with compile-time regex -- zero runtime compilation cost
-- Elixir maps for scan reports (not XML) -- JSON-serializable for API consumption
-- format_scan_report/1 manual atom-to-string serialization -- report maps use atom keys internally
-- Reject unknown scan categories with 422 -- fail-fast API contract for consumers
-- Dependency validation at submit time rejects unknown task IDs immediately (not at schedule time)
-- Dependencies checked against both tasks and dead_letter tables for maximum flexibility
-- goal_progress/1 as client-side aggregation over tasks_for_goal/1 (no extra GenServer call)
-- Goal API routes placed after Task Queue section; stats before :goal_id to prevent parameter capture
-- CLI agentcom-submit-goal.js follows agentcom-submit.js pattern: standalone, no shared modules
-- Serial GenServer execution for ClaudeClient (no concurrency pool) -- one CLI invocation at a time via call queue
-- Task.async + Task.yield timeout pattern wrapping System.cmd for non-blocking GenServer
-- Stub Prompt/Response modules allow compilation without Plan 26-02 while preserving module boundaries
-- Regex-based XML extraction (not Saxy) for LLM response parsing -- LLM output may not be valid XML; regex is more lenient
-- Fallback plain text parsing when JSON decode fails -- supports --output-format text responses
-- rescue in Cli.invoke for System.cmd :enoent -- prevents GenServer crash when CLI binary unavailable
-- [Phase 30]: Path.expand before Path.wildcard for Windows cross-platform compatibility
-- [Phase 30]: Forward-only dependency constraint: task N can only depend on tasks 1..N-1
-- [Phase 30]: Kahn's algorithm via list-based queue for topological sort simplicity
-- [Phase 31]: Both resting->executing and resting->improving increment cycle count (active work cycles)
-- [Phase 31]: :improving exits only via budget exhaustion or watchdog timeout (not goal predicates)
-- [Phase 32]: @library_tables pattern in DetsBackup for non-GenServer DETS table owners (sync-only compaction, direct close/copy/init restore)
-- [Phase 32]: Path.expand on temp dirs for Windows Path.wildcard compatibility in test fixtures
-- [Phase 32]: GoalBacklog normalizes string priorities to integers; tests assert against normalized values
-- [Phase 34]: Config defaults for risk_ keys registered in Config GenServer @defaults (not module-local)
-- [Phase 34]: Tier 1 strict less-than for lines (<20), less-than-or-equal for files (<=3)
-- [Phase 34]: Verification report nil treated as passed (no verification = ok by default)
-- [Phase 34]: Protected path matching via String.contains? for prefix-style matching
-- [Phase 34]: require.main guard on agentcom-git.js enables dual CLI/module usage -- direct gatherDiffMeta import eliminates child process overhead
-- [Phase 30]: Single pending_async slot ensures one LLM call in-flight at a time (respects ClaudeClient serialization)
-- [Phase 30]: Verification before decomposition priority in GoalOrchestrator tick
-- [Phase 30]: Process.demonitor with :flush prevents stale DOWN messages from Task.async
-- [Phase 31]: WebhookHistory initialized in HubFSM.init alongside History (single startup point)
-- [Phase 31]: GitHub full_name normalized (/ to -) to match RepoRegistry url_to_id convention
-- [Phase 33]: HubFSM expanded to 4-state: improving->contemplating when zero findings AND budget available
-- [Phase 33]: Contemplation cycle spawns via Task.start (mirrors SelfImprovement pattern exactly)
-- [Phase 33]: Proposal schema enriched with problem, solution, why_now, why_not, dependencies fields
-- [Phase 33]: Contemplation reads PROJECT.md Out of Scope section to avoid proposing excluded features
-- [Phase 33]: ScalabilityAnalyzer pure metric analysis (no LLM) with agents-vs-machines recommendation
-- [Phase 33]: Improving predicates now transition to :executing when goals submitted (not :stay)
-
-### Research Findings (v1.3)
-
-- CostLedger MUST exist before Hub FSM makes first API call (cost spiral prevention)
-- Build order: ClaudeClient -> GoalBacklog -> HubFSM -> Scanning -> Cleanup
-- Start with 2-state FSM (Executing + Resting), expand to 4 states after core loop proves stable
-- PR-only before auto-merge (no auto-merge until pipeline proven)
-- Deterministic improvement scanning before LLM scanning
-- GenServer-based FSM (not gen_statem) following existing AgentFSM pattern
-- [Phase 30]: RepoRegistry.list_repos/0 (not list/0) with File.cwd! fallback for repo path resolution
-- [Phase 30]: Public helper extraction for unit-testable pure logic in Decomposer and Verifier
-- [Phase 30]: Verifier max retries at 2 via module attribute @max_retries
+v1.1-v1.3 decisions archived to respective milestone roadmap files.
 
 ### Pending Todos
 
-1. Analyze scalability bottlenecks and machine vs agent scaling tradeoffs (area: architecture)
-2. Pipeline phase discussions and research ahead of execution (area: planning)
-3. Pre-publication repo cleanup synthesized from agent audits (area: general)
+(Cleared at milestone boundary)
 
 ### Blockers/Concerns
 
-- [Tech debt]: REG-03 warm/cold model distinction deferred (binary availability used instead)
-- [Tech debt]: Elixir version bump (1.14 to 1.17+) recommended for :gen_statem logger fix
-- [Tech debt]: Sidecar queue.json atomicity -- fs.writeFileSync has partial-write-on-crash risk
-- [Tech debt]: VAPID keys ephemeral -- push subscriptions lost on hub restart
-- [Tech debt]: Analytics and Threads modules orphaned (not exposed via API)
+- [CI]: Unresolved merge conflict markers on remote main (endpoint.ex) -- PHASE 37 TARGET
+- [Pipeline]: wake_command not configured causes tasks to silently hang -- PHASE 39 TARGET
+- [Pipeline]: No execution timeout on executeWithVerification -- PHASE 39 TARGET
+- [Pipeline]: Local LLM output is text-only, not agentic -- PHASE 40-41 TARGET
+- [Tech debt]: REG-03 warm/cold model distinction deferred
+- [Tech debt]: Elixir version bump (1.14 to 1.17+) recommended
+- [Tech debt]: Sidecar queue.json atomicity risk
+- [Tech debt]: VAPID keys ephemeral on restart
 
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed Phase 33 -- Contemplation and Scalability (3 plans, 10 commits, regression fix applied)
+Stopped at: Roadmap created for v1.4 Reliable Autonomy
 Resume file: None

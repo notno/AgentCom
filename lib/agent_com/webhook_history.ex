@@ -38,8 +38,12 @@ defmodule AgentCom.WebhookHistory do
   end
 
   def clear do
-    :ets.delete_all_objects(@table)
-    :ok
+    case :ets.whereis(@table) do
+      :undefined -> :ok
+      _ref ->
+        :ets.delete_all_objects(@table)
+        :ok
+    end
   end
 
   defp trim do
