@@ -19,7 +19,7 @@ Progress: [██████▌       ] 50% (1/2 plans)
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 84 (19 v1.0 + 32 v1.1 + 25 v1.2 + 8 v1.3)
+- Total plans completed: 85 (19 v1.0 + 32 v1.1 + 25 v1.2 + 9 v1.3)
 - Average duration: 4 min
 - Total execution time: ~5.5 hours
 
@@ -60,6 +60,8 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - Dependency validation at submit time rejects unknown task IDs immediately (not at schedule time)
 - Dependencies checked against both tasks and dead_letter tables for maximum flexibility
 - goal_progress/1 as client-side aggregation over tasks_for_goal/1 (no extra GenServer call)
+- Goal API routes placed after Task Queue section; stats before :goal_id to prevent parameter capture
+- CLI agentcom-submit-goal.js follows agentcom-submit.js pattern: standalone, no shared modules
 
 ### Research Findings (v1.3)
 
@@ -87,5 +89,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 28-01-PLAN.md -- Pipeline dependencies (depends_on, goal_id, scheduler filter, goal progress API)
+Stopped at: Completed 27-02-PLAN.md -- Goal API routes, validation schemas, and agentcom-submit-goal.js CLI tool
 Resume file: None
