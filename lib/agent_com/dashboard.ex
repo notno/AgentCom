@@ -330,6 +330,27 @@ defmodule AgentCom.Dashboard do
           text-align: center; color: #555; padding: 20px; font-size: 0.85em;
         }
 
+        /* === Hub FSM Toggle === */
+        .fsm-toggle-wrap {
+          display: flex; align-items: center; gap: 6px; margin-right: 4px;
+        }
+        .fsm-toggle-label {
+          font-size: 0.75em; color: #aaa; font-weight: 600; white-space: nowrap;
+        }
+        .fsm-toggle { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+        .fsm-toggle input { opacity: 0; width: 0; height: 0; }
+        .fsm-toggle .slider {
+          position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+          background: #555; border-radius: 20px; transition: background 0.25s;
+        }
+        .fsm-toggle .slider::before {
+          content: ''; position: absolute; height: 14px; width: 14px;
+          left: 3px; bottom: 3px; background: #fff; border-radius: 50%;
+          transition: transform 0.25s;
+        }
+        .fsm-toggle input:checked + .slider { background: #22c55e; }
+        .fsm-toggle input:checked + .slider::before { transform: translateX(16px); }
+
         /* === Notification Button === */
         .notif-btn {
           background: none; border: 1px solid #7eb8da; color: #7eb8da;
@@ -685,6 +706,13 @@ defmodule AgentCom.Dashboard do
             <span id="notif-status" class="notif-status"></span>
           </div>
           <div class="header-metrics">
+            <div class="fsm-toggle-wrap">
+              <span class="fsm-toggle-label">Hub FSM</span>
+              <label class="fsm-toggle">
+                <input type="checkbox" id="hub-fsm-toggle" checked onchange="onHubFsmToggle(this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
             <div id="health-badge" class="health-badge" onclick="toggleHealthConditions()">
               <span class="dot ok" id="health-dot"></span>
               <span id="health-text">Healthy</span>
@@ -2541,6 +2569,21 @@ defmodule AgentCom.Dashboard do
 
           pausedBadge.style.display = data.paused ? 'inline' : 'none';
           pauseBtn.textContent = data.paused ? 'Resume' : 'Pause';
+
+          var headerToggle = document.getElementById('hub-fsm-toggle');
+          if (headerToggle) headerToggle.checked = !data.paused;
+        }
+
+        function onHubFsmToggle(isOn) {
+          var action = isOn ? 'resume' : 'pause';
+          fetch('/api/hub/' + action, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (window.hubToken || '')}
+          }).then(function(r) { return r.json(); }).then(function() {
+            if (dashConn && dashConn.ws && dashConn.ws.readyState === 1) {
+              dashConn.ws.send(JSON.stringify({type: 'request_snapshot'}));
+            }
+          }).catch(function(e) { console.warn('Hub FSM toggle failed:', e); });
         }
 
         function toggleHubFSMPause() {
