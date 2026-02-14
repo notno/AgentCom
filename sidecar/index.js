@@ -658,6 +658,10 @@ class HubConnection {
         pm2Manager.gracefulRestart(this, _queue, msg.reason || 'hub_commanded');
         break;
 
+      case 'room_message':
+        this.handleRoomMessage(msg);
+        break;
+
       default:
         log('debug', 'unhandled_message', { type: msg.type });
         break;
@@ -970,6 +974,35 @@ class HubConnection {
       setTimeout(() => process.exit(0), 500);
       return;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Room Message Handler: wake agent on chat room messages
+  // ---------------------------------------------------------------------------
+
+  handleRoomMessage(msg) {
+    log('info', 'room_message_received', { from: msg.from, seq: msg.seq });
+
+    // Wake the OpenClaw agent so it can read and respond to the room message
+    const wakeCommand = this.config.wake_command;
+    if (!wakeCommand) {
+      log('warning', 'room_wake_skipped', { reason: 'no_wake_command' });
+      return;
+    }
+
+    // Use openclaw system event to wake the agent with room context
+    const roomText = `Room message from ${msg.from}: ${msg.text}`;
+    const escapedText = roomText.replace(/"/g, '\\"');
+    const wakeCmd = `openclaw system event --text "${escapedText}" --heartbeat`;
+
+    const { execCommand } = require('./lib/wake');
+    execCommand(wakeCmd)
+      .then(() => {
+        log('info', 'room_wake_sent', { from: msg.from });
+      })
+      .catch((err) => {
+        log('warning', 'room_wake_failed', { error: err.message });
+      });
   }
 
   // ---------------------------------------------------------------------------

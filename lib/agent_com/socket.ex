@@ -214,6 +214,24 @@ defmodule AgentCom.Socket do
     {:push, {:text, Jason.encode!(push)}, state}
   end
 
+  def handle_info({:room_message, msg}, state) do
+    # Forward room messages to connected agents
+    # Don't echo back to the sender
+    if state.identified and Map.get(msg, :from) != state.agent_id do
+      payload = Jason.encode!(%{
+        "type" => "room_message",
+        "from" => msg.from,
+        "text" => msg.text,
+        "seq" => msg.seq,
+        "message_type" => msg.type,
+        "timestamp" => msg.timestamp
+      })
+      {:push, {:text, payload}, state}
+    else
+      {:ok, state}
+    end
+  end
+
   def handle_info(_msg, state), do: {:ok, state}
 
   @impl true
@@ -643,6 +661,7 @@ defmodule AgentCom.Socket do
     # Subscribe to broadcasts and presence
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "messages")
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "presence")
+    Phoenix.PubSub.subscribe(AgentCom.PubSub, "room")
 
     # Subscribe to any channels this agent is already in
     AgentCom.Channels.subscriptions(agent_id)
