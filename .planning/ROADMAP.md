@@ -95,7 +95,7 @@
 - [x] **Phase 37: CI Fix** - Unblock CI with green builds before building new features (shipped 2026-02-14)
 - [ ] **Phase 38: OllamaClient and Hub LLM Routing** - Hub-side Ollama HTTP client replaces all claude -p CLI calls
 - [x] **Phase 39: Pipeline Reliability** - Wake failures, execution timeouts, stuck task recovery, reconnect handling (shipped 2026-02-14)
-- [ ] **Phase 40: Sidecar Tool Infrastructure** - Tool registry, sandboxed executor, structured observations for LLM tool calling
+- [x] **Phase 40: Sidecar Tool Infrastructure** - Tool registry, sandboxed executor, structured observations for LLM tool calling (shipped 2026-02-14)
 - [ ] **Phase 41: Agentic Execution Loop** - ReAct loop with guardrails, output parsing, adaptive limits, dashboard streaming
 - [ ] **Phase 42: Agent Self-Management** - Sidecar pm2 awareness and hub-commanded restart capability
 - [ ] **Phase 43: Hub FSM Healing** - 5th FSM state with health aggregation, automated remediation, watchdog timeout
@@ -240,7 +240,7 @@ Note: Phases 38, 39, 40, 42 all depend only on Phase 37, so they can parallelize
 | 37. CI Fix | v1.4 | 1/1 | Complete | 2026-02-14 |
 | 38. OllamaClient + Hub LLM Routing | v1.4 | 0/TBD | Not started | - |
 | 39. Pipeline Reliability | v1.4 | 3/3 | Complete | 2026-02-14 |
-| 40. Sidecar Tool Infrastructure | v1.4 | 0/TBD | Not started | - |
+| 40. Sidecar Tool Infrastructure | v1.4 | 2/2 | Complete | 2026-02-14 |
 | 41. Agentic Execution Loop | v1.4 | 0/TBD | Not started | - |
 | 42. Agent Self-Management | v1.4 | 0/TBD | Not started | - |
 | 43. Hub FSM Healing | v1.4 | 0/TBD | Not started | - |
