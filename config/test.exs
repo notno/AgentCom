@@ -11,4 +11,8 @@ config :agent_com,
   threads_data_dir: "tmp/test/threads",
   backup_dir: "tmp/test/backups"
 
+# Disable HubFSM tick to prevent auto-transitions that spawn System.cmd("claude", ...)
+# which hangs in test env. Tests that need ticks call send(pid, :tick) directly.
+config :agent_com, hub_fsm_tick_enabled: false
+
 config :logger, level: :warning

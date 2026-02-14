@@ -13,7 +13,30 @@ defmodule AgentCom.Config do
     fallback_wait_ms: 5_000,
     task_ttl_ms: 600_000,
     tier_down_alert_threshold_ms: 60_000,
-    default_ollama_model: "qwen2.5-coder:7b"
+    default_ollama_model: "qwen2.5-coder:7b",
+    # Risk classification thresholds (Phase 34)
+    risk_tier1_max_lines: 20,
+    risk_tier1_max_files: 3,
+    risk_tier1_allowed_tiers: [:trivial, :standard],
+    risk_tier3_protected_paths: [
+      "config/",
+      "rel/",
+      ".github/",
+      "Dockerfile",
+      "docker-compose",
+      "mix.exs",
+      "mix.lock"
+    ],
+    risk_tier3_auth_paths: [
+      "lib/agent_com/auth",
+      "lib/agent_com/plugs/require_auth",
+      "priv/cert",
+      "priv/key",
+      ".env"
+    ],
+    risk_auto_merge_tier1: false,
+    risk_auto_merge_tier2: false,
+    risk_auto_merge_threshold: 20
   }
 
   # Client API

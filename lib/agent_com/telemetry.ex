@@ -114,6 +114,12 @@ defmodule AgentCom.Telemetry do
     measurements: `%{}`
     metadata: `%{from_state: atom}`
 
+  ### Risk Classification
+
+  - `[:agent_com, :risk, :classified]` - Task risk tier classified
+    measurements: `%{lines_changed: integer, file_count: integer}`
+    metadata: `%{tier: 1|2|3, complexity_tier: atom, protected_paths: integer, auto_merge_eligible: boolean}`
+
   ### DETS Operations (span events with :start/:stop/:exception)
 
   - `[:agent_com, :dets, :backup, :start/:stop/:exception]` - Backup operation
@@ -160,6 +166,8 @@ defmodule AgentCom.Telemetry do
       # Hub Claude Code invocations
       [:agent_com, :hub, :claude_call],
       [:agent_com, :hub, :budget_exhausted],
+      # Risk classification
+      [:agent_com, :risk, :classified],
       # DETS spans (start/stop/exception for each operation)
       [:agent_com, :dets, :backup, :start],
       [:agent_com, :dets, :backup, :stop],
@@ -203,13 +211,11 @@ defmodule AgentCom.Telemetry do
   @doc false
   def handle_event(event, measurements, metadata, _config) do
     try do
-      Logger.info(
-        %{
-          telemetry_event: Enum.join(event, "."),
-          measurements: measurements,
-          metadata: metadata
-        }
-      )
+      Logger.info(%{
+        telemetry_event: Enum.join(event, "."),
+        measurements: measurements,
+        metadata: metadata
+      })
     rescue
       e ->
         Logger.error("Telemetry handler crashed: #{inspect(e)}")

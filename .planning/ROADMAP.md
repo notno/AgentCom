@@ -83,8 +83,8 @@
   - [x] 30-03-PLAN.md -- GoalOrchestrator GenServer and HubFSM integration
 - [x] **Phase 31: Hub Event Wiring** - GitHub webhooks and external event triggers for FSM transitions (shipped 2026-02-13)
 - [x] **Phase 32: Improvement Scanning** - Deterministic and LLM-assisted codebase improvement identification (shipped 2026-02-13)
-- [ ] **Phase 33: Contemplation and Scalability** - Feature proposal generation and bottleneck analysis
-- [ ] **Phase 34: Tiered Autonomy** - Risk-based PR classification with configurable thresholds
+- [x] **Phase 33: Contemplation and Scalability** - Feature proposal generation and bottleneck analysis (shipped 2026-02-14)
+- [x] **Phase 34: Tiered Autonomy** - Risk-based PR classification with configurable thresholds (shipped 2026-02-13)
 - [x] **Phase 35: Pre-Publication Cleanup** - Secret scanning, IP replacement, workspace file management (shipped 2026-02-13)
 - [x] **Phase 36: Dashboard and Observability** - Goal progress, cost tracking, and FSM visibility panels (shipped 2026-02-13)
 
@@ -229,7 +229,11 @@ Plans:
   1. In Contemplating state, hub generates structured feature proposals from codebase analysis and writes them as XML files in a proposals directory
   2. Hub produces a scalability analysis report from existing ETS metrics covering throughput, agent utilization, and bottlenecks
   3. Scalability report recommends whether to add machines vs agents based on current constraint analysis
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [x] 33-01-PLAN.md -- HubFSM 4-state expansion with contemplating transitions and cycle spawn
+- [x] 33-02-PLAN.md -- Proposal schema enrichment, prompt/response update, contemplation context
+- [x] 33-03-PLAN.md -- TDD test suite for all contemplation and HubFSM expansion modules
 
 ### Phase 34: Tiered Autonomy
 **Goal**: Completed tasks are classified by risk so the system can enforce appropriate review levels
@@ -239,7 +243,10 @@ Plans:
   1. Completed tasks are classified into risk tiers based on complexity, number of files touched, and lines changed
   2. Default mode is PR-only for all tiers -- no auto-merge until pipeline reliability is proven through production data
   3. Tier thresholds are configurable via the existing Config GenServer and can be adjusted without code changes
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [x] 34-01-PLAN.md -- TDD: RiskClassifier pure function module with Config-driven thresholds
+- [x] 34-02-PLAN.md -- Sidecar diff gathering, classify endpoint, PR body enrichment
 
 ### Phase 35: Pre-Publication Cleanup
 **Goal**: Repos can be scanned for sensitive content before open-sourcing, with actionable findings
@@ -286,7 +293,7 @@ Phases execute in numeric order: 24, 25, 26... Decimal phases (if inserted) exec
 | 30. Goal Decomposition and Inner Loop | v1.3 | 3/3 | Complete | 2026-02-13 |
 | 31. Hub Event Wiring | v1.3 | 3/3 | Complete | 2026-02-13 |
 | 32. Improvement Scanning | v1.3 | 4/4 | Complete | 2026-02-13 |
-| 33. Contemplation and Scalability | v1.3 | 0/TBD | Not started | - |
-| 34. Tiered Autonomy | v1.3 | 0/TBD | Not started | - |
+| 33. Contemplation and Scalability | v1.3 | 3/3 | Complete | 2026-02-14 |
+| 34. Tiered Autonomy | v1.3 | 2/2 | Complete | 2026-02-13 |
 | 35. Pre-Publication Cleanup | v1.3 | 2/2 | Complete | 2026-02-13 |
 | 36. Dashboard and Observability | v1.3 | 2/2 | Complete | 2026-02-13 |

@@ -9,17 +9,17 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 
 ## Current Position
 
-Phase: 32 of 36 (Improvement Scanning)
-Plan: 4/4 complete
-Status: Phase Complete
-Last activity: 2026-02-13 -- Plan 32-04 TDD: SelfImprovement test suite (35 tests, 0 failures)
+Phase: 33 of 36 (Contemplation and Scalability)
+Plan: 3/3 complete
+Status: Complete
+Last activity: 2026-02-14 -- Phase 33: HubFSM 4-state expansion, proposal schema enrichment, TDD suite (6 tasks, 10 commits incl. regression fix)
 
-Progress: [███████████████] 100% (4/4 plans)
+Progress: [███████████████] 100% (3/3 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 91 (19 v1.0 + 32 v1.1 + 25 v1.2 + 15 v1.3)
+- Total plans completed: 94 (19 v1.0 + 32 v1.1 + 25 v1.2 + 18 v1.3)
 - Average duration: 4 min
 - Total execution time: ~5.5 hours
 
@@ -85,11 +85,22 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - [Phase 32]: @library_tables pattern in DetsBackup for non-GenServer DETS table owners (sync-only compaction, direct close/copy/init restore)
 - [Phase 32]: Path.expand on temp dirs for Windows Path.wildcard compatibility in test fixtures
 - [Phase 32]: GoalBacklog normalizes string priorities to integers; tests assert against normalized values
+- [Phase 34]: Config defaults for risk_ keys registered in Config GenServer @defaults (not module-local)
+- [Phase 34]: Tier 1 strict less-than for lines (<20), less-than-or-equal for files (<=3)
+- [Phase 34]: Verification report nil treated as passed (no verification = ok by default)
+- [Phase 34]: Protected path matching via String.contains? for prefix-style matching
+- [Phase 34]: require.main guard on agentcom-git.js enables dual CLI/module usage -- direct gatherDiffMeta import eliminates child process overhead
 - [Phase 30]: Single pending_async slot ensures one LLM call in-flight at a time (respects ClaudeClient serialization)
 - [Phase 30]: Verification before decomposition priority in GoalOrchestrator tick
 - [Phase 30]: Process.demonitor with :flush prevents stale DOWN messages from Task.async
 - [Phase 31]: WebhookHistory initialized in HubFSM.init alongside History (single startup point)
 - [Phase 31]: GitHub full_name normalized (/ to -) to match RepoRegistry url_to_id convention
+- [Phase 33]: HubFSM expanded to 4-state: improving->contemplating when zero findings AND budget available
+- [Phase 33]: Contemplation cycle spawns via Task.start (mirrors SelfImprovement pattern exactly)
+- [Phase 33]: Proposal schema enriched with problem, solution, why_now, why_not, dependencies fields
+- [Phase 33]: Contemplation reads PROJECT.md Out of Scope section to avoid proposing excluded features
+- [Phase 33]: ScalabilityAnalyzer pure metric analysis (no LLM) with agents-vs-machines recommendation
+- [Phase 33]: Improving predicates now transition to :executing when goals submitted (not :stay)
 
 ### Research Findings (v1.3)
 
@@ -119,6 +130,6 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 
 ## Session Continuity
 
-Last session: 2026-02-13
-Stopped at: Completed Phase 32 -- Improvement Scanning (4/4 plans, 35 tests, 12 commits)
+Last session: 2026-02-14
+Stopped at: Completed Phase 33 -- Contemplation and Scalability (3 plans, 10 commits, regression fix applied)
 Resume file: None

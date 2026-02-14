@@ -1,19 +1,20 @@
 defmodule AgentCom.HubFSM do
   @moduledoc """
-  Singleton GenServer implementing the hub's autonomous brain as a 3-state FSM.
+  Singleton GenServer implementing the hub's autonomous brain as a 4-state FSM.
 
   The HubFSM drives all autonomous hub behavior by evaluating system state
-  on a 1-second tick and transitioning between `:resting`, `:executing`, and
-  `:improving` based on goal queue depth, budget availability, and external
-  repository events.
+  on a 1-second tick and transitioning between `:resting`, `:executing`,
+  `:improving`, and `:contemplating` based on goal queue depth, budget
+  availability, and external repository events.
 
   ## States
 
-  | State        | Meaning                                         |
-  |--------------|-------------------------------------------------|
-  | `:resting`   | No pending goals or budget exhausted             |
-  | `:executing` | Actively processing goals from the backlog       |
-  | `:improving` | Processing improvement cycle triggered by webhook |
+  | State            | Meaning                                              |
+  |------------------|------------------------------------------------------|
+  | `:resting`       | No pending goals or budget exhausted                  |
+  | `:executing`     | Actively processing goals from the backlog            |
+  | `:improving`     | Processing improvement cycle triggered by webhook     |
+  | `:contemplating` | Generating feature proposals and analyzing scalability |
 
   ## Tick-Based Evaluation
 
@@ -48,7 +49,8 @@ defmodule AgentCom.HubFSM do
   @valid_transitions %{
     resting: [:executing, :improving],
     executing: [:resting],
-    improving: [:resting, :executing]
+    improving: [:resting, :executing, :contemplating],
+    contemplating: [:resting, :executing]
   }
 
   @tick_interval_ms 1_000
@@ -157,7 +159,7 @@ defmodule AgentCom.HubFSM do
     # Broadcast initial state
     broadcast_state_change(state)
 
-    # Notify ClaudeClient of initial hub state (3-state FSM: resting/executing/improving)
+    # Notify ClaudeClient of initial hub state (4-state FSM: resting/executing/improving/contemplating)
     try do
       AgentCom.ClaudeClient.set_hub_state(:executing)
     catch
@@ -310,7 +312,44 @@ defmodule AgentCom.HubFSM do
     Logger.info("improvement_cycle_complete", result: inspect(result))
 
     if state.fsm_state == :improving do
-      updated = do_transition(state, :resting, "improvement cycle complete")
+      findings_count = Map.get(result, :findings, 0)
+      system_state = gather_system_state()
+
+      {new_state, reason} =
+        cond do
+          system_state.pending_goals > 0 ->
+            {:executing, "goals submitted during improvement"}
+
+          findings_count == 0 and system_state.contemplating_budget_available ->
+            {:contemplating, "no improvements found, contemplating"}
+
+          true ->
+            {:resting, "improvement cycle complete"}
+        end
+
+      updated = do_transition(state, new_state, reason)
+      {:noreply, updated}
+    else
+      {:noreply, state}
+    end
+  end
+
+  # -- contemplation cycle complete ----------------------------------------------
+
+  def handle_info({:contemplation_cycle_complete, result}, state) do
+    Logger.info("contemplation_cycle_complete", result: inspect(result))
+
+    if state.fsm_state == :contemplating do
+      system_state = gather_system_state()
+
+      {new_state, reason} =
+        if system_state.pending_goals > 0 do
+          {:executing, "goals submitted during contemplation"}
+        else
+          {:resting, "contemplation cycle complete"}
+        end
+
+      updated = do_transition(state, new_state, reason)
       {:noreply, updated}
     else
       {:noreply, state}
@@ -370,11 +409,20 @@ defmodule AgentCom.HubFSM do
         :exit, _ -> false
       end
 
+    # Check contemplating budget (safe if not started)
+    contemplating_budget_available =
+      try do
+        AgentCom.CostLedger.check_budget(:contemplating) == :ok
+      catch
+        :exit, _ -> false
+      end
+
     %{
       pending_goals: pending_goals,
       active_goals: active_goals,
       budget_exhausted: budget_exhausted,
-      improving_budget_available: improving_budget_available
+      improving_budget_available: improving_budget_available,
+      contemplating_budget_available: contemplating_budget_available
     }
   end
 
@@ -389,8 +437,8 @@ defmodule AgentCom.HubFSM do
     History.record(state.fsm_state, new_state, reason, new_transition_count)
 
     # Update ClaudeClient hub state (safe if not started)
-    # :resting is NOT a valid ClaudeClient hub state, only notify for :executing and :improving
-    if new_state in [:executing, :improving] do
+    # :resting is NOT a valid ClaudeClient hub state, only notify for active states
+    if new_state in [:executing, :improving, :contemplating] do
       try do
         AgentCom.ClaudeClient.set_hub_state(new_state)
       catch
@@ -443,6 +491,16 @@ defmodule AgentCom.HubFSM do
       end)
     end
 
+    # Spawn async contemplation cycle when entering :contemplating
+    if new_state == :contemplating do
+      pid = self()
+
+      Task.start(fn ->
+        result = AgentCom.Contemplation.run()
+        send(pid, {:contemplation_cycle_complete, result})
+      end)
+    end
+
     updated
   end
 
@@ -469,7 +527,11 @@ defmodule AgentCom.HubFSM do
   end
 
   defp arm_tick do
-    Process.send_after(self(), :tick, @tick_interval_ms)
+    if Application.get_env(:agent_com, :hub_fsm_tick_enabled, true) do
+      Process.send_after(self(), :tick, @tick_interval_ms)
+    else
+      nil
+    end
   end
 
   defp arm_watchdog do
