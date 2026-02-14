@@ -214,7 +214,12 @@ Plans:
   3. Scanning cycles through repos in priority order using the existing RepoRegistry
   4. Improvement history (DETS-backed) prevents Sisyphus loops by tracking attempted improvements with anti-oscillation detection
   5. Per-file cooldowns prevent re-scanning recently improved files within a configurable window
-**Plans**: TBD
+**Plans:** 4 plans
+Plans:
+- [ ] 32-01-PLAN.md -- Finding struct, ImprovementHistory (DETS + cooldowns + oscillation), DetsBackup registration
+- [ ] 32-02-PLAN.md -- CredoScanner, DialyzerScanner, DeterministicScanner (test gaps, doc gaps, dead deps)
+- [ ] 32-03-PLAN.md -- LlmScanner, SelfImprovement orchestrator, HubFSM Improving state
+- [ ] 32-04-PLAN.md -- TDD: comprehensive test suite for all SelfImprovement modules
 
 ### Phase 33: Contemplation and Scalability
 **Goal**: The hub produces strategic analysis -- feature proposals from codebase insight and scalability recommendations from metrics
@@ -280,7 +285,7 @@ Phases execute in numeric order: 24, 25, 26... Decimal phases (if inserted) exec
 | 29. Hub FSM Core | v1.3 | 4/4 | Complete | 2026-02-13 |
 | 30. Goal Decomposition and Inner Loop | v1.3 | 0/TBD | Not started | - |
 | 31. Hub Event Wiring | v1.3 | 0/TBD | Not started | - |
-| 32. Improvement Scanning | v1.3 | 0/TBD | Not started | - |
+| 32. Improvement Scanning | v1.3 | 0/4 | Not started | - |
 | 33. Contemplation and Scalability | v1.3 | 0/TBD | Not started | - |
 | 34. Tiered Autonomy | v1.3 | 0/TBD | Not started | - |
 | 35. Pre-Publication Cleanup | v1.3 | 2/2 | Complete | 2026-02-13 |
