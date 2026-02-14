@@ -527,7 +527,11 @@ defmodule AgentCom.HubFSM do
   end
 
   defp arm_tick do
-    Process.send_after(self(), :tick, @tick_interval_ms)
+    if Application.get_env(:agent_com, :hub_fsm_tick_enabled, true) do
+      Process.send_after(self(), :tick, @tick_interval_ms)
+    else
+      nil
+    end
   end
 
   defp arm_watchdog do
