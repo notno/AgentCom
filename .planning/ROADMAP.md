@@ -93,7 +93,7 @@
 **Phase Numbering:** 37-44 (8 phases)
 
 - [x] **Phase 37: CI Fix** - Unblock CI with green builds before building new features (shipped 2026-02-14)
-- [ ] **Phase 38: OllamaClient and Hub LLM Routing** - Hub-side Ollama HTTP client replaces all claude -p CLI calls
+- [x] **Phase 38: OllamaClient and Hub LLM Routing** - Hub-side Ollama HTTP client replaces all claude -p CLI calls (shipped 2026-02-14)
 - [x] **Phase 39: Pipeline Reliability** - Wake failures, execution timeouts, stuck task recovery, reconnect handling (shipped 2026-02-14)
 - [x] **Phase 40: Sidecar Tool Infrastructure** - Tool registry, sandboxed executor, structured observations for LLM tool calling (shipped 2026-02-14)
 - [ ] **Phase 41: Agentic Execution Loop** - ReAct loop with guardrails, output parsing, adaptive limits, dashboard streaming
@@ -128,8 +128,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 38-01-PLAN.md -- OllamaClient HTTP module (chat/2, config, unit tests)
-- [ ] 38-02-PLAN.md -- Hub FSM LLM routing swap and prompt adaptation
+- [x] 38-01-PLAN.md -- OllamaClient HTTP module (chat/2, config, unit tests)
+- [x] 38-02-PLAN.md -- Hub FSM LLM routing swap and prompt adaptation
 
 ### Phase 39: Pipeline Reliability
 **Goal**: Tasks reliably move from assignment to completion -- wake failures recovered, stuck tasks requeued, timeouts enforced, reconnects handled
@@ -238,7 +238,7 @@ Note: Phases 38, 39, 40, 42 all depend only on Phase 37, so they can parallelize
 | 17-23 | v1.2 | 25/25 | Complete | 2026-02-12 |
 | 24-36 | v1.3 | 35/35 | Complete | 2026-02-14 |
 | 37. CI Fix | v1.4 | 1/1 | Complete | 2026-02-14 |
-| 38. OllamaClient + Hub LLM Routing | v1.4 | 0/TBD | Not started | - |
+| 38. OllamaClient + Hub LLM Routing | v1.4 | 2/2 | Complete | 2026-02-14 |
 | 39. Pipeline Reliability | v1.4 | 3/3 | Complete | 2026-02-14 |
 | 40. Sidecar Tool Infrastructure | v1.4 | 2/2 | Complete | 2026-02-14 |
 | 41. Agentic Execution Loop | v1.4 | 0/TBD | Not started | - |
