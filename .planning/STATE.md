@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Phase 43 - Hub FSM Healing (v1.4 Reliable Autonomy)
+**Current focus:** Phase 44 - Hub FSM Testing (v1.4 Reliable Autonomy)
 
 ## Current Position
 
-Phase: 41 of 44 (Agentic Execution Loop) -- COMPLETE
+Phase: 43 of 44 (Hub FSM Healing) -- COMPLETE
 Plan: 3 of 3 in current phase
-Status: Phase 41 complete -- multi-turn ReAct loop with guardrails and dashboard streaming
-Last activity: 2026-02-14 -- Phase 41 complete (3 plans, 6 task commits, 63 tests)
+Status: Phase 43 complete -- 5-state FSM with health aggregation, remediation, watchdog
+Last activity: 2026-02-14 -- Phase 43 complete (3 plans, 6 task commits, 15 tests)
 
-Progress: [██████░░░░] 63% (v1.4) -- 5/8 phases complete (+ Phase 42 also complete)
+Progress: [█████████░] 88% (v1.4) -- 7/8 phases complete
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 121 (19 v1.0 + 32 v1.1 + 25 v1.2 + 35 v1.3 + 10 v1.4)
+- Total plans completed: 124 (19 v1.0 + 32 v1.1 + 25 v1.2 + 35 v1.3 + 13 v1.4)
 - Average duration: 4 min
 - Total execution time: ~8 hours
 
@@ -57,5 +57,5 @@ v1.1-v1.3 decisions archived to respective milestone roadmap files.
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Phase 41 complete (3 plans, 6 task commits, 63 tests) + Phase 42 complete
+Stopped at: Phase 43 complete (3 plans, 6 task commits, 15 tests)
 Resume file: None

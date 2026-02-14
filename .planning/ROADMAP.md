@@ -98,7 +98,7 @@
 - [x] **Phase 40: Sidecar Tool Infrastructure** - Tool registry, sandboxed executor, structured observations for LLM tool calling (shipped 2026-02-14)
 - [x] **Phase 41: Agentic Execution Loop** - ReAct loop with guardrails, output parsing, adaptive limits, dashboard streaming (shipped 2026-02-14)
 - [x] **Phase 42: Agent Self-Management** - Sidecar pm2 awareness and hub-commanded restart capability (shipped 2026-02-14)
-- [ ] **Phase 43: Hub FSM Healing** - 5th FSM state with health aggregation, automated remediation, watchdog timeout
+- [x] **Phase 43: Hub FSM Healing** - 5th FSM state with health aggregation, automated remediation, watchdog timeout (shipped 2026-02-14)
 - [ ] **Phase 44: Hub FSM Testing** - Integration tests covering all 5 FSM states, healing cycles, HTTP endpoints
 
 ## Phase Details
@@ -206,9 +206,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 43-01-PLAN.md -- HealthAggregator module and :healing FSM state with predicates
-- [ ] 43-02-PLAN.md -- Stuck task remediation, endpoint recovery, and FSM wiring
-- [ ] 43-03-PLAN.md -- CI/compilation healing, watchdog timer, and audit logging
+- [x] 43-01-PLAN.md -- HealthAggregator module and :healing FSM state with predicates
+- [x] 43-02-PLAN.md -- Stuck task remediation, endpoint recovery, and FSM wiring
+- [x] 43-03-PLAN.md -- CI/compilation healing, watchdog timer, and audit logging
 
 ### Phase 44: Hub FSM Testing
 **Goal**: Integration tests validate all 5 FSM states, healing cycles, and HTTP control endpoints
@@ -243,7 +243,7 @@ Note: Phases 38, 39, 40, 42 all depend only on Phase 37, so they can parallelize
 | 40. Sidecar Tool Infrastructure | v1.4 | 2/2 | Complete | 2026-02-14 |
 | 41. Agentic Execution Loop | v1.4 | 3/3 | Complete | 2026-02-14 |
 | 42. Agent Self-Management | v1.4 | 1/1 | Complete | 2026-02-14 |
-| 43. Hub FSM Healing | v1.4 | 0/TBD | Not started | - |
+| 43. Hub FSM Healing | v1.4 | 3/3 | Complete | 2026-02-14 |
 | 44. Hub FSM Testing | v1.4 | 0/TBD | Not started | - |
 
 **Totals:** 44 phases, 111+ plans across 5 milestones.
