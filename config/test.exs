@@ -15,4 +15,7 @@ config :agent_com,
 # which hangs in test env. Tests that need ticks call send(pid, :tick) directly.
 config :agent_com, hub_fsm_tick_enabled: false
 
+# Use claude_cli backend in test (OllamaClient tested directly with mocks)
+config :agent_com, llm_backend: :claude_cli
+
 config :logger, level: :warning

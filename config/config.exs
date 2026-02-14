@@ -21,5 +21,13 @@ config :logger, :default_handler,
     ]
   }
 
+# Ollama LLM backend (Phase 38)
+config :agent_com,
+  llm_backend: :ollama,
+  ollama_host: "localhost",
+  ollama_port: 11434,
+  ollama_model: "qwen3:8b",
+  ollama_timeout_ms: 120_000
+
 # Import environment-specific config (e.g., config/test.exs for MIX_ENV=test)
 import_config "#{config_env()}.exs"
