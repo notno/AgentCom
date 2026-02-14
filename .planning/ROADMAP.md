@@ -173,12 +173,12 @@ Plans:
   3. Output parser handles native tool_calls JSON, JSON-in-content extraction, and XML extraction (Qwen3 >5 tool fallback)
   4. Dashboard shows real-time tool call events (tool name, args summary, result summary) during agentic execution via WebSocket
   5. Task that times out or exhausts budget preserves partial work, runs verification on current state, and reports partial_pass with completed vs remaining
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 41-01: ReAct loop core with output parsing
-- [ ] 41-02: Safety guardrails and adaptive limits
-- [ ] 41-03: System prompt, partial results, and dashboard streaming
+- [ ] 41-01-PLAN.md -- ReAct loop core with 3-layer output parser and multi-turn tool execution
+- [ ] 41-02-PLAN.md -- Safety guardrails: adaptive iteration limits, repetition detection, stall detection
+- [ ] 41-03-PLAN.md -- Agentic system prompt with few-shot examples, dashboard streaming, partial results
 
 ### Phase 42: Agent Self-Management
 **Goal**: Sidecars are aware of their own pm2 process and can restart themselves on hub command
