@@ -1,8 +1,8 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "Investigate why Mermaid diagrams in docs/architecture.md are rendering as raw code text instead of visual diagrams in ExDoc-generated HTML"
 created: 2026-02-12T00:00:00Z
-updated: 2026-02-12T00:00:00Z
+updated: 2026-02-13T00:00:00Z
 ---
 
 ## Current Focus
@@ -70,8 +70,8 @@ started: Has never worked -- no Mermaid JS configuration has ever been added to 
 
 root_cause: ExDoc v0.40.1 correctly parses ```mermaid fenced code blocks and outputs `<pre><code class="mermaid">` HTML elements, but it does NOT include the Mermaid.js rendering library. The mix.exs docs() config is missing a `before_closing_body_tag` hook that would inject the Mermaid CDN script and initialization code. Without this script, browsers display the mermaid syntax as raw preformatted text because no JavaScript exists to transform the `<code class="mermaid">` elements into SVG diagrams.
 
-fix: (diagnosis only -- not applied)
+fix: Added `before_closing_body_tag` hook to mix.exs docs() config that injects Mermaid.js v11 CDN script and rendering logic. The script finds all `<pre><code class="mermaid">` elements, renders them as SVG via `mermaid.render()`, and hides the original code blocks.
 
-verification: (diagnosis only)
+verification: Ran `mix docs` successfully. Confirmed doc/architecture.html contains the mermaid CDN script tag and initialization code (line 227+). Confirmed all 89 generated HTML pages include the script. The 3 mermaid code blocks in architecture.html retain their `class="mermaid"` markup and will now be rendered as SVG diagrams when viewed in a browser.
 
-files_changed: []
+files_changed: [mix.exs]

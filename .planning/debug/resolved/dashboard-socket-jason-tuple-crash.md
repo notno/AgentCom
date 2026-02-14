@@ -1,8 +1,8 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "DashboardSocket crashes with Protocol.UndefinedError: Jason.Encoder not implemented for Tuple when backup_complete PubSub event is forwarded to WebSocket clients"
 created: 2026-02-12T00:00:00Z
-updated: 2026-02-12T00:00:00Z
+updated: 2026-02-13T00:00:00Z
 ---
 
 ## Current Focus
@@ -75,6 +75,17 @@ root_cause: |
   as dets_health.last_backup_results, which is then passed to Jason.encode!/1
   (dashboard_socket.ex lines 39, 49, 134). Jason has no encoder for tuples, causing the crash.
 
-fix: (not applied - diagnosis only)
-verification: (not applied - diagnosis only)
-files_changed: []
+fix: |
+  Added normalize_compaction_history/1 and normalize_compaction_result/1 in DetsBackup to convert
+  all compaction history entries (including error reasons that may be tuples from GenServer exit)
+  into Jason-serializable maps with string values. Applied normalization in both health_metrics
+  and compaction_history handlers. The existing normalize_backup_results/1 already handled
+  last_backup_results correctly.
+verification: |
+  All 6 dets_backup tests pass, including:
+  - health_metrics returns Jason-serializable data after backup (Jason.encode! succeeds)
+  - health_metrics compaction_history is Jason-serializable (Jason.encode succeeds)
+  - compaction_history is Jason-serializable (Jason.encode succeeds)
+files_changed:
+  - lib/agent_com/dets_backup.ex
+  - test/dets_backup_test.exs

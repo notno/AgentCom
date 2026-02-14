@@ -1,8 +1,8 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "Smoke tests in test/smoke/ run during `mix test --exclude skip` and fail with econnrefused"
 created: 2026-02-11T00:00:00Z
-updated: 2026-02-11T00:00:00Z
+updated: 2026-02-13T00:00:00Z
 ---
 
 ## Current Focus
@@ -65,8 +65,12 @@ started: These tests have never had exclusion tags; the gap has existed since th
 
 root_cause: The 3 smoke test modules (Smoke.BasicTest, Smoke.FailureTest, Smoke.ScaleTest) have no @moduletag to distinguish them from regular tests. ExUnit.start in test_helper.exs only excludes [:skip]. Therefore ExUnit includes every test file matching test/**/*_test.exs, including the smoke tests, which fail with econnrefused because they require a running hub server.
 
-fix: (diagnosis only -- not applied)
+fix: Already applied prior to this session. All 3 smoke test files have @moduletag :smoke (basic_test.exs:13, failure_test.exs:13, scale_test.exs:12). test_helper.exs excludes both :skip and :smoke via ExUnit.start(exclude: [:skip, :smoke]).
 
-verification: (diagnosis only)
+verification: Ran `mix test --exclude skip` -- 801 tests, 19 failures (6 excluded), zero econnrefused errors. Smoke tests are properly excluded.
 
-files_changed: []
+files_changed:
+- test/smoke/basic_test.exs (@moduletag :smoke added)
+- test/smoke/failure_test.exs (@moduletag :smoke added)
+- test/smoke/scale_test.exs (@moduletag :smoke added)
+- test/test_helper.exs (exclude: [:skip, :smoke])
