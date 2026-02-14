@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Phase 44 - Hub FSM Testing (v1.4 Reliable Autonomy)
+**Current focus:** v1.4 Reliable Autonomy -- COMPLETE
 
 ## Current Position
 
-Phase: 43 of 44 (Hub FSM Healing) -- COMPLETE
-Plan: 3 of 3 in current phase
-Status: Phase 43 complete -- 5-state FSM with health aggregation, remediation, watchdog
-Last activity: 2026-02-14 -- Phase 43 complete (3 plans, 6 task commits, 15 tests)
+Phase: 44 of 44 (Hub FSM Testing) -- COMPLETE
+Plan: 2 of 2 in current phase
+Status: v1.4 milestone complete -- all 8 phases shipped
+Last activity: 2026-02-14 -- Phase 44 complete (2 plans, 3 task commits, 22 tests)
 
-Progress: [█████████░] 88% (v1.4) -- 7/8 phases complete
+Progress: [██████████] 100% (v1.4) -- 8/8 phases complete
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 124 (19 v1.0 + 32 v1.1 + 25 v1.2 + 35 v1.3 + 13 v1.4)
+- Total plans completed: 126 (19 v1.0 + 32 v1.1 + 25 v1.2 + 35 v1.3 + 15 v1.4)
 - Average duration: 4 min
-- Total execution time: ~8 hours
+- Total execution time: ~8.5 hours
 
 **Milestones:**
 
@@ -31,6 +31,7 @@ Progress: [█████████░] 88% (v1.4) -- 7/8 phases complete
 | v1.1 | 9-16 | 32 | 153 | 195 | +35,732 | 4 days |
 | v1.2 | 17-23 | 25 | 136 | 147 | +26,075 | 1 day |
 | v1.3 | 24-36 | 35 | 167 | 242 | +39,920 | 2 days |
+| v1.4 | 37-44 | 15 | ~45 | ~60 | ~+5,000 | 1 day |
 
 ## Accumulated Context
 
@@ -57,5 +58,5 @@ v1.1-v1.3 decisions archived to respective milestone roadmap files.
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Phase 43 complete (3 plans, 6 task commits, 15 tests)
+Stopped at: v1.4 milestone complete (Phase 44, 2 plans, 3 commits, 22 tests)
 Resume file: None

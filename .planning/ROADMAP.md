@@ -6,7 +6,7 @@
 - [x] **v1.1 Hardening** - Phases 9-16 (shipped 2026-02-12)
 - [x] **v1.2 Smart Agent Pipeline** - Phases 17-23 (shipped 2026-02-12)
 - [x] **v1.3 Hub FSM Loop of Self-Improvement** - Phases 24-36 (shipped 2026-02-14)
-- [ ] **v1.4 Reliable Autonomy** - Phases 37-44 (in progress)
+- [x] **v1.4 Reliable Autonomy** - Phases 37-44 (shipped 2026-02-14)
 
 ## Phases
 
@@ -86,7 +86,7 @@
 
 </details>
 
-### v1.4 Reliable Autonomy (In Progress)
+### v1.4 Reliable Autonomy (SHIPPED 2026-02-14)
 
 **Milestone Goal:** Make the autonomous pipeline actually work end-to-end -- local LLMs execute agentic tool-calling loops, the hub heals its own infrastructure and code, and the pipeline reliably moves tasks from assignment to completion.
 
@@ -99,7 +99,7 @@
 - [x] **Phase 41: Agentic Execution Loop** - ReAct loop with guardrails, output parsing, adaptive limits, dashboard streaming (shipped 2026-02-14)
 - [x] **Phase 42: Agent Self-Management** - Sidecar pm2 awareness and hub-commanded restart capability (shipped 2026-02-14)
 - [x] **Phase 43: Hub FSM Healing** - 5th FSM state with health aggregation, automated remediation, watchdog timeout (shipped 2026-02-14)
-- [ ] **Phase 44: Hub FSM Testing** - Integration tests covering all 5 FSM states, healing cycles, HTTP endpoints
+- [x] **Phase 44: Hub FSM Testing** - Integration tests covering all 5 FSM states, healing cycles, HTTP endpoints (shipped 2026-02-14)
 
 ## Phase Details
 
@@ -222,8 +222,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 44-01-PLAN.md -- FSM full-cycle integration tests and healing state tests
-- [ ] 44-02-PLAN.md -- Hub FSM HTTP endpoint tests (pause, resume, state, history)
+- [x] 44-01-PLAN.md -- FSM full-cycle integration tests and healing state tests
+- [x] 44-02-PLAN.md -- Hub FSM HTTP endpoint tests (pause, resume, state, history)
 
 ## Progress
 
@@ -244,6 +244,6 @@ Note: Phases 38, 39, 40, 42 all depend only on Phase 37, so they can parallelize
 | 41. Agentic Execution Loop | v1.4 | 3/3 | Complete | 2026-02-14 |
 | 42. Agent Self-Management | v1.4 | 1/1 | Complete | 2026-02-14 |
 | 43. Hub FSM Healing | v1.4 | 3/3 | Complete | 2026-02-14 |
-| 44. Hub FSM Testing | v1.4 | 0/TBD | Not started | - |
+| 44. Hub FSM Testing | v1.4 | 2/2 | Complete | 2026-02-14 |
 
 **Totals:** 44 phases, 111+ plans across 5 milestones.
