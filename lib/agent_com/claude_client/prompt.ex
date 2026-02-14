@@ -256,13 +256,207 @@ defmodule AgentCom.ClaudeClient.Prompt do
     """
   end
 
-  # build/3 accepts an optional backend atom (e.g. :ollama, :claude_cli).
-  # Currently delegates to the 2-arity build -- backend-specific prompt
-  # formatting can be added later if needed.
+  # ---------------------------------------------------------------------------
+  # Ollama prompts (JSON format with /no_think)
+  # ---------------------------------------------------------------------------
+
+  def build(:decompose, %{goal: goal, context: context}, :ollama) do
+    """
+    You are a goal decomposition agent. Break down the given goal into small, executable tasks.
+
+    GOAL:
+    #{goal_to_text(goal)}
+
+    CONTEXT:
+    #{context_to_text(context)}
+
+    INSTRUCTIONS:
+    Step 1: Read the goal carefully and understand what needs to be done.
+    Step 2: Identify 3-8 independent tasks that together complete the goal.
+    Step 3: Each task must have a clear title, description, success criteria, and dependency list.
+    Step 4: Use 1-based indices for depends_on references. Tasks with no dependencies use an empty array.
+    Step 5: Order tasks so dependencies come before dependents.
+
+    Respond with ONLY a JSON array. No explanation, no markdown fences, no other text.
+
+    [{"title": "...", "description": "...", "success_criteria": "...", "depends_on": []}]
+
+    /no_think
+    """
+  end
+
+  def build(:verify, %{goal: goal, results: results}, :ollama) do
+    """
+    You are a completion verification agent. Evaluate whether a goal has been fully achieved.
+
+    GOAL:
+    #{goal_to_text(goal)}
+
+    RESULTS:
+    #{results_to_text(results)}
+
+    INSTRUCTIONS:
+    Step 1: Compare each success criterion against the results.
+    Step 2: Determine if ALL criteria are met. Partial completion is a fail.
+    Step 3: List any gaps (missing or incomplete items).
+
+    Respond with ONLY a JSON object. No explanation, no markdown fences.
+
+    {"verdict": "pass" or "fail", "reasoning": "...", "gaps": [{"description": "...", "severity": "critical" or "minor"}]}
+
+    /no_think
+    """
+  end
+
+  def build(:identify_improvements, %{repo: repo, diff: diff}, :ollama) do
+    """
+    You are a codebase improvement agent. Analyze recent changes and identify improvements.
+
+    REPOSITORY: #{to_string(repo)}
+
+    RECENT DIFF:
+    #{to_string(diff)}
+
+    INSTRUCTIONS:
+    Step 1: Read the diff carefully.
+    Step 2: Identify concrete improvements (refactor, test, docs, dependency, performance).
+    Step 3: Each improvement must have a clear title, description, category, effort level, and affected files.
+
+    Respond with ONLY a JSON array. No explanation, no markdown fences.
+
+    [{"title": "...", "description": "...", "category": "refactor|test|docs|dependency|performance", "effort": "small|medium|large", "files": ["path/to/file.ex"]}]
+
+    /no_think
+    """
+  end
+
+  def build(:generate_proposals, %{context: context}, :ollama) do
+    tech_stack = get_field(context, :tech_stack, "Elixir/Phoenix")
+    codebase_summary = get_field(context, :codebase_summary, "")
+    fsm_history = get_field(context, :fsm_history, "")
+    out_of_scope = get_field(context, :out_of_scope, "")
+    scalability_summary = get_field(context, :scalability_summary, "")
+    error_summary = get_field(context, :error_summary, "")
+
+    """
+    You are a contemplation agent generating feature proposals for an autonomous hub system.
+
+    TECH STACK: #{to_string(tech_stack)}
+    CODEBASE: #{to_string(codebase_summary)}
+    FSM HISTORY: #{to_string(fsm_history)}
+    OUT OF SCOPE: #{to_string(out_of_scope)}
+    SCALABILITY: #{to_string(scalability_summary)}
+    ERRORS: #{to_string(error_summary)}
+
+    INSTRUCTIONS:
+    Step 1: Analyze the system context and identify pain points.
+    Step 2: Generate up to 3 concrete, actionable feature proposals.
+    Step 3: Each proposal must be achievable in one milestone phase.
+    Step 4: Do NOT propose features listed in OUT OF SCOPE.
+
+    Respond with ONLY a JSON array. No explanation, no markdown fences.
+
+    [{"title": "...", "problem": "...", "solution": "...", "description": "...", "rationale": "...", "why_now": "...", "why_not": "...", "impact": "low|medium|high", "effort": "small|medium|large", "dependencies": ["..."], "related_files": ["path/to/file.ex"]}]
+
+    /no_think
+    """
+  end
+
+  # build/3 with any other backend (including :claude_cli) delegates to build/2
   def build(prompt_type, params, _backend), do: build(prompt_type, params)
 
   # ---------------------------------------------------------------------------
-  # Private helpers
+  # Private helpers -- plain text formatters for Ollama prompts
+  # ---------------------------------------------------------------------------
+
+  defp goal_to_text(goal) when is_map(goal) do
+    title = get_field(goal, :title, "Untitled")
+    description = get_field(goal, :description, "")
+    criteria = get_field(goal, :success_criteria, "")
+
+    """
+    Title: #{title}
+    Description: #{description}
+    Success Criteria: #{format_criteria(criteria)}
+    """
+    |> String.trim()
+  end
+
+  defp goal_to_text(_), do: "Title: Unknown"
+
+  defp context_to_text(context) when is_map(context) do
+    repo = get_field(context, :repo, "")
+    files = get_field(context, :files, [])
+    constraints = get_field(context, :constraints, "")
+
+    parts = []
+
+    parts =
+      if repo != "" do
+        parts ++ ["Repository: #{repo}"]
+      else
+        parts
+      end
+
+    parts =
+      if is_list(files) and files != [] do
+        file_list = files |> Enum.take(100) |> Enum.join(", ")
+        parts ++ ["Available Files: #{file_list}"]
+      else
+        parts
+      end
+
+    parts =
+      if constraints != "" do
+        parts ++ ["Constraints: #{constraints}"]
+      else
+        parts
+      end
+
+    Enum.join(parts, "\n")
+  end
+
+  defp context_to_text(_), do: ""
+
+  defp results_to_text(results) when is_map(results) do
+    summary = get_field(results, :summary, "")
+    files_modified = get_field(results, :files_modified, [])
+    test_outcomes = get_field(results, :test_outcomes, "")
+
+    parts = []
+
+    parts =
+      if summary != "" do
+        parts ++ ["Summary: #{summary}"]
+      else
+        parts
+      end
+
+    parts =
+      if is_list(files_modified) and files_modified != [] do
+        parts ++ ["Files Modified: #{Enum.join(files_modified, ", ")}"]
+      else
+        parts
+      end
+
+    parts =
+      if test_outcomes != "" do
+        parts ++ ["Test Outcomes: #{test_outcomes}"]
+      else
+        parts
+      end
+
+    Enum.join(parts, "\n")
+  end
+
+  defp results_to_text(results) when is_list(results) do
+    results |> Enum.map(&inspect/1) |> Enum.join("\n")
+  end
+
+  defp results_to_text(_), do: ""
+
+  # ---------------------------------------------------------------------------
+  # Private helpers -- XML formatters for Claude CLI prompts
   # ---------------------------------------------------------------------------
 
   defp goal_to_xml(goal) when is_map(goal) do

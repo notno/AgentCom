@@ -1,20 +1,27 @@
 defmodule AgentCom.ClaudeClient do
   @moduledoc """
-  GenServer wrapping the Claude Code CLI for structured LLM calls.
+  GenServer wrapping LLM backends for structured hub LLM calls.
 
-  Provides the hub's three core LLM operations -- goal decomposition,
-  completion verification, and improvement identification -- plus a
-  `set_hub_state/1` API for HubFSM integration.
+  Provides the hub's core LLM operations -- goal decomposition,
+  completion verification, improvement identification, and proposal
+  generation -- plus a `set_hub_state/1` API for HubFSM integration.
 
-  Every invocation checks `CostLedger.check_budget/1` before spawning the
-  CLI and records via `CostLedger.record_invocation/2` after completion
-  (including errors and timeouts). CLI calls are wrapped in `Task.async`
+  ## Backend Routing
+
+  Routes to either `:ollama` (OllamaClient HTTP) or `:claude_cli`
+  (Claude Code CLI) based on the `:llm_backend` application config.
+  Default is `:ollama` in production, `:claude_cli` in test.
+
+  Every invocation checks `CostLedger.check_budget/1` before spawning
+  and records via `CostLedger.record_invocation/2` after completion
+  (including errors and timeouts). Calls are wrapped in `Task.async`
   with configurable timeouts to prevent GenServer blocking.
 
   ## Configuration
 
   | Key                        | Default      | Description                 |
   |----------------------------|--------------|-----------------------------|
+  | `:llm_backend`             | `:ollama`    | `:ollama` or `:claude_cli`  |
   | `:claude_cli_path`         | `"claude"`   | Path to Claude Code binary  |
   | `:claude_model`            | `"sonnet"`   | Model name for `--model`    |
   | `:claude_timeout_ms`       | `120_000`    | Task timeout in milliseconds|
@@ -118,6 +125,7 @@ defmodule AgentCom.ClaudeClient do
     Logger.metadata(module: __MODULE__)
 
     state = %{
+      backend: Application.get_env(:agent_com, :llm_backend, :ollama),
       cli_path: Application.get_env(:agent_com, :claude_cli_path, "claude"),
       model: Application.get_env(:agent_com, :claude_model, @default_model),
       timeout_ms: Application.get_env(:agent_com, :claude_timeout_ms, @default_timeout_ms),
@@ -139,7 +147,13 @@ defmodule AgentCom.ClaudeClient do
 
         task =
           Task.async(fn ->
-            AgentCom.ClaudeClient.Cli.invoke(prompt_type, params, state)
+            case state.backend do
+              :ollama ->
+                invoke_ollama(prompt_type, params)
+
+              :claude_cli ->
+                AgentCom.ClaudeClient.Cli.invoke(prompt_type, params, state)
+            end
           end)
 
         result =
@@ -176,6 +190,18 @@ defmodule AgentCom.ClaudeClient do
   # ---------------------------------------------------------------------------
   # Private
   # ---------------------------------------------------------------------------
+
+  defp invoke_ollama(prompt_type, params) do
+    prompt = AgentCom.ClaudeClient.Prompt.build(prompt_type, params, :ollama)
+
+    case AgentCom.OllamaClient.chat(prompt) do
+      {:ok, %{content: content}} ->
+        AgentCom.ClaudeClient.Response.parse_ollama(content, prompt_type)
+
+      {:error, _} = err ->
+        err
+    end
+  end
 
   defp call_timeout do
     Application.get_env(:agent_com, :claude_timeout_ms, @default_timeout_ms) + 5_000
