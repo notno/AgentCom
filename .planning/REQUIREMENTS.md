@@ -86,8 +86,8 @@ Requirements for v1.3 Hub FSM Loop of Self-Improvement. Each maps to roadmap pha
 
 ### Dashboard
 
-- [ ] **DASH-01**: Dashboard shows Hub FSM state, goal progress, and goal backlog depth
-- [ ] **DASH-02**: Dashboard shows hub CLI invocation tracking separate from task execution costs
+- [x] **DASH-01**: Dashboard shows Hub FSM state, goal progress, and goal backlog depth
+- [x] **DASH-02**: Dashboard shows hub CLI invocation tracking separate from task execution costs
 
 ## Future Requirements
 
@@ -173,8 +173,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CLEAN-02 | Phase 35 | Done |
 | CLEAN-03 | Phase 35 | Done |
 | CLEAN-04 | Phase 35 | Done |
-| DASH-01 | Phase 36 | Pending |
-| DASH-02 | Phase 36 | Pending |
+| DASH-01 | Phase 36 | Done |
+| DASH-02 | Phase 36 | Done |
 
 **Coverage:**
 - v1.3 requirements: 46 total

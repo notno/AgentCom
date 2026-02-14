@@ -81,12 +81,12 @@
   - [ ] 30-01-PLAN.md -- FileTree and DagValidator utility modules
   - [ ] 30-02-PLAN.md -- Decomposer and Verifier LLM pipeline modules
   - [ ] 30-03-PLAN.md -- GoalOrchestrator GenServer and HubFSM integration
-- [ ] **Phase 31: Hub Event Wiring** - GitHub webhooks and external event triggers for FSM transitions
+- [x] **Phase 31: Hub Event Wiring** - GitHub webhooks and external event triggers for FSM transitions (shipped 2026-02-13)
 - [ ] **Phase 32: Improvement Scanning** - Deterministic and LLM-assisted codebase improvement identification
 - [ ] **Phase 33: Contemplation and Scalability** - Feature proposal generation and bottleneck analysis
 - [ ] **Phase 34: Tiered Autonomy** - Risk-based PR classification with configurable thresholds
 - [x] **Phase 35: Pre-Publication Cleanup** - Secret scanning, IP replacement, workspace file management (shipped 2026-02-13)
-- [ ] **Phase 36: Dashboard and Observability** - Goal progress, cost tracking, and FSM visibility panels
+- [x] **Phase 36: Dashboard and Observability** - Goal progress, cost tracking, and FSM visibility panels (shipped 2026-02-13)
 
 ## Phase Details
 
@@ -200,9 +200,9 @@ Plans:
   3. Goal backlog changes (new goal submitted, goal priority changed) wake the FSM from Resting to Executing
 **Plans:** 3 plans
 Plans:
-- [ ] 31-01-PLAN.md -- Foundation: HubFSM :improving state, CacheBodyReader, WebhookVerifier
-- [ ] 31-02-PLAN.md -- Wiring: Webhook endpoint, event history, config API
-- [ ] 31-03-PLAN.md -- TDD: Comprehensive test suite for webhook handling
+- [x] 31-01-PLAN.md -- Foundation: HubFSM :improving state, CacheBodyReader, WebhookVerifier
+- [x] 31-02-PLAN.md -- Wiring: Webhook endpoint, event history, config API
+- [x] 31-03-PLAN.md -- TDD: Comprehensive test suite for webhook handling
 
 ### Phase 32: Improvement Scanning
 **Goal**: The hub autonomously identifies and executes codebase improvements during idle time
@@ -264,8 +264,8 @@ Plans:
   2. Dashboard shows hub-side API cost tracking (CostLedger data) displayed separately from task execution costs (sidecar costs)
 **Plans:** 2 plans
 Plans:
-- [ ] 36-01-PLAN.md -- Backend data integration: GoalBacklog and CostLedger data in DashboardState snapshot, goals PubSub in DashboardSocket
-- [ ] 36-02-PLAN.md -- Frontend panels: Goal Progress panel, Cost Tracking panel, Hub FSM state duration enhancement
+- [x] 36-01-PLAN.md -- Backend data integration: GoalBacklog and CostLedger data in DashboardState snapshot, goals PubSub in DashboardSocket
+- [x] 36-02-PLAN.md -- Frontend panels: Goal Progress panel, Cost Tracking panel, Hub FSM state duration enhancement
 
 ## Progress
 
@@ -284,9 +284,9 @@ Phases execute in numeric order: 24, 25, 26... Decimal phases (if inserted) exec
 | 28. Pipeline Dependencies | v1.3 | 2/2 | Complete | 2026-02-13 |
 | 29. Hub FSM Core | v1.3 | 4/4 | Complete | 2026-02-13 |
 | 30. Goal Decomposition and Inner Loop | v1.3 | 0/TBD | Not started | - |
-| 31. Hub Event Wiring | v1.3 | 0/TBD | Not started | - |
+| 31. Hub Event Wiring | v1.3 | 3/3 | Complete | 2026-02-13 |
 | 32. Improvement Scanning | v1.3 | 0/4 | Not started | - |
 | 33. Contemplation and Scalability | v1.3 | 0/TBD | Not started | - |
 | 34. Tiered Autonomy | v1.3 | 0/TBD | Not started | - |
 | 35. Pre-Publication Cleanup | v1.3 | 2/2 | Complete | 2026-02-13 |
-| 36. Dashboard and Observability | v1.3 | 0/TBD | Not started | - |
+| 36. Dashboard and Observability | v1.3 | 2/2 | Complete | 2026-02-13 |
