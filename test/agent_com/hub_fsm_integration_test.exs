@@ -4,6 +4,12 @@ defmodule AgentCom.HubFSMIntegrationTest do
   healing behavior, cooldown, and watchdog timeout.
 
   NOT async -- uses named GenServers and ETS tables.
+
+  Note: force_transition to :improving, :healing, or :contemplating spawns
+  async Tasks (SelfImprovement, Healing, Contemplation) that make HTTP calls.
+  These Tasks run independently and may take seconds to complete. To avoid
+  GenServer mailbox interference, we use a longer call timeout and explicit
+  waits where needed.
   """
 
   use ExUnit.Case, async: false
@@ -12,6 +18,10 @@ defmodule AgentCom.HubFSMIntegrationTest do
   alias AgentCom.HubFSM.{History, Predicates, HealingHistory}
   alias AgentCom.GoalBacklog
   alias AgentCom.TestHelpers.DetsHelpers
+
+  # Longer timeout for GenServer calls since transitions may trigger
+  # async tasks that interact with other GenServers
+  @call_timeout 15_000
 
   setup do
     tmp_dir = DetsHelpers.full_test_setup()
@@ -23,6 +33,9 @@ defmodule AgentCom.HubFSMIntegrationTest do
       :exit, _ -> :ok
     end
 
+    # Wait for any lingering async tasks from prior tests to settle
+    Process.sleep(500)
+
     # Clear any leftover history entries
     History.init_table()
     History.clear()
@@ -31,6 +44,9 @@ defmodule AgentCom.HubFSMIntegrationTest do
 
     # Start HubFSM fresh under the supervisor
     {:ok, _pid} = Supervisor.restart_child(AgentCom.Supervisor, AgentCom.HubFSM)
+
+    # Verify HubFSM is responsive
+    _ = HubFSM.get_state()
 
     on_exit(fn ->
       try do
@@ -43,6 +59,11 @@ defmodule AgentCom.HubFSMIntegrationTest do
     end)
 
     {:ok, tmp_dir: tmp_dir}
+  end
+
+  # Helper: force_transition with longer timeout
+  defp force_transition!(new_state, reason) do
+    :ok = GenServer.call(HubFSM, {:force_transition, new_state, reason}, @call_timeout)
   end
 
   # ---------------------------------------------------------------------------
@@ -88,8 +109,8 @@ defmodule AgentCom.HubFSMIntegrationTest do
       pid = Process.whereis(HubFSM)
       initial_cycles = HubFSM.get_state().cycle_count
 
-      # Force into improving state
-      :ok = HubFSM.force_transition(:improving, "test improvement cycle")
+      # Force into improving state (spawns SelfImprovement task)
+      force_transition!(:improving, "test improvement cycle")
       state = HubFSM.get_state()
       assert state.fsm_state == :improving
       assert state.cycle_count == initial_cycles + 1
@@ -98,15 +119,14 @@ defmodule AgentCom.HubFSMIntegrationTest do
       # With no findings and contemplating budget available (fresh DETS = :ok),
       # should transition to :contemplating
       send(pid, {:improvement_cycle_complete, {:ok, %{findings: 0}}})
-      Process.sleep(100)
+      Process.sleep(200)
 
       state = HubFSM.get_state()
       # If contemplating budget is available, should be :contemplating
-      # If not, falls to :resting -- either is valid but fresh CostLedger should allow it
       if state.fsm_state == :contemplating do
         # Complete the contemplation cycle
         send(pid, {:contemplation_cycle_complete, %{}})
-        Process.sleep(100)
+        Process.sleep(200)
         assert HubFSM.get_state().fsm_state == :resting
       else
         assert state.fsm_state == :resting
@@ -117,7 +137,7 @@ defmodule AgentCom.HubFSMIntegrationTest do
       pid = Process.whereis(HubFSM)
 
       # Force into improving state
-      :ok = HubFSM.force_transition(:improving, "test goal arrival")
+      force_transition!(:improving, "test goal arrival")
       assert HubFSM.get_state().fsm_state == :improving
 
       # Submit a goal while improving
@@ -129,7 +149,7 @@ defmodule AgentCom.HubFSMIntegrationTest do
 
       # Improvement completes -- should detect pending goals and go to executing
       send(pid, {:improvement_cycle_complete, {:ok, %{findings: 1}}})
-      Process.sleep(100)
+      Process.sleep(200)
 
       assert HubFSM.get_state().fsm_state == :executing
 
@@ -143,18 +163,19 @@ defmodule AgentCom.HubFSMIntegrationTest do
     test "transition_count increments on every transition" do
       initial = HubFSM.get_state().transition_count
 
-      :ok = HubFSM.force_transition(:executing, "count test 1")
+      # Use executing (no async task spawned) for simple counting
+      force_transition!(:executing, "count test 1")
       assert HubFSM.get_state().transition_count == initial + 1
 
-      :ok = HubFSM.force_transition(:resting, "count test 2")
+      force_transition!(:resting, "count test 2")
       assert HubFSM.get_state().transition_count == initial + 2
     end
 
     test "history records all transitions with correct from/to/reason" do
       Process.sleep(5)
-      :ok = HubFSM.force_transition(:executing, "history test exec")
+      force_transition!(:executing, "history test exec")
       Process.sleep(5)
-      :ok = HubFSM.force_transition(:resting, "history test rest")
+      force_transition!(:resting, "history test rest")
 
       entries = HubFSM.history()
       assert length(entries) >= 3
@@ -180,12 +201,12 @@ defmodule AgentCom.HubFSMIntegrationTest do
     test "force_transition to healing and exit via healing_cycle_complete" do
       pid = Process.whereis(HubFSM)
 
-      :ok = HubFSM.force_transition(:healing, "test healing entry")
+      force_transition!(:healing, "test healing entry")
       assert HubFSM.get_state().fsm_state == :healing
 
       # Simulate healing completion
       send(pid, {:healing_cycle_complete, %{issues_found: 1, actions_taken: 1}})
-      Process.sleep(100)
+      Process.sleep(200)
 
       assert HubFSM.get_state().fsm_state == :resting
 
@@ -238,12 +259,12 @@ defmodule AgentCom.HubFSMIntegrationTest do
     test "healing watchdog forces transition to resting" do
       pid = Process.whereis(HubFSM)
 
-      :ok = HubFSM.force_transition(:healing, "test watchdog")
+      force_transition!(:healing, "test watchdog")
       assert HubFSM.get_state().fsm_state == :healing
 
       # Send healing watchdog message directly (don't wait 5 minutes)
       send(pid, :healing_watchdog)
-      Process.sleep(100)
+      Process.sleep(200)
 
       assert HubFSM.get_state().fsm_state == :resting
 
