@@ -311,8 +311,15 @@ defmodule AgentCom.HubFSM do
   def handle_info({:improvement_cycle_complete, result}, state) do
     Logger.info("improvement_cycle_complete", result: inspect(result))
 
+    # Unwrap {:ok, map} tuples from SelfImprovement.run/0
+    result_map = case result do
+      {:ok, map} when is_map(map) -> map
+      map when is_map(map) -> map
+      _ -> %{}
+    end
+
     if state.fsm_state == :improving do
-      findings_count = Map.get(result, :findings, 0)
+      findings_count = Map.get(result_map, :findings, 0)
       system_state = gather_system_state()
 
       {new_state, reason} =

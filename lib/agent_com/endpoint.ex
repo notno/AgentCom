@@ -1238,26 +1238,34 @@ defmodule AgentCom.Endpoint do
     end
   end
 
-<<<<<<< HEAD
   post "/api/tasks/:task_id/cancel" do
-=======
-  # --- Task Risk Classification ---
-
-  post "/api/tasks/:task_id/classify" do
->>>>>>> ba37d612239344ed2ea711f2e91d3284900e5631
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
 
     if conn.halted do
       conn
     else
-<<<<<<< HEAD
       case AgentCom.TaskQueue.cancel_task(task_id) do
         {:ok, task} ->
           send_json(conn, 200, %{
             "status" => "cancelled",
             "task_id" => task.id,
             "previous_status" => to_string(task.status)
-=======
+          })
+
+        {:error, :not_found} ->
+          send_json(conn, 404, %{"error" => "task_not_found", "task_id" => task_id})
+      end
+    end
+  end
+
+  # --- Task Risk Classification ---
+
+  post "/api/tasks/:task_id/classify" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
+    if conn.halted do
+      conn
+    else
       case AgentCom.TaskQueue.get(task_id) do
         {:ok, task} ->
           diff_meta =
@@ -1275,7 +1283,6 @@ defmodule AgentCom.Endpoint do
             "tier" => classification.tier,
             "reasons" => classification.reasons,
             "auto_merge_eligible" => classification.auto_merge_eligible
->>>>>>> ba37d612239344ed2ea711f2e91d3284900e5631
           })
 
         {:error, :not_found} ->
@@ -1468,11 +1475,11 @@ defmodule AgentCom.Endpoint do
       formatted =
         Enum.map(transitions, fn t ->
           %{
-            "from_state" => to_string(t.from_state),
-            "to_state" => to_string(t.to_state),
-            "reason" => to_string(t.reason),
-            "timestamp" => t.timestamp,
-            "cycle_count" => t.cycle_count
+            "from_state" => to_string(Map.get(t, :from_state, Map.get(t, :from))),
+            "to_state" => to_string(Map.get(t, :to_state, Map.get(t, :to))),
+            "reason" => to_string(Map.get(t, :reason, "")),
+            "timestamp" => Map.get(t, :timestamp),
+            "cycle_count" => Map.get(t, :cycle_count, 0)
           }
         end)
 
