@@ -1794,6 +1794,12 @@ defmodule AgentCom.Dashboard do
           // -- Hub FSM --
           renderHubFSM(data.hub_fsm || null);
 
+          // -- Goal Progress --
+          renderGoalProgress(data.goal_stats || null, data.active_goals || []);
+
+          // -- Cost Tracking --
+          renderCostTracking(data.cost_stats || null);
+
           // -- Task tracker --
           updateTracker();
 
@@ -2397,6 +2403,19 @@ defmodule AgentCom.Dashboard do
 
           if (data.last_state_change) {
             lastChangeEl.textContent = formatRelativeTime(data.last_state_change);
+            window._lastHubFsmStateChange = data.last_state_change;
+          }
+
+          var durationEl = document.getElementById('hub-fsm-duration');
+          if (durationEl && data.last_state_change) {
+            var durationMs = Date.now() - data.last_state_change;
+            if (durationMs < 60000) {
+              durationEl.textContent = Math.floor(durationMs / 1000) + 's';
+            } else if (durationMs < 3600000) {
+              durationEl.textContent = Math.floor(durationMs / 60000) + 'm';
+            } else {
+              durationEl.textContent = Math.floor(durationMs / 3600000) + 'h ' + Math.floor((durationMs % 3600000) / 60000) + 'm';
+            }
           }
 
           pausedBadge.style.display = data.paused ? 'inline' : 'none';
@@ -2529,6 +2548,141 @@ defmodule AgentCom.Dashboard do
 
           if (emptyEl) emptyEl.style.display = 'none';
         }
+
+        // =====================================================================
+        // Goal Progress
+        // =====================================================================
+        function renderGoalProgress(stats, activeGoals) {
+          var byStatus = (stats && stats.by_status) || {};
+          var submitted = byStatus.submitted || 0;
+          var decomposing = byStatus.decomposing || 0;
+          var executing = byStatus.executing || 0;
+          var verifying = byStatus.verifying || 0;
+          var complete = byStatus.complete || 0;
+          var failed = byStatus.failed || 0;
+
+          document.getElementById('goal-pending-count').textContent = submitted;
+          document.getElementById('goal-active-count').textContent = decomposing + executing + verifying;
+          document.getElementById('goal-complete-count').textContent = complete;
+          document.getElementById('goal-failed-count').textContent = failed;
+          document.getElementById('goal-total-count').textContent = (stats && stats.total) || 0;
+
+          var container = document.getElementById('goal-lifecycle-list');
+          var emptyEl = document.getElementById('goal-empty');
+          var goals = activeGoals || [];
+
+          if (goals.length === 0) {
+            container.innerHTML = '';
+            emptyEl.style.display = '';
+            return;
+          }
+          emptyEl.style.display = 'none';
+
+          var stages = ['submitted', 'decomposing', 'executing', 'verifying', 'complete'];
+          var stageColors = {submitted: '#6b7280', decomposing: '#fbbf24', executing: '#4ade80', verifying: '#60a5fa', complete: '#a78bfa'};
+
+          var html = goals.map(function(goal) {
+            var currentIdx = stages.indexOf(String(goal.status));
+            var progressPct = goal.tasks_total > 0 ? Math.round((goal.tasks_complete / goal.tasks_total) * 100) : 0;
+
+            var stageHtml = stages.map(function(stage, i) {
+              var dotColor = i < currentIdx ? stageColors[stage] : (i === currentIdx ? stageColors[stage] : '#3a3a4a');
+              var opacity = i <= currentIdx ? '1' : '0.4';
+              return '<span style="display: inline-flex; align-items: center; gap: 2px; opacity: ' + opacity + ';">'
+                + '<span style="width: 8px; height: 8px; border-radius: 50%; background: ' + dotColor + '; display: inline-block;"></span>'
+                + '<span style="font-size: 0.7em; color: #aaa;">' + stage.charAt(0).toUpperCase() + '</span>'
+                + '</span>';
+            }).join('<span style="color: #3a3a4a; margin: 0 2px;">&rarr;</span>');
+
+            var progressBar = goal.tasks_total > 0
+              ? '<div style="flex: 1; background: #1a1a2e; border-radius: 3px; height: 8px; margin-left: 8px;">'
+                + '<div style="width: ' + progressPct + '%; background: #4ade80; height: 100%; border-radius: 3px; transition: width 0.3s;"></div>'
+                + '</div>'
+                + '<span style="font-size: 0.75em; color: #aaa; margin-left: 6px; white-space: nowrap;">' + goal.tasks_complete + '/' + goal.tasks_total + '</span>'
+              : '';
+
+            return '<div style="padding: 6px 0; border-bottom: 1px solid #2a2a3a;">'
+              + '<div style="display: flex; justify-content: space-between; align-items: center;">'
+              + '<span style="color: #e0e0e0; font-size: 0.85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%;">' + escapeHtml(String(goal.description).substring(0, 80)) + '</span>'
+              + '<div style="display: flex; align-items: center; flex: 1; margin-left: 8px;">' + progressBar + '</div>'
+              + '</div>'
+              + '<div style="display: flex; align-items: center; gap: 4px; margin-top: 4px;">' + stageHtml + '</div>'
+              + '</div>';
+          }).join('');
+
+          container.innerHTML = html;
+        }
+
+        // =====================================================================
+        // Cost Tracking
+        // =====================================================================
+        function renderCostTracking(stats) {
+          if (!stats) return;
+
+          var hourly = stats.hourly || {};
+          var daily = stats.daily || {};
+          var session = stats.session || {};
+          var budgets = stats.budgets || {};
+
+          document.getElementById('cost-hourly-total').textContent = hourly.total || 0;
+          document.getElementById('cost-daily-total').textContent = daily.total || 0;
+          document.getElementById('cost-session-total').textContent = session.total || 0;
+
+          // Render per-state budget bars
+          var barsContainer = document.getElementById('cost-budget-bars');
+          var states = ['executing', 'improving', 'contemplating'];
+          var stateLabels = {executing: 'Executing', improving: 'Improving', contemplating: 'Contemplating'};
+
+          var barsHtml = states.map(function(st) {
+            var budget = budgets[st] || {};
+            var hourlyLimit = budget.hourly_limit || 0;
+            var dailyLimit = budget.daily_limit || 0;
+            var hourlyUsed = (hourly[st] !== undefined) ? hourly[st] : (hourly[String(st)] || 0);
+            var dailyUsed = (daily[st] !== undefined) ? daily[st] : (daily[String(st)] || 0);
+
+            if (hourlyLimit === 0 && dailyLimit === 0) return '';
+
+            var hourlyPct = hourlyLimit > 0 ? Math.min(100, (hourlyUsed / hourlyLimit) * 100) : 0;
+            var dailyPct = dailyLimit > 0 ? Math.min(100, (dailyUsed / dailyLimit) * 100) : 0;
+            var hourlyColor = hourlyPct > 80 ? '#ef4444' : hourlyPct > 50 ? '#fbbf24' : '#4ade80';
+            var dailyColor = dailyPct > 80 ? '#ef4444' : dailyPct > 50 ? '#fbbf24' : '#4ade80';
+
+            return '<div style="margin-bottom: 8px;">'
+              + '<div style="color: #aaa; font-size: 0.8em; margin-bottom: 2px;">' + (stateLabels[st] || st) + '</div>'
+              + '<div style="display: flex; gap: 8px; align-items: center;">'
+              + '<span style="font-size: 0.75em; color: #888; width: 50px;">Hourly</span>'
+              + '<div style="flex: 1; background: #1a1a2e; border-radius: 3px; height: 12px;">'
+              + '<div style="width: ' + hourlyPct + '%; background: ' + hourlyColor + '; height: 100%; border-radius: 3px;"></div>'
+              + '</div>'
+              + '<span style="font-size: 0.75em; color: #aaa; width: 60px; text-align: right;">' + hourlyUsed + '/' + hourlyLimit + '</span>'
+              + '</div>'
+              + '<div style="display: flex; gap: 8px; align-items: center; margin-top: 2px;">'
+              + '<span style="font-size: 0.75em; color: #888; width: 50px;">Daily</span>'
+              + '<div style="flex: 1; background: #1a1a2e; border-radius: 3px; height: 12px;">'
+              + '<div style="width: ' + dailyPct + '%; background: ' + dailyColor + '; height: 100%; border-radius: 3px;"></div>'
+              + '</div>'
+              + '<span style="font-size: 0.75em; color: #aaa; width: 60px; text-align: right;">' + dailyUsed + '/' + dailyLimit + '</span>'
+              + '</div>'
+              + '</div>';
+          }).join('');
+
+          barsContainer.innerHTML = barsHtml || '<div class="empty-state" style="font-size: 0.8em;">No budget limits configured</div>';
+        }
+
+        // Periodic duration updater for Hub FSM "In State" counter
+        setInterval(function() {
+          var durationEl = document.getElementById('hub-fsm-duration');
+          if (durationEl && window._lastHubFsmStateChange) {
+            var durationMs = Date.now() - window._lastHubFsmStateChange;
+            if (durationMs < 60000) {
+              durationEl.textContent = Math.floor(durationMs / 1000) + 's';
+            } else if (durationMs < 3600000) {
+              durationEl.textContent = Math.floor(durationMs / 60000) + 'm';
+            } else {
+              durationEl.textContent = Math.floor(durationMs / 3600000) + 'h ' + Math.floor((durationMs % 3600000) / 60000) + 'm';
+            }
+          }
+        }, 10000);
 
         function renderRoutingStats(stats) {
           var bar = document.getElementById('routing-stats-bar');
@@ -2899,6 +3053,12 @@ defmodule AgentCom.Dashboard do
               case 'hub_fsm_state':
                 renderHubFSM(ev.data);
                 prependHubFSMTransition(ev.data);
+                break;
+              case 'goal_event':
+                // Request fresh snapshot to update goal panel with latest data
+                if (dashConn && dashConn.ws && dashConn.ws.readyState === 1) {
+                  dashConn.ws.send(JSON.stringify({type: 'request_snapshot'}));
+                }
                 break;
             }
           });
