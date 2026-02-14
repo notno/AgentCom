@@ -57,6 +57,7 @@ defmodule AgentCom.Application do
       {AgentCom.DashboardNotifier, []},
       {AgentCom.DetsBackup, []},
       {AgentCom.GoalBacklog, []},
+      {AgentCom.HubFSM, []},
       {Bandit, plug: AgentCom.Endpoint, scheme: :http, port: port()}
     ]
 
@@ -75,12 +76,13 @@ defmodule AgentCom.Application do
     log_dir = Path.join(File.cwd!(), "priv/logs")
     File.mkdir_p!(log_dir)
 
-    formatter = LoggerJSON.Formatters.Basic.new(
-      metadata: {:all_except, [:conn, :crash_reason]},
-      redactors: [
-        LoggerJSON.Redactors.RedactKeys.new(["token", "auth_token", "secret"])
-      ]
-    )
+    formatter =
+      LoggerJSON.Formatters.Basic.new(
+        metadata: {:all_except, [:conn, :crash_reason]},
+        redactors: [
+          LoggerJSON.Redactors.RedactKeys.new(["token", "auth_token", "secret"])
+        ]
+      )
 
     :logger.add_handler(:file_handler, :logger_std_h, %{
       config: %{
