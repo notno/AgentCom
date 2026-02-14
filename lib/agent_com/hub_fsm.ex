@@ -259,6 +259,15 @@ defmodule AgentCom.HubFSM do
           do_transition(state, new_state, reason)
 
         :stay ->
+          # Drive goal orchestration when staying in :executing
+          if state.fsm_state == :executing do
+            try do
+              AgentCom.GoalOrchestrator.tick()
+            catch
+              :exit, _ -> :ok
+            end
+          end
+
           state
       end
 

@@ -57,6 +57,7 @@ defmodule AgentCom.Application do
       {AgentCom.DashboardNotifier, []},
       {AgentCom.DetsBackup, []},
       {AgentCom.GoalBacklog, []},
+      {AgentCom.GoalOrchestrator, []},
       {AgentCom.HubFSM, []},
       {Bandit, plug: AgentCom.Endpoint, scheme: :http, port: port()}
     ]
