@@ -112,6 +112,25 @@ defmodule AgentCom.HubFSM do
   end
 
   @doc """
+  Stop the FSM. Pauses evaluation and transitions to `:resting`.
+
+  This is a clean "off" — the FSM is both paused and in a known idle state.
+  Returns `:ok` or `{:error, :already_stopped}`.
+  """
+  def stop_fsm do
+    GenServer.call(__MODULE__, :stop_fsm)
+  end
+
+  @doc """
+  Start the FSM from a stopped state. Resumes evaluation from `:resting`.
+
+  Returns `:ok` or `{:error, :not_stopped}`.
+  """
+  def start_fsm do
+    GenServer.call(__MODULE__, :start_fsm)
+  end
+
+  @doc """
   Force a state transition for testing or admin use.
 
   Validates the transition against `@valid_transitions` before applying.
@@ -218,6 +237,58 @@ defmodule AgentCom.HubFSM do
     broadcast_state_change(updated)
 
     Logger.info("hub_fsm_resumed", fsm_state: state.fsm_state)
+
+    {:reply, :ok, updated}
+  end
+
+  # -- stop_fsm ----------------------------------------------------------------
+
+  def handle_call(:stop_fsm, _from, %{paused: true, fsm_state: :resting} = state) do
+    {:reply, {:error, :already_stopped}, state}
+  end
+
+  def handle_call(:stop_fsm, _from, state) do
+    cancel_timer(state.tick_ref)
+    cancel_timer(state.watchdog_ref)
+
+    now = System.system_time(:millisecond)
+    prev_state = state.fsm_state
+
+    updated = %{state |
+      paused: true,
+      fsm_state: :resting,
+      tick_ref: nil,
+      watchdog_ref: nil,
+      last_state_change: now
+    }
+
+    if prev_state != :resting do
+      History.record(prev_state, :resting, "manual_stop", updated.transition_count + 1)
+      updated = %{updated | transition_count: updated.transition_count + 1}
+      broadcast_state_change(updated)
+      Logger.info("hub_fsm_stopped", previous_state: prev_state)
+      {:reply, :ok, updated}
+    else
+      broadcast_state_change(updated)
+      Logger.info("hub_fsm_stopped", previous_state: prev_state)
+      {:reply, :ok, updated}
+    end
+  end
+
+  # -- start_fsm ---------------------------------------------------------------
+
+  def handle_call(:start_fsm, _from, %{paused: false} = state) do
+    {:reply, {:error, :not_stopped}, state}
+  end
+
+  def handle_call(:start_fsm, _from, state) do
+    tick_ref = arm_tick()
+    watchdog_ref = arm_watchdog()
+
+    updated = %{state | paused: false, tick_ref: tick_ref, watchdog_ref: watchdog_ref}
+    broadcast_state_change(updated)
+
+    Logger.info("hub_fsm_started_manual", fsm_state: state.fsm_state)
 
     {:reply, :ok, updated}
   end

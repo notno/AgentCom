@@ -2575,7 +2575,7 @@ defmodule AgentCom.Dashboard do
         }
 
         function onHubFsmToggle(isOn) {
-          var action = isOn ? 'resume' : 'pause';
+          var action = isOn ? 'start' : 'stop';
           fetch('/api/hub/' + action, {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (window.hubToken || '')}

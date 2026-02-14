@@ -1416,6 +1416,32 @@ defmodule AgentCom.Endpoint do
 
   # --- Hub FSM API ---
 
+  post "/api/hub/stop" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
+    if conn.halted do
+      conn
+    else
+      case AgentCom.HubFSM.stop_fsm() do
+        :ok -> send_json(conn, 200, %{"status" => "stopped"})
+        {:error, :already_stopped} -> send_json(conn, 200, %{"status" => "already_stopped"})
+      end
+    end
+  end
+
+  post "/api/hub/start" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
+    if conn.halted do
+      conn
+    else
+      case AgentCom.HubFSM.start_fsm() do
+        :ok -> send_json(conn, 200, %{"status" => "started"})
+        {:error, :not_stopped} -> send_json(conn, 200, %{"status" => "not_stopped"})
+      end
+    end
+  end
+
   post "/api/hub/pause" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
 
