@@ -1003,6 +1003,10 @@ defmodule AgentCom.Dashboard do
               <div class="tp-value" id="hub-fsm-last-change">--</div>
               <div class="tp-label">Last Change</div>
             </div>
+            <div class="tp-card">
+              <div class="tp-value" id="hub-fsm-duration">--</div>
+              <div class="tp-label">In State</div>
+            </div>
           </div>
           <div style="margin-top: 8px; text-align: right;">
             <button onclick="toggleHubFSMPause()" id="hub-fsm-pause-btn" style="background: #2a2a3a; border: 1px solid #3a3a4a; color: #e0e0e0; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85em;">Pause</button>
@@ -1012,6 +1016,55 @@ defmodule AgentCom.Dashboard do
             <div id="hub-fsm-timeline" style="max-height: 280px; overflow-y: auto; font-size: 0.8em;"></div>
             <div id="hub-fsm-timeline-empty" class="empty-state" style="font-size: 0.8em;">No transitions recorded</div>
           </div>
+        </div>
+      </div>
+
+      <!-- Goal Progress -->
+      <div style="margin-top: 12px;">
+        <div class="panel" id="panel-goal-progress">
+          <div class="panel-title">Goal Progress <span class="panel-count" id="goal-total-count" style="background: #2a2a3a; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; margin-left: 8px;">0</span></div>
+          <div class="throughput-cards">
+            <div class="tp-card">
+              <div class="tp-value" id="goal-pending-count" style="color: #fbbf24;">0</div>
+              <div class="tp-label">Pending</div>
+            </div>
+            <div class="tp-card">
+              <div class="tp-value" id="goal-active-count" style="color: #4ade80;">0</div>
+              <div class="tp-label">Active</div>
+            </div>
+            <div class="tp-card">
+              <div class="tp-value" id="goal-complete-count" style="color: #60a5fa;">0</div>
+              <div class="tp-label">Complete</div>
+            </div>
+            <div class="tp-card">
+              <div class="tp-value" id="goal-failed-count" style="color: #ef4444;">0</div>
+              <div class="tp-label">Failed</div>
+            </div>
+          </div>
+          <div id="goal-lifecycle-list" style="margin-top: 10px; max-height: 300px; overflow-y: auto;"></div>
+          <div id="goal-empty" class="empty-state" style="display: none;">No active goals</div>
+        </div>
+      </div>
+
+      <!-- Cost Tracking -->
+      <div style="margin-top: 12px;">
+        <div class="panel" id="panel-cost-tracking">
+          <div class="panel-title">Hub Invocation Costs</div>
+          <div class="throughput-cards">
+            <div class="tp-card">
+              <div class="tp-value" id="cost-hourly-total">0</div>
+              <div class="tp-label">This Hour</div>
+            </div>
+            <div class="tp-card">
+              <div class="tp-value" id="cost-daily-total">0</div>
+              <div class="tp-label">Today</div>
+            </div>
+            <div class="tp-card">
+              <div class="tp-value" id="cost-session-total">0</div>
+              <div class="tp-label">Session</div>
+            </div>
+          </div>
+          <div id="cost-budget-bars" style="margin-top: 10px;"></div>
         </div>
       </div>
 
