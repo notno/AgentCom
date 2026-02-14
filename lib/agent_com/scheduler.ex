@@ -643,9 +643,9 @@ defmodule AgentCom.Scheduler do
   # Private: helper functions
   # ---------------------------------------------------------------------------
 
-  defp tier_to_target_type(:trivial), do: :sidecar
-  defp tier_to_target_type(:standard), do: :ollama
-  defp tier_to_target_type(:complex), do: :claude
+  defp tier_to_target_type(:trivial), do: :sidecar 
+  defp tier_to_target_type(:standard), do: :ollama 
+  defp tier_to_target_type(:complex), do: :wake  
   defp tier_to_target_type(_), do: :ollama
 
   defp tier_to_cost(:trivial), do: :free
