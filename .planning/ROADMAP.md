@@ -239,7 +239,10 @@ Plans:
   1. Completed tasks are classified into risk tiers based on complexity, number of files touched, and lines changed
   2. Default mode is PR-only for all tiers -- no auto-merge until pipeline reliability is proven through production data
   3. Tier thresholds are configurable via the existing Config GenServer and can be adjusted without code changes
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 34-01-PLAN.md -- TDD: RiskClassifier pure function module with Config-driven thresholds
+- [ ] 34-02-PLAN.md -- Sidecar diff gathering, classify endpoint, PR body enrichment
 
 ### Phase 35: Pre-Publication Cleanup
 **Goal**: Repos can be scanned for sensitive content before open-sourcing, with actionable findings
