@@ -122,7 +122,11 @@ Plans:
   1. ClaudeClient GenServer sends requests to the Claude Messages API via Req with connection pooling, rate limiting (RPM tracking), and request serialization
   2. Structured prompt/response handling supports decomposition, verification, and improvement identification use cases with typed response parsing
   3. Every API call passes through CostLedger budget check before execution and reports token usage after completion
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 26-01-PLAN.md -- ClaudeClient GenServer with CostLedger integration and Cli invocation module
+- [ ] 26-02-PLAN.md -- Prompt template builder and Response parser for 3 use cases
+- [ ] 26-03-PLAN.md -- TDD test suite for ClaudeClient modules
 
 ### Phase 27: Goal Backlog
 **Goal**: Users can submit goals through multiple channels and track them through a complete lifecycle
@@ -250,7 +254,7 @@ Phases execute in numeric order: 24, 25, 26... Decimal phases (if inserted) exec
 | 17-23 | v1.2 | 25/25 | Complete | 2026-02-12 |
 | 24. Document Format Conversion | v1.3 | 2/2 | Complete | 2026-02-13 |
 | 25. Cost Control Infrastructure | v1.3 | 3/3 | Complete | 2026-02-13 |
-| 26. Claude API Client | v1.3 | 0/TBD | Not started | - |
+| 26. Claude API Client | v1.3 | 0/3 | Not started | - |
 | 27. Goal Backlog | v1.3 | 0/TBD | Not started | - |
 | 28. Pipeline Dependencies | v1.3 | 0/TBD | Not started | - |
 | 29. Hub FSM Core | v1.3 | 0/TBD | Not started | - |
