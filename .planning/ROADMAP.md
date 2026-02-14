@@ -164,11 +164,12 @@ Plans:
   3. FSM transition history is logged with timestamps and queryable via API, including time spent in each state
   4. Dashboard shows current FSM state, transition timeline, and state duration metrics in real time
   5. Start with 2-state core (Executing + Resting), expand to 4 states after core loop proves stable
-**Plans:** 3 plans
+**Plans:** 4 plans
 Plans:
-- [ ] 29-01-PLAN.md -- HubFSM GenServer core with 2-state transitions, predicates, ETS history, supervision tree
-- [ ] 29-02-PLAN.md -- API endpoints (pause/resume/state/history), dashboard integration, telemetry
-- [ ] 29-03-PLAN.md -- TDD test suite for predicates, history, and GenServer integration
+- [x] 29-01-PLAN.md -- HubFSM GenServer core with 2-state transitions, predicates, ETS history, supervision tree
+- [x] 29-02-PLAN.md -- API endpoints (pause/resume/state/history), dashboard integration, telemetry
+- [x] 29-03-PLAN.md -- TDD test suite for predicates, history, and GenServer integration
+- [ ] 29-04-PLAN.md -- Gap closure: transition timeline visualization in dashboard
 
 ### Phase 30: Goal Decomposition and Inner Loop
 **Goal**: The hub transforms high-level goals into executable task graphs and drives them to verified completion
