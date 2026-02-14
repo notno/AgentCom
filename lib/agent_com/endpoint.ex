@@ -82,6 +82,7 @@ defmodule AgentCom.Endpoint do
   - POST   /api/hub/resume       — Resume the HubFSM (auth required)
   - GET    /api/hub/state        — Get current HubFSM state (no auth -- dashboard)
   - GET    /api/hub/history      — Get HubFSM transition history (no auth -- dashboard)
+  - GET    /api/hub/healing-history — Get healing action audit log (no auth -- dashboard)
   - POST   /api/webhooks/github           — GitHub webhook endpoint (HMAC auth, no bearer)
   - GET    /api/webhooks/github/history   — Webhook event history (no auth -- dashboard)
   - PUT    /api/config/webhook-secret     — Set webhook secret (auth required)
@@ -1538,6 +1539,29 @@ defmodule AgentCom.Endpoint do
     catch
       :exit, _ -> send_json(conn, 503, %{"error" => "hub_fsm not available"})
     end
+  end
+
+  get "/api/hub/healing-history" do
+    limit =
+      case conn.params["limit"] do
+        nil -> 50
+        l -> min(String.to_integer(l), 200)
+      end
+
+    AgentCom.HubFSM.HealingHistory.init_table()
+    history = AgentCom.HubFSM.HealingHistory.list(limit: limit)
+
+    formatted =
+      Enum.map(history, fn entry ->
+        %{
+          "category" => to_string(Map.get(entry, :category)),
+          "action" => Map.get(entry, :action),
+          "outcome" => Map.get(entry, :outcome),
+          "timestamp" => Map.get(entry, :timestamp)
+        }
+      end)
+
+    send_json(conn, 200, %{"history" => formatted, "count" => length(formatted)})
   end
 
   # --- Webhook API ---

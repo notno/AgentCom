@@ -57,6 +57,7 @@ defmodule AgentCom.HubFSM do
 
   @tick_interval_ms 1_000
   @watchdog_ms 2 * 60 * 60 * 1_000
+  @healing_watchdog_ms 300_000
 
   defstruct [
     :fsm_state,
@@ -68,7 +69,8 @@ defmodule AgentCom.HubFSM do
     transition_count: 0,
     healing_cooldown_until: 0,
     healing_attempts: 0,
-    healing_attempts_window_start: 0
+    healing_attempts_window_start: 0,
+    healing_watchdog_ref: nil
   ]
 
   # ---------------------------------------------------------------------------
@@ -448,6 +450,9 @@ defmodule AgentCom.HubFSM do
     if state.fsm_state == :healing do
       now = System.system_time(:millisecond)
 
+      # Cancel healing watchdog
+      cancel_timer(state.healing_watchdog_ref)
+
       # Track attempts within 10-minute rolling window
       {new_attempts, window_start} =
         if now - state.healing_attempts_window_start > 600_000 do
@@ -462,13 +467,53 @@ defmodule AgentCom.HubFSM do
       updated = %{updated |
         healing_cooldown_until: now + 300_000,
         healing_attempts: new_attempts,
-        healing_attempts_window_start: window_start
+        healing_attempts_window_start: window_start,
+        healing_watchdog_ref: nil
       }
 
       {:noreply, updated}
     else
       {:noreply, state}
     end
+  end
+
+  # -- healing watchdog --------------------------------------------------------
+
+  def handle_info(:healing_watchdog, %{fsm_state: :healing} = state) do
+    Logger.critical("healing_watchdog_timeout",
+      message: "healing state exceeded 5-minute watchdog, force-transitioning to :resting"
+    )
+
+    :telemetry.execute(
+      [:agent_com, :healing, :watchdog_timeout],
+      %{duration_ms: @healing_watchdog_ms},
+      %{fsm_state: :healing}
+    )
+
+    # Record watchdog timeout in healing history
+    AgentCom.HubFSM.HealingHistory.record(
+      :watchdog_timeout,
+      %{severity: :critical, detail: %{timeout_ms: @healing_watchdog_ms}},
+      %{action: :force_transition_resting}
+    )
+
+    # Force transition to resting
+    updated = do_transition(state, :resting, "healing watchdog: 5-minute timeout exceeded")
+
+    # Set cooldown
+    now = System.system_time(:millisecond)
+
+    updated = %{updated |
+      healing_cooldown_until: now + 300_000,
+      healing_watchdog_ref: nil
+    }
+
+    {:noreply, updated}
+  end
+
+  # Healing watchdog fires but we're not in healing state (already exited)
+  def handle_info(:healing_watchdog, state) do
+    {:noreply, state}
   end
 
   # -- PubSub events (catch-all) -----------------------------------------------
@@ -636,15 +681,21 @@ defmodule AgentCom.HubFSM do
       end)
     end
 
-    # Spawn async healing cycle when entering :healing
-    if new_state == :healing do
-      pid = self()
+    # Spawn async healing cycle and arm healing watchdog when entering :healing
+    updated =
+      if new_state == :healing do
+        pid = self()
 
-      Task.start(fn ->
-        result = AgentCom.HubFSM.Healing.run_healing_cycle()
-        send(pid, {:healing_cycle_complete, result})
-      end)
-    end
+        Task.start(fn ->
+          result = AgentCom.HubFSM.Healing.run_healing_cycle()
+          send(pid, {:healing_cycle_complete, result})
+        end)
+
+        healing_ref = Process.send_after(self(), :healing_watchdog, @healing_watchdog_ms)
+        %{updated | healing_watchdog_ref: healing_ref}
+      else
+        updated
+      end
 
     # Spawn async contemplation cycle when entering :contemplating
     if new_state == :contemplating do
