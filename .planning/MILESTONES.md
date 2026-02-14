@@ -130,3 +130,53 @@
 
 ---
 
+
+## v1.3 — Hub FSM Loop of Self-Improvement (Complete)
+
+**Completed:** 2026-02-14
+**Phases:** 24-36 (35 plans, ~2.5 hours total)
+**Last phase number:** 36
+
+### What Shipped
+
+| Phase | Name | What It Delivered |
+|-------|------|-------------------|
+| 24 | Document Format Conversion | Saxy-based XML infrastructure with 5 schema structs and round-trip encoding |
+| 25 | Cost Control Infrastructure | CostLedger GenServer with dual DETS+ETS, per-state budgets, telemetry alerting |
+| 26 | Claude API Client | CLI-based ClaudeClient GenServer with budget-gated invocation, prompt templates, response parsing |
+| 27 | Goal Backlog | DETS-backed goal storage with lifecycle state machine, priority ordering, multi-channel intake |
+| 28 | Pipeline Dependencies | Task dependency graph with forward-only constraints, scheduler filtering, goal tracking |
+| 29 | Hub FSM Core | 4-state autonomous brain (Executing/Improving/Contemplating/Resting) with tick-driven transitions |
+| 30 | Goal Decomposition and Inner Loop | LLM-powered goal-to-task transformation with Ralph-style verify-retry inner loop |
+| 31 | Hub Event Wiring | GitHub webhook endpoint with signature verification, FSM wake triggers, event history |
+| 32 | Improvement Scanning | Deterministic + LLM-assisted codebase scanning with anti-oscillation and file cooldowns |
+| 33 | Contemplation and Scalability | Feature proposal generation, enriched proposal schema, scalability bottleneck analysis |
+| 34 | Tiered Autonomy | Risk-based PR classification with configurable thresholds, sidecar diff integration |
+| 35 | Pre-Publication Cleanup | Secret scanning, IP replacement, workspace file management, personal reference detection |
+| 36 | Dashboard and Observability | Goal progress panels, cost tracking display, FSM state duration visualization |
+
+### Key Accomplishments
+
+- 4-state Hub FSM brain (Executing/Improving/Contemplating/Resting) with autonomous tick-driven transitions and queue-driven state management
+- LLM-powered goal decomposition with Ralph-style inner loops (decompose, execute, verify, retry) and dependency-aware task graphs
+- Cost-controlled Claude Code CLI integration with per-state budgets, dual DETS+ETS ledger, and budget-gated invocations
+- Autonomous codebase improvement scanning (deterministic + LLM-assisted) with anti-oscillation protection and file cooldowns
+- Strategic feature contemplation with enriched proposals (problem, solution, dependencies) and scalability bottleneck analysis
+- Risk-tiered autonomy classification with configurable thresholds for PR review levels and sidecar diff metadata integration
+
+### Stats
+
+- 167 commits, 242 files changed, +39,920 / -2,210 lines
+- Timeline: 2 days (2026-02-12 to 2026-02-14)
+- Git range: v1.2..v1.3
+
+### Deferred
+
+- GitHub webhook E2E test requires live webhook delivery (ngrok tunnel) — deferred to production deployment
+- REG-03 warm/cold model distinction (binary availability used instead)
+- Elixir version bump (1.14 to 1.17+) for :gen_statem logger fix
+- Sidecar queue.json atomicity (fs.writeFileSync partial-write-on-crash risk)
+- VAPID keys ephemeral (push subscriptions lost on hub restart)
+
+---
+

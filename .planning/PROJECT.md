@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A distributed agent coordination system where AI "Minds" (LLM sessions) receive work assignments from a central scheduler, execute autonomously using the right LLM backend for each task's complexity, self-verify their work against structured criteria, and submit results as PRs. Built on an Elixir/BEAM hub with Node.js sidecars, using a GPU scheduler-style push architecture with model-aware routing across a distributed LLM mesh.
+A distributed agent coordination system where AI "Minds" (LLM sessions) receive work assignments from a central scheduler, execute autonomously using the right LLM backend for each task's complexity, self-verify their work against structured criteria, and submit results as PRs. The hub operates as an autonomous brain — cycling through goal execution, codebase improvement, and strategic contemplation — with cost-controlled LLM calls and risk-tiered PR classification. Built on an Elixir/BEAM hub with Node.js sidecars, using a GPU scheduler-style push architecture with model-aware routing across a distributed LLM mesh.
 
 ## Core Value
 
@@ -47,26 +47,25 @@ Reliable autonomous work execution: ideas enter a queue and emerge as reviewed, 
 - ✓ Sidecar trivial execution for zero-LLM-token mechanical ops — v1.2
 - ✓ Agent self-verification against task criteria before submission — v1.2
 - ✓ Multi-repo registry with workspace switching and scheduler filtering — v1.2
+- ✓ XML document format for machine-consumed planning artifacts (Saxy-based) — v1.3
+- ✓ CostLedger with dual DETS+ETS, per-state budgets, telemetry alerting — v1.3
+- ✓ Claude Code CLI wrapper GenServer with budget-gated invocations — v1.3
+- ✓ Goal backlog with DETS persistence, lifecycle state machine, priority ordering — v1.3
+- ✓ Task dependency graph with forward-only constraints and scheduler filtering — v1.3
+- ✓ Hub FSM 4-state brain (Executing/Improving/Contemplating/Resting) with tick-driven transitions — v1.3
+- ✓ LLM-powered goal decomposition with Ralph-style verify-retry inner loop — v1.3
+- ✓ GitHub webhook endpoint with signature verification and FSM wake triggers — v1.3
+- ✓ Deterministic + LLM-assisted codebase improvement scanning with anti-oscillation — v1.3
+- ✓ Feature proposal generation with enriched schema and scalability analysis — v1.3
+- ✓ Risk-tiered autonomy classification with configurable thresholds — v1.3
+- ✓ Pre-publication secret scanning, IP replacement, workspace file management — v1.3
+- ✓ Dashboard goal progress, cost tracking, and FSM state visualization — v1.3
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-## Current Milestone: v1.3 Hub FSM Loop of Self-Improvement
-
-**Goal:** Make the hub an autonomous thinker that cycles through executing goals, improving codebases, contemplating future features, and resting — with Ralph-style inner loops and LLM-powered decomposition.
-
-**Target features:**
-- Hub FSM with 4 states (Executing, Improving, Contemplating, Resting) and queue-driven transitions
-- Centralized goal backlog with multiple input channels (API, CLI, file)
-- LLM-powered goal decomposition (Claude API) into enriched tasks for existing pipeline
-- Ralph-style inner loops with success criteria verification per goal
-- Autonomous codebase improvement scanning across repos in priority order
-- Tiered autonomy (small improvements auto-merge, larger ones create PRs)
-- Future feature contemplation and proposal writing
-- Pre-publication repo cleanup (token scrubbing, IP removal, workspace files, personal refs)
-- Scalability analysis (bottlenecks, machine vs agent scaling tradeoffs)
-- Pipeline pipelining (front-loading discussion/research for parallel execution)
+(No active milestone — planning next)
 
 ### Out of Scope
 
@@ -87,25 +86,31 @@ Reliable autonomous work execution: ideas enter a queue and emerge as reviewed, 
 - Streaming LLM output through hub — adds latency for zero coordination value
 - Agent-to-agent delegation — bypasses central scheduler
 - Warm/cold model VRAM distinction — binary availability sufficient for routing (REG-03 accepted tech debt)
+- Auto-merge for any tier — PR-only until pipeline reliability proven through production data
+- Dynamic goal priority rebalancing by LLM — non-deterministic scheduling; priority is human-set or rule-based
+- Cross-repo goal dependencies — DAG complexity out of scope; decompose to per-repo goals
+- Autonomous deployment/release — auto-merge to branch acceptable; deployment is human decision
+- Persistent LLM conversation memory — fresh context per call (Ralph pattern); state in DETS not LLM memory
 
 ## Context
 
 Shipped v1.0 on 2026-02-11 (8 phases, 19 plans, 48 commits, +12,858 LOC across 65 files in 2 days).
 Shipped v1.1 on 2026-02-12 (8 phases, 32 plans, 153 commits, +35,732 LOC across 195 files in 4 days).
 Shipped v1.2 on 2026-02-12 (7 phases, 25 plans, 136 commits, +26,075 LOC across 147 files in 1 day).
+Shipped v1.3 on 2026-02-14 (13 phases, 35 plans, 167 commits, +39,920 LOC across 242 files in 2 days).
 
-**Tech stack:** Elixir/BEAM hub (~22,000 LOC), Node.js sidecars (~4,500 LOC), HTML/CSS/JS dashboard, ExDoc documentation.
+**Tech stack:** Elixir/BEAM hub (~30,000 LOC), Node.js sidecars (~5,000 LOC), HTML/CSS/JS dashboard, ExDoc documentation.
 
-**Architecture:** Push-based scheduler with model-aware routing drives work to always-on sidecars via persistent WebSocket. Tasks carry structured context, success criteria, and complexity classification. Scheduler routes by complexity tier: trivial to local shell, standard to Ollama endpoints, complex to Claude API. Sidecars execute via three backends and self-verify against mechanical checks before submission. DETS persistence for task queue, agent state, LLM registry, repo registry, and config with automated backup/compaction/recovery. ETS-backed metrics, rate limiting, and validation tracking. PubSub for internal event distribution. pm2 for sidecar process management. LoggerJSON for structured observability.
+**Architecture:** Push-based scheduler with model-aware routing drives work to always-on sidecars via persistent WebSocket. Tasks carry structured context, success criteria, and complexity classification. Scheduler routes by complexity tier: trivial to local shell, standard to Ollama endpoints, complex to Claude API. Sidecars execute via three backends and self-verify against mechanical checks before submission. Hub operates as an autonomous brain via 4-state FSM (Executing/Improving/Contemplating/Resting) with tick-driven transitions, cost-controlled Claude Code CLI calls, and goal decomposition inner loops. DETS persistence for task queue, agent state, LLM registry, repo registry, goal backlog, cost ledger, improvement history, and config with automated backup/compaction/recovery. ETS-backed metrics, rate limiting, budget checks, and validation tracking. PubSub for internal event distribution. pm2 for sidecar process management. LoggerJSON for structured observability.
 
-**Current state:** All v1.0, v1.1, and v1.2 features shipped. System delivers a complete smart agent pipeline from task submission through complexity-routed execution to self-verified completion. Operational with 5 AI agents on Tailscale mesh.
+**Current state:** All v1.0 through v1.3 features shipped. System delivers a complete autonomous pipeline: goals are submitted, decomposed into tasks via LLM, executed by agents, self-verified, and submitted as PRs with risk-tiered classification. Hub autonomously cycles through goal execution, codebase improvement, and strategic contemplation. Operational with 5 AI agents on Tailscale mesh.
 
 **Known tech debt:**
 - REG-03: Warm/cold model distinction deferred (binary availability used instead)
 - queue.json atomicity (fs.writeFileSync partial-write risk on crash)
 - VAPID keys ephemeral (push subscriptions lost on hub restart)
 - Elixir version bump recommended (1.14 to 1.17+ for :gen_statem logger fix)
-- Analytics and Threads modules orphaned (not exposed via API)
+- GitHub webhook E2E test requires live webhook delivery (ngrok tunnel)
 
 **Deferred:** PR review gatekeeper (Flere-Imsaho role) needs 50+ tasks of production data to calibrate merge/escalation heuristics.
 
@@ -142,6 +147,13 @@ Shipped v1.2 on 2026-02-12 (7 phases, 25 plans, 136 commits, +26,075 LOC across 
 | Three-executor sidecar architecture | Clean separation: OllamaExecutor, ClaudeExecutor, ShellExecutor | ✓ Good — dispatcher selects per routing_decision, cost calc centralized |
 | Build-verify-fix retry pattern | Safe default: 0 retries, opt-in with max 5 cap | ✓ Good — corrective prompts include pass+fail checks to prevent regression |
 | Single DETS key for repo ordering | Atomic reordering without multi-key consistency issues | ✓ Good — ordered list under :repos key, priority preserved |
+| GenServer FSM (not gen_statem) | Follows existing AgentFSM pattern, simpler for tick-based evaluation | ✓ Good — pure Predicates module for testability, ETS history |
+| Dual DETS+ETS for CostLedger | DETS durability + ETS O(1) hot-path budget checks without GenServer.call | ✓ Good — fail-open on unavailability, telemetry alerting |
+| Claude Code CLI wrapper (not HTTP API) | CLI provides managed context, tool use, file system access out of the box | ✓ Good — Task.async+yield for non-blocking GenServer |
+| Tick-based FSM evaluation at 1s intervals | Simpler than per-event evaluation, predictable transition timing | ✓ Good — pure Predicates module, clean separation |
+| PR-only before auto-merge | No auto-merge until pipeline reliability proven through production data | ✓ Good — risk classification ready, conservative default |
+| Ralph-style inner loops | Single pending_async slot ensures one LLM call in-flight at a time | ✓ Good — verification before decomposition priority |
+| Regex-based XML extraction for LLM output | LLM output may not be valid XML; regex is more lenient than Saxy | ✓ Good — fallback plain text parsing when JSON fails |
 
 ---
-*Last updated: 2026-02-12 after v1.3 milestone start*
+*Last updated: 2026-02-14 after v1.3 milestone completion*
