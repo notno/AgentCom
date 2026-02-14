@@ -4,12 +4,12 @@ defmodule AgentCom.DetsBackup do
   and compaction orchestration.
 
   Handles:
-  - Daily automatic backup of all 11 DETS tables via Process.send_after timer
+  - Daily automatic backup of all 13 DETS tables via Process.send_after timer
   - Manual backup trigger via backup_all/0 (synchronous, returns results)
   - Retention cleanup: keeps only last 3 backups per table
   - Health metrics: record count, file size, fragmentation ratio per table
   - PubSub broadcast on "backups" topic after each backup run
-  - Scheduled compaction of all 11 DETS tables every 6 hours (configurable)
+  - Scheduled compaction of all 13 DETS tables every 6 hours (configurable)
   - Fragmentation threshold skip (default 10%) to avoid unnecessary compaction
   - Retry-once on compaction failure, then wait for next scheduled run
   - Compaction history tracking (last 20 runs)
@@ -29,8 +29,12 @@ defmodule AgentCom.DetsBackup do
     :thread_replies,
     :repo_registry,
     :cost_ledger,
-    :goal_backlog
+    :goal_backlog,
+    :improvement_history
   ]
+
+  # Library-owned tables (not GenServers) -- compaction uses :dets.sync directly
+  @library_tables [:improvement_history]
 
   @daily_interval_ms 24 * 60 * 60 * 1000
   @max_backups_per_table 3
@@ -55,7 +59,7 @@ defmodule AgentCom.DetsBackup do
   end
 
   @doc """
-  Return health metrics for all 11 DETS tables.
+  Return health metrics for all 13 DETS tables.
 
   Returns a map with:
   - `:tables` - list of per-table metric maps (record_count, file_size_bytes, fragmentation_ratio, status)
@@ -332,9 +336,9 @@ defmodule AgentCom.DetsBackup do
   defp table_owner(:goal_backlog), do: AgentCom.GoalBacklog
   defp table_owner(:task_queue), do: AgentCom.TaskQueue
   defp table_owner(:task_dead_letter), do: AgentCom.TaskQueue
+  defp table_owner(:improvement_history), do: AgentCom.SelfImprovement.ImprovementHistory
 
   defp compact_table(table_atom) do
-    owner = table_owner(table_atom)
     start_time = System.system_time(:millisecond)
 
     # Check fragmentation threshold first
@@ -342,25 +346,43 @@ defmodule AgentCom.DetsBackup do
     if metrics.status == :ok and metrics.fragmentation_ratio < @compaction_threshold do
       {:skipped, :below_threshold, 0}
     else
-      # For single-table GenServers, send :compact
-      # For multi-table GenServers, send {:compact, table_atom}
-      msg = if owner in [AgentCom.Channels, AgentCom.TaskQueue, AgentCom.Threads] do
-        {:compact, table_atom}
+      if table_atom in @library_tables do
+        # Library-owned tables: sync directly, no GenServer compaction needed
+        result = try do
+          :dets.sync(table_atom)
+        catch
+          :exit, reason -> {:error, reason}
+        end
+
+        duration_ms = System.system_time(:millisecond) - start_time
+
+        case result do
+          :ok -> {:compacted, duration_ms}
+          {:error, reason} -> {:error, reason, duration_ms}
+        end
       else
-        :compact
-      end
+        owner = table_owner(table_atom)
 
-      result = try do
-        GenServer.call(owner, msg, 30_000)
-      catch
-        :exit, reason -> {:error, reason}
-      end
+        # For single-table GenServers, send :compact
+        # For multi-table GenServers, send {:compact, table_atom}
+        msg = if owner in [AgentCom.Channels, AgentCom.TaskQueue, AgentCom.Threads] do
+          {:compact, table_atom}
+        else
+          :compact
+        end
 
-      duration_ms = System.system_time(:millisecond) - start_time
+        result = try do
+          GenServer.call(owner, msg, 30_000)
+        catch
+          :exit, reason -> {:error, reason}
+        end
 
-      case result do
-        :ok -> {:compacted, duration_ms}
-        {:error, reason} -> {:error, reason, duration_ms}
+        duration_ms = System.system_time(:millisecond) - start_time
+
+        case result do
+          :ok -> {:compacted, duration_ms}
+          {:error, reason} -> {:error, reason, duration_ms}
+        end
       end
     end
   end
@@ -465,6 +487,10 @@ defmodule AgentCom.DetsBackup do
       :goal_backlog ->
         dir = Application.get_env(:agent_com, :goal_backlog_data_dir, "priv/data/goal_backlog")
         Path.join(dir, "goal_backlog.dets")
+
+      :improvement_history ->
+        dir = Application.get_env(:agent_com, :improvement_history_data_dir, "priv/data/improvement_history")
+        Path.join(dir, "improvement_history.dets")
     end
   end
 
@@ -516,53 +542,89 @@ defmodule AgentCom.DetsBackup do
 
     case find_latest_backup(table_atom, backup_dir) do
       {:ok, backup_path} ->
-        try do
-          # Step 1: Stop owner GenServer (terminate/2 closes DETS tables)
-          :ok = Supervisor.terminate_child(AgentCom.Supervisor, owner)
+        if table_atom in @library_tables do
+          # Library-owned tables: close DETS directly, copy backup, reopen via init
+          try do
+            :dets.close(table_atom)
+            File.cp!(backup_path, original_path)
+            AgentCom.SelfImprovement.ImprovementHistory.init()
 
-          # Step 2: Replace corrupted file with backup
-          File.cp!(backup_path, original_path)
+            case verify_table_integrity(table_atom) do
+              {:ok, integrity_info} ->
+                backup_filename = Path.basename(backup_path)
+                {:ok, %{table: table_atom, backup_used: backup_filename, integrity: integrity_info}}
 
-          # Step 3: Restart owner GenServer (init/1 opens the restored file)
-          case Supervisor.restart_child(AgentCom.Supervisor, owner) do
-            {:ok, _pid} ->
-              # Step 4: Verify integrity (per locked decision)
-              case verify_table_integrity(table_atom) do
-                {:ok, integrity_info} ->
-                  backup_filename = Path.basename(backup_path)
-                  {:ok, %{table: table_atom, backup_used: backup_filename, integrity: integrity_info}}
-
-                {:error, reason} ->
-                  Logger.error("dets_integrity_failed",
-                    table: table_atom,
-                    reason: inspect(reason),
-                    phase: :post_restore
-                  )
-                  {:error, {:integrity_failed, reason}}
-              end
-
-            {:error, restart_reason} ->
-              Logger.critical("dets_restart_failed",
-                table: table_atom,
-                owner: inspect(owner),
-                reason: inspect(restart_reason),
-                phase: :post_restore
-              )
-              handle_restart_failure(table_atom, owner, original_path)
-          end
-        rescue
-          e ->
-            Logger.critical("dets_restore_exception",
-              table: table_atom,
-              error: inspect(e)
-            )
-            # Try to restart the owner even if copy failed
-            try do
-              Supervisor.restart_child(AgentCom.Supervisor, owner)
-            catch
-              _, _ -> :ok
+              {:error, reason} ->
+                Logger.error("dets_integrity_failed",
+                  table: table_atom,
+                  reason: inspect(reason),
+                  phase: :post_restore
+                )
+                {:error, {:integrity_failed, reason}}
             end
-            {:error, {:restore_failed, e}}
+          rescue
+            e ->
+              Logger.critical("dets_restore_exception",
+                table: table_atom,
+                error: inspect(e)
+              )
+              # Try to reopen the table even if copy failed
+              try do
+                AgentCom.SelfImprovement.ImprovementHistory.init()
+              catch
+                _, _ -> :ok
+              end
+              {:error, {:restore_failed, e}}
+          end
+        else
+          try do
+            # Step 1: Stop owner GenServer (terminate/2 closes DETS tables)
+            :ok = Supervisor.terminate_child(AgentCom.Supervisor, owner)
+
+            # Step 2: Replace corrupted file with backup
+            File.cp!(backup_path, original_path)
+
+            # Step 3: Restart owner GenServer (init/1 opens the restored file)
+            case Supervisor.restart_child(AgentCom.Supervisor, owner) do
+              {:ok, _pid} ->
+                # Step 4: Verify integrity (per locked decision)
+                case verify_table_integrity(table_atom) do
+                  {:ok, integrity_info} ->
+                    backup_filename = Path.basename(backup_path)
+                    {:ok, %{table: table_atom, backup_used: backup_filename, integrity: integrity_info}}
+
+                  {:error, reason} ->
+                    Logger.error("dets_integrity_failed",
+                      table: table_atom,
+                      reason: inspect(reason),
+                      phase: :post_restore
+                    )
+                    {:error, {:integrity_failed, reason}}
+                end
+
+              {:error, restart_reason} ->
+                Logger.critical("dets_restart_failed",
+                  table: table_atom,
+                  owner: inspect(owner),
+                  reason: inspect(restart_reason),
+                  phase: :post_restore
+                )
+                handle_restart_failure(table_atom, owner, original_path)
+            end
+          rescue
+            e ->
+              Logger.critical("dets_restore_exception",
+                table: table_atom,
+                error: inspect(e)
+              )
+              # Try to restart the owner even if copy failed
+              try do
+                Supervisor.restart_child(AgentCom.Supervisor, owner)
+              catch
+                _, _ -> :ok
+              end
+              {:error, {:restore_failed, e}}
+          end
         end
 
       {:error, :no_backup_found} ->
