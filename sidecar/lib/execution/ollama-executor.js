@@ -209,11 +209,15 @@ class OllamaExecutor {
    * @returns {Promise<object>} Execution result
    */
   async _agenticLoop(endpoint, model, task, config, onProgress) {
-    const maxIterations = task._agentic_max_iterations || 10;
+    const maxIterations = this._getMaxIterations(task);
     const workspace = config.repo_dir || config.workspace || process.cwd();
     const tools = getToolDefinitions();
     let nudgeCount = 0;
     const maxNudges = 2;
+
+    // Safety guardrail state
+    const callHistory = [];
+    let lastWriteIteration = -1; // Track last iteration with a successful write_file
 
     // Build initial messages
     const systemContent = this._buildMessages(task)[0];
@@ -240,6 +244,7 @@ class OllamaExecutor {
     let totalTokensOut = 0;
     let lastContent = '';
     let terminationReason = 'max_iterations';
+    let iterationsUsed = 0;
 
     log('info', 'agentic_loop_start', {
       task_id: task.task_id,
@@ -254,6 +259,8 @@ class OllamaExecutor {
     });
 
     for (let i = 0; i < maxIterations; i++) {
+      iterationsUsed = i + 1;
+
       let response;
       try {
         response = await this._chatOnce(endpoint, model, messages, tools);
@@ -296,6 +303,22 @@ class OllamaExecutor {
       if (parsed.type === 'tool_calls') {
         nudgeCount = 0; // Reset nudge count on successful tool calls
 
+        // Guardrail: Repetition detection (AGENT-04)
+        callHistory.push(parsed.calls);
+        if (this._isRepetition(callHistory, parsed.calls)) {
+          terminationReason = 'repetition';
+          log('warning', 'agentic_repetition_stop', {
+            task_id: task.task_id,
+            iteration: i,
+            repeated_calls: parsed.calls.map(c => c.name)
+          });
+          onProgress({
+            type: 'status',
+            message: `Stopped: repeated tool calls detected (${parsed.calls.map(c => c.name).join(', ')})`
+          });
+          break;
+        }
+
         // Append assistant message to conversation
         messages.push({
           role: 'assistant',
@@ -304,6 +327,7 @@ class OllamaExecutor {
         });
 
         // Execute each tool call
+        let hadWrite = false;
         for (const call of parsed.calls) {
           onProgress({
             type: 'tool_call',
@@ -321,6 +345,11 @@ class OllamaExecutor {
 
           const toolResult = await executeTool(call.name, call.arguments, workspace);
 
+          // Track write_file success for stall detection
+          if (call.name === 'write_file' && toolResult.success) {
+            hadWrite = true;
+          }
+
           // Append tool result to conversation
           messages.push({
             role: 'tool',
@@ -333,6 +362,26 @@ class OllamaExecutor {
             tool: call.name,
             success: toolResult.success
           });
+        }
+
+        // Update last write iteration
+        if (hadWrite) {
+          lastWriteIteration = i;
+        }
+
+        // Guardrail: Stall detection (no file writes in 5 iterations)
+        if (lastWriteIteration >= 0 && (i - lastWriteIteration) >= 5) {
+          terminationReason = 'stall';
+          log('warning', 'agentic_stall_stop', {
+            task_id: task.task_id,
+            iteration: i,
+            last_write_iteration: lastWriteIteration
+          });
+          onProgress({
+            type: 'status',
+            message: `Stopped: no file modifications in 5 iterations (stall detected)`
+          });
+          break;
         }
 
         continue;
@@ -366,6 +415,7 @@ class OllamaExecutor {
     log('info', 'agentic_loop_end', {
       task_id: task.task_id,
       termination_reason: terminationReason,
+      iterations_used: iterationsUsed,
       tokens_in: totalTokensIn,
       tokens_out: totalTokensOut
     });
@@ -383,8 +433,40 @@ class OllamaExecutor {
       tokens_out: totalTokensOut,
       error: null,
       termination_reason: terminationReason,
-      iterations_used: maxIterations
+      iterations_used: iterationsUsed
     };
+  }
+
+  /**
+   * Determine max iterations from task complexity tier (AGENT-08).
+   *
+   * @param {object} task - Task object with optional complexity.effective_tier
+   * @returns {number} Maximum iterations for the agentic loop
+   */
+  _getMaxIterations(task) {
+    const ITERATION_LIMITS = { trivial: 5, standard: 10, complex: 20 };
+    const tier = task.complexity?.effective_tier || 'standard';
+    return task._agentic_max_iterations || ITERATION_LIMITS[tier] || 10;
+  }
+
+  /**
+   * Check if the last N iterations have identical tool call signatures (AGENT-04).
+   *
+   * @param {Array} callHistory - Array of arrays (each entry is tool calls from one iteration)
+   * @param {Array} newCalls - Current iteration's tool calls
+   * @param {number} threshold - Number of consecutive identical rounds to detect (default 3)
+   * @returns {boolean} True if repetition detected
+   */
+  _isRepetition(callHistory, newCalls, threshold = 3) {
+    if (callHistory.length < threshold) return false;
+
+    const makeKey = (calls) =>
+      calls.map(c => c.name + ':' + JSON.stringify(c.arguments)).join('|');
+
+    const currentKey = makeKey(newCalls);
+    const recent = callHistory.slice(-threshold);
+
+    return recent.every(calls => makeKey(calls) === currentKey);
   }
 
   /**
