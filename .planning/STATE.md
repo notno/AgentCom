@@ -9,17 +9,17 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 
 ## Current Position
 
-Phase: 29 of 36 (Hub FSM Core)
-Plan: 4/4 complete
-Status: Phase Complete
-Last activity: 2026-02-14 -- Plan 29-04 Gap Closure (Transition Timeline)
+Phase: 31 of 36 (Hub Event Wiring)
+Plan: 1/3 complete
+Status: In Progress
+Last activity: 2026-02-14 -- Plan 31-01 FSM Improving State + Webhook Infrastructure
 
-Progress: [██████████████] 100% (4/4 plans)
+Progress: [████░░░░░░░░░░] 33% (1/3 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 89 (19 v1.0 + 32 v1.1 + 25 v1.2 + 13 v1.3)
+- Total plans completed: 90 (19 v1.0 + 32 v1.1 + 25 v1.2 + 14 v1.3)
 - Average duration: 4 min
 - Total execution time: ~5.5 hours
 
@@ -77,6 +77,8 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - Regex-based XML extraction (not Saxy) for LLM response parsing -- LLM output may not be valid XML; regex is more lenient
 - Fallback plain text parsing when JSON decode fails -- supports --output-format text responses
 - rescue in Cli.invoke for System.cmd :enoent -- prevents GenServer crash when CLI binary unavailable
+- [Phase 31]: Both resting->executing and resting->improving increment cycle count (active work cycles)
+- [Phase 31]: :improving exits only via budget exhaustion or watchdog timeout (not goal predicates)
 
 ### Research Findings (v1.3)
 
@@ -104,5 +106,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 29-04-PLAN.md -- Gap Closure: Transition Timeline (Phase 29 fully complete)
+Stopped at: Completed 31-01-PLAN.md -- FSM Improving State + Webhook Infrastructure
 Resume file: None
