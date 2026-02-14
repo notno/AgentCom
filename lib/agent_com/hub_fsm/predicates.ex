@@ -26,6 +26,7 @@ defmodule AgentCom.HubFSM.Predicates do
     - `:pending_goals` -- integer count of submitted goals in backlog
     - `:active_goals` -- integer count of goals in decomposing/executing/verifying
     - `:budget_exhausted` -- boolean, true if CostLedger reports budget exceeded
+    - `:improving_budget_available` -- boolean, true if improving budget has capacity
 
   ## Returns
 
@@ -37,6 +38,11 @@ defmodule AgentCom.HubFSM.Predicates do
 
   def evaluate(:resting, %{pending_goals: pending}) when pending > 0 do
     {:transition, :executing, "pending goals in backlog"}
+  end
+
+  # Resting -> improving: no pending goals, no active goals, but improving budget available
+  def evaluate(:resting, %{pending_goals: 0, active_goals: 0, improving_budget_available: true}) do
+    {:transition, :improving, "no goals, improving budget available"}
   end
 
   def evaluate(:resting, _system_state), do: :stay
@@ -51,11 +57,16 @@ defmodule AgentCom.HubFSM.Predicates do
 
   def evaluate(:executing, _system_state), do: :stay
 
-  # :improving transitions to :resting when budget exhausted
-  def evaluate(:improving, %{budget_exhausted: true}) do
-    {:transition, :resting, "budget exhausted"}
+  # Improving -> executing: goals submitted (new work to do)
+  def evaluate(:improving, %{pending_goals: pending}) when pending > 0 do
+    {:transition, :executing, "goals submitted while improving"}
   end
 
-  # :improving stays active (transitions to :resting handled by watchdog or external signal)
+  # :improving transitions to :resting when budget exhausted
+  def evaluate(:improving, %{budget_exhausted: true}) do
+    {:transition, :resting, "budget exhausted while improving"}
+  end
+
+  # Improving: stay (scan in progress)
   def evaluate(:improving, _system_state), do: :stay
 end

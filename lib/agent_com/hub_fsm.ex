@@ -48,7 +48,7 @@ defmodule AgentCom.HubFSM do
   @valid_transitions %{
     resting: [:executing, :improving],
     executing: [:resting],
-    improving: [:resting]
+    improving: [:resting, :executing]
   }
 
   @tick_interval_ms 1_000
@@ -295,6 +295,19 @@ defmodule AgentCom.HubFSM do
     {:noreply, updated}
   end
 
+  # -- improvement cycle complete ------------------------------------------------
+
+  def handle_info({:improvement_cycle_complete, result}, state) do
+    Logger.info("improvement_cycle_complete", result: inspect(result))
+
+    if state.fsm_state == :improving do
+      updated = do_transition(state, :resting, "improvement cycle complete")
+      {:noreply, updated}
+    else
+      {:noreply, state}
+    end
+  end
+
   # -- PubSub events (catch-all) -----------------------------------------------
 
   def handle_info({:goal_event, _payload}, state) do
@@ -340,10 +353,19 @@ defmodule AgentCom.HubFSM do
         :exit, _ -> false
       end
 
+    # Check improving budget (safe if not started)
+    improving_budget_available =
+      try do
+        AgentCom.CostLedger.check_budget(:improving) == :ok
+      catch
+        :exit, _ -> false
+      end
+
     %{
       pending_goals: pending_goals,
       active_goals: active_goals,
-      budget_exhausted: budget_exhausted
+      budget_exhausted: budget_exhausted,
+      improving_budget_available: improving_budget_available
     }
   end
 
@@ -358,10 +380,13 @@ defmodule AgentCom.HubFSM do
     History.record(state.fsm_state, new_state, reason, new_transition_count)
 
     # Update ClaudeClient hub state (safe if not started)
-    try do
-      AgentCom.ClaudeClient.set_hub_state(:executing)
-    catch
-      :exit, _ -> :ok
+    # :resting is NOT a valid ClaudeClient hub state, only notify for :executing and :improving
+    if new_state in [:executing, :improving] do
+      try do
+        AgentCom.ClaudeClient.set_hub_state(new_state)
+      catch
+        :exit, _ -> :ok
+      end
     end
 
     # Emit telemetry
@@ -398,6 +423,16 @@ defmodule AgentCom.HubFSM do
       cycle: new_cycle_count,
       transition: new_transition_count
     )
+
+    # Spawn async improvement cycle when entering :improving
+    if new_state == :improving do
+      pid = self()
+
+      Task.start(fn ->
+        result = AgentCom.SelfImprovement.run_improvement_cycle()
+        send(pid, {:improvement_cycle_complete, result})
+      end)
+    end
 
     updated
   end
