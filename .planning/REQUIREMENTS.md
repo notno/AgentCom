@@ -58,9 +58,9 @@ Requirements for v1.3 Hub FSM Loop of Self-Improvement. Each maps to roadmap pha
 
 ### Pipeline Dependencies
 
-- [ ] **PIPE-01**: Tasks support a depends_on field linking to prerequisite task IDs
-- [ ] **PIPE-02**: Scheduler filters out tasks whose dependencies are incomplete
-- [ ] **PIPE-03**: Tasks carry a goal_id linking them to their parent goal
+- [x] **PIPE-01**: Tasks support a depends_on field linking to prerequisite task IDs
+- [x] **PIPE-02**: Scheduler filters out tasks whose dependencies are incomplete
+- [x] **PIPE-03**: Tasks carry a goal_id linking them to their parent goal
 
 ### Pre-Publication Cleanup
 
@@ -141,9 +141,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GOAL-02 | Phase 27 | Done |
 | GOAL-05 | Phase 27 | Done |
 | GOAL-08 | Phase 27 | Done |
-| PIPE-01 | Phase 28 | Pending |
-| PIPE-02 | Phase 28 | Pending |
-| PIPE-03 | Phase 28 | Pending |
+| PIPE-01 | Phase 28 | Done |
+| PIPE-02 | Phase 28 | Done |
+| PIPE-03 | Phase 28 | Done |
 | FSM-01 | Phase 29 | Pending |
 | FSM-02 | Phase 29 | Pending |
 | FSM-03 | Phase 29 | Pending |

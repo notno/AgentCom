@@ -81,7 +81,7 @@
 - [ ] **Phase 32: Improvement Scanning** - Deterministic and LLM-assisted codebase improvement identification
 - [ ] **Phase 33: Contemplation and Scalability** - Feature proposal generation and bottleneck analysis
 - [ ] **Phase 34: Tiered Autonomy** - Risk-based PR classification with configurable thresholds
-- [ ] **Phase 35: Pre-Publication Cleanup** - Secret scanning, IP replacement, workspace file management
+- [x] **Phase 35: Pre-Publication Cleanup** - Secret scanning, IP replacement, workspace file management (shipped 2026-02-13)
 - [ ] **Phase 36: Dashboard and Observability** - Goal progress, cost tracking, and FSM visibility panels
 
 ## Phase Details
@@ -230,7 +230,7 @@ Plans:
   4. Personal references (names, local paths) are identified with recommended replacements
 **Plans:** 2 plans
 Plans:
-- [ ] 35-01-PLAN.md -- Core scanner library: Patterns, FileWalker, Finding struct, RepoScanner API
+- [x] 35-01-PLAN.md -- Core scanner library: Patterns, FileWalker, Finding struct, RepoScanner API
 - [ ] 35-02-PLAN.md -- API endpoint and comprehensive test suite
 
 ### Phase 36: Dashboard and Observability
