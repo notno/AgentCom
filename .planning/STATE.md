@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** v1.3 Hub FSM Loop of Self-Improvement -- Phase 35 in progress
+**Current focus:** v1.3 Hub FSM Loop of Self-Improvement -- Phase 35 complete
 
 ## Current Position
 
 Phase: 35 of 36 (Pre-Publication Cleanup)
-Plan: 1/2 complete
-Status: In Progress
-Last activity: 2026-02-13 -- Plan 35-01 RepoScanner core (4 modules, all categories scanning)
+Plan: 2/2 complete
+Status: Phase Complete
+Last activity: 2026-02-14 -- Plan 35-02 RepoScanner API endpoint + 21-test suite
 
-Progress: [██████▌       ] 50% (1/2 plans)
+Progress: [█████████████] 100% (2/2 plans)
 
 ## Performance Metrics
 
@@ -57,6 +57,8 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - RepoScanner as library module (not GenServer) -- stateless scanning, no supervision overhead
 - Module attribute patterns with compile-time regex -- zero runtime compilation cost
 - Elixir maps for scan reports (not XML) -- JSON-serializable for API consumption
+- format_scan_report/1 manual atom-to-string serialization -- report maps use atom keys internally
+- Reject unknown scan categories with 422 -- fail-fast API contract for consumers
 - Dependency validation at submit time rejects unknown task IDs immediately (not at schedule time)
 - Dependencies checked against both tasks and dead_letter tables for maximum flexibility
 - goal_progress/1 as client-side aggregation over tasks_for_goal/1 (no extra GenServer call)
@@ -88,6 +90,6 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 
 ## Session Continuity
 
-Last session: 2026-02-13
-Stopped at: Completed 27-02-PLAN.md -- Goal API routes, validation schemas, and agentcom-submit-goal.js CLI tool
+Last session: 2026-02-14
+Stopped at: Completed 35-02-PLAN.md -- RepoScanner API endpoint + test suite (Phase 35 complete)
 Resume file: None
