@@ -282,6 +282,141 @@ defmodule AgentCom.SchedulerTest do
   end
 
   # ---------------------------------------------------------------------------
+  # Dependency filtering (Phase 28)
+  # ---------------------------------------------------------------------------
+
+  describe "dependency filtering (Phase 28)" do
+    test "3-task dependency chain: only tasks with completed deps get scheduled" do
+      agent = TestFactory.create_agent(capabilities: [])
+
+      Phoenix.PubSub.subscribe(AgentCom.PubSub, "tasks")
+
+      # Submit A (no deps), B depends on A, C depends on B
+      {:ok, task_a} = TestFactory.submit_task(description: "chain task A")
+
+      # Wait for A to be assigned (it has no deps, so scheduler should pick it up)
+      assert_receive {:task_event, %{event: :task_assigned, task_id: tid_a}}, 5_000
+      assert tid_a == task_a.id
+
+      # A is now assigned. Submit B (depends on A) and C (depends on B)
+      {:ok, task_b} = TestFactory.submit_task(description: "chain task B", depends_on: [task_a.id])
+
+      # B should NOT be assigned (A not completed yet)
+      assert_receive {:task_event, %{event: :task_submitted}}, 5_000
+      refute_receive {:task_event, %{event: :task_assigned, task_id: ^task_b}}, 1_000
+
+      # Complete A
+      {:ok, assigned_a} = TaskQueue.get(task_a.id)
+      {:ok, _completed_a} = TaskQueue.complete_task(task_a.id, assigned_a.generation, %{result: "done A"})
+
+      # After completing A, agent becomes idle again and B's dep is satisfied
+      # Simulate agent becoming idle (FSM would normally do this)
+      AgentFSM.assign_task(agent.agent_id, task_a.id)
+      Process.sleep(50)
+      AgentFSM.task_accepted(agent.agent_id, task_a.id)
+      Process.sleep(50)
+      AgentFSM.task_completed(agent.agent_id)
+      Process.sleep(200)
+
+      # B should now be assigned
+      assert_receive {:task_event, %{event: :task_assigned, task_id: tid_b}}, 5_000
+      assert tid_b == task_b.id
+
+      TestFactory.cleanup_agent(agent)
+    end
+
+    test "independent tasks (no depends_on) are both schedulable immediately" do
+      agent1 = TestFactory.create_agent(capabilities: [])
+      agent2 = TestFactory.create_agent(capabilities: [])
+
+      Phoenix.PubSub.subscribe(AgentCom.PubSub, "tasks")
+
+      {:ok, task_x} = TestFactory.submit_task(description: "independent X")
+      assert_receive {:task_event, %{event: :task_assigned, task_id: tid_x}}, 5_000
+      assert tid_x == task_x.id
+
+      # Simulate first agent accepting to free up for second assignment
+      {:ok, assigned_x} = TaskQueue.get(task_x.id)
+      AgentFSM.assign_task(assigned_x.assigned_to, task_x.id)
+      Process.sleep(50)
+      AgentFSM.task_accepted(assigned_x.assigned_to, task_x.id)
+      Process.sleep(50)
+
+      {:ok, task_y} = TestFactory.submit_task(description: "independent Y")
+      assert_receive {:task_event, %{event: :task_assigned, task_id: tid_y}}, 5_000
+      assert tid_y == task_y.id
+
+      TestFactory.cleanup_agent(agent1)
+      TestFactory.cleanup_agent(agent2)
+    end
+
+    test "mixed independent and dependent: independent scheduled, dependent blocked" do
+      agent = TestFactory.create_agent(capabilities: [])
+
+      Phoenix.PubSub.subscribe(AgentCom.PubSub, "tasks")
+
+      # Submit A (no deps) -- will be assigned immediately
+      {:ok, task_a} = TestFactory.submit_task(description: "mixed task A (no deps)")
+      assert_receive {:task_event, %{event: :task_assigned, task_id: tid_a}}, 5_000
+      assert tid_a == task_a.id
+
+      # Complete A so agent is free, then submit B (depends on A) and C (no deps) at once
+      {:ok, assigned_a} = TaskQueue.get(task_a.id)
+      {:ok, _} = TaskQueue.complete_task(task_a.id, assigned_a.generation, %{result: "done"})
+      AgentFSM.assign_task(agent.agent_id, task_a.id)
+      Process.sleep(50)
+      AgentFSM.task_accepted(agent.agent_id, task_a.id)
+      Process.sleep(50)
+      AgentFSM.task_completed(agent.agent_id)
+      Process.sleep(200)
+
+      # Now submit B (dep on A, which is completed -- should be schedulable) and C (no deps)
+      {:ok, task_b} = TestFactory.submit_task(description: "mixed B deps on A", depends_on: [task_a.id])
+
+      # B should be assigned since A is completed
+      assert_receive {:task_event, %{event: :task_assigned, task_id: tid_b}}, 5_000
+      assert tid_b == task_b.id
+
+      TestFactory.cleanup_agent(agent)
+    end
+
+    test "dead-lettered dependency blocks dependent task" do
+      agent = TestFactory.create_agent(capabilities: [])
+
+      Phoenix.PubSub.subscribe(AgentCom.PubSub, "tasks")
+
+      # Submit task A (will be dead-lettered)
+      {:ok, task_a} = TestFactory.submit_task(description: "will fail", max_retries: 1)
+      assert_receive {:task_event, %{event: :task_assigned, task_id: tid_a}}, 5_000
+      assert tid_a == task_a.id
+
+      # Fail A past max retries to dead-letter it
+      {:ok, assigned_a} = TaskQueue.get(task_a.id)
+      {:ok, :dead_letter, _dead} = TaskQueue.fail_task(task_a.id, assigned_a.generation, "fatal")
+
+      # Agent goes back to idle after the task is dead-lettered
+      AgentFSM.assign_task(agent.agent_id, task_a.id)
+      Process.sleep(50)
+      AgentFSM.task_accepted(agent.agent_id, task_a.id)
+      Process.sleep(50)
+      AgentFSM.task_failed(agent.agent_id)
+      Process.sleep(200)
+
+      # Submit B which depends on A
+      {:ok, task_b} = TestFactory.submit_task(description: "depends on dead A", depends_on: [task_a.id])
+
+      # B should NOT be scheduled (A is dead_letter, not completed)
+      assert_receive {:task_event, %{event: :task_submitted}}, 5_000
+      refute_receive {:task_event, %{event: :task_assigned, task_id: _}}, 2_000
+
+      {:ok, still_queued} = TaskQueue.get(task_b.id)
+      assert still_queued.status == :queued
+
+      TestFactory.cleanup_agent(agent)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # PubSub event verification
   # ---------------------------------------------------------------------------
 
