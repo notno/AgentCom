@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Phase 42 - Agent Self-Management (v1.4 Reliable Autonomy) -- COMPLETE
+**Current focus:** Phase 43 - Hub FSM Healing (v1.4 Reliable Autonomy)
 
 ## Current Position
 
-Phase: 42 of 44 (Agent Self-Management) -- COMPLETE
-Plan: 1 of 1 in current phase
-Status: Phase 42 complete -- pm2 self-awareness and hub-commanded restart
-Last activity: 2026-02-14 -- Phase 42 complete (1 plan, 2 task commits, 5 tests)
+Phase: 41 of 44 (Agentic Execution Loop) -- COMPLETE
+Plan: 3 of 3 in current phase
+Status: Phase 41 complete -- multi-turn ReAct loop with guardrails and dashboard streaming
+Last activity: 2026-02-14 -- Phase 41 complete (3 plans, 6 task commits, 63 tests)
 
-Progress: [████░░░░░░] 50% (v1.4) -- 4/8 phases complete
+Progress: [██████░░░░] 63% (v1.4) -- 5/8 phases complete (+ Phase 42 also complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 118 (19 v1.0 + 32 v1.1 + 25 v1.2 + 35 v1.3 + 7 v1.4)
+- Total plans completed: 121 (19 v1.0 + 32 v1.1 + 25 v1.2 + 35 v1.3 + 10 v1.4)
 - Average duration: 4 min
 - Total execution time: ~8 hours
 
@@ -48,7 +48,7 @@ v1.1-v1.3 decisions archived to respective milestone roadmap files.
 - ~~[CI]: Unresolved merge conflict markers on remote main (endpoint.ex) -- RESOLVED Phase 37~~
 - ~~[Pipeline]: wake_command not configured causes tasks to silently hang -- RESOLVED Phase 39 (PIPE-07)~~
 - ~~[Pipeline]: No execution timeout on executeWithVerification -- RESOLVED Phase 39 (PIPE-02)~~
-- [Pipeline]: Local LLM output is text-only, not agentic -- PHASE 40-41 TARGET
+- ~~[Pipeline]: Local LLM output is text-only, not agentic -- RESOLVED Phase 41 (ReAct loop)~~
 - [Tech debt]: REG-03 warm/cold model distinction deferred
 - [Tech debt]: Elixir version bump (1.14 to 1.17+) recommended
 - [Tech debt]: Sidecar queue.json atomicity risk
@@ -57,5 +57,5 @@ v1.1-v1.3 decisions archived to respective milestone roadmap files.
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Phase 38 complete (2 plans, 4 task commits) + Phase 42 complete
+Stopped at: Phase 41 complete (3 plans, 6 task commits, 63 tests) + Phase 42 complete
 Resume file: None

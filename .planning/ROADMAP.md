@@ -96,7 +96,7 @@
 - [x] **Phase 38: OllamaClient and Hub LLM Routing** - Hub-side Ollama HTTP client replaces all claude -p CLI calls (shipped 2026-02-14)
 - [x] **Phase 39: Pipeline Reliability** - Wake failures, execution timeouts, stuck task recovery, reconnect handling (shipped 2026-02-14)
 - [x] **Phase 40: Sidecar Tool Infrastructure** - Tool registry, sandboxed executor, structured observations for LLM tool calling (shipped 2026-02-14)
-- [ ] **Phase 41: Agentic Execution Loop** - ReAct loop with guardrails, output parsing, adaptive limits, dashboard streaming
+- [x] **Phase 41: Agentic Execution Loop** - ReAct loop with guardrails, output parsing, adaptive limits, dashboard streaming (shipped 2026-02-14)
 - [x] **Phase 42: Agent Self-Management** - Sidecar pm2 awareness and hub-commanded restart capability (shipped 2026-02-14)
 - [ ] **Phase 43: Hub FSM Healing** - 5th FSM state with health aggregation, automated remediation, watchdog timeout
 - [ ] **Phase 44: Hub FSM Testing** - Integration tests covering all 5 FSM states, healing cycles, HTTP endpoints
@@ -176,9 +176,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 41-01-PLAN.md -- ReAct loop core with 3-layer output parser and multi-turn tool execution
-- [ ] 41-02-PLAN.md -- Safety guardrails: adaptive iteration limits, repetition detection, stall detection
-- [ ] 41-03-PLAN.md -- Agentic system prompt with few-shot examples, dashboard streaming, partial results
+- [x] 41-01-PLAN.md -- ReAct loop core with 3-layer output parser and multi-turn tool execution
+- [x] 41-02-PLAN.md -- Safety guardrails: adaptive iteration limits, repetition detection, stall detection
+- [x] 41-03-PLAN.md -- Agentic system prompt with few-shot examples, dashboard streaming, partial results
 
 ### Phase 42: Agent Self-Management
 **Goal**: Sidecars are aware of their own pm2 process and can restart themselves on hub command
@@ -241,7 +241,7 @@ Note: Phases 38, 39, 40, 42 all depend only on Phase 37, so they can parallelize
 | 38. OllamaClient + Hub LLM Routing | v1.4 | 2/2 | Complete | 2026-02-14 |
 | 39. Pipeline Reliability | v1.4 | 3/3 | Complete | 2026-02-14 |
 | 40. Sidecar Tool Infrastructure | v1.4 | 2/2 | Complete | 2026-02-14 |
-| 41. Agentic Execution Loop | v1.4 | 0/TBD | Not started | - |
+| 41. Agentic Execution Loop | v1.4 | 3/3 | Complete | 2026-02-14 |
 | 42. Agent Self-Management | v1.4 | 1/1 | Complete | 2026-02-14 |
 | 43. Hub FSM Healing | v1.4 | 0/TBD | Not started | - |
 | 44. Hub FSM Testing | v1.4 | 0/TBD | Not started | - |
