@@ -111,10 +111,10 @@
   1. `git diff --check` on remote main shows zero conflict markers
   2. `mix compile --warnings-as-errors` exits 0 in CI environment
   3. `mix test --exclude skip --exclude smoke` exits 0 in CI environment
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 37-01: Resolve merge conflicts and fix CI
+- [ ] 37-01-PLAN.md -- Push local commit and verify CI green
 
 ### Phase 38: OllamaClient and Hub LLM Routing
 **Goal**: Hub FSM operations (goal decomposition, improvement scanning, contemplation) talk to local Ollama instead of shelling out to claude -p
