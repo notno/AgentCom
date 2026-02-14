@@ -39,6 +39,7 @@ Progress: [█████████████] 100% (2/2 plans)
 Decisions are logged in PROJECT.md Key Decisions table.
 v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions across 32 plans).
 v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions across 25 plans).
+- [Phase 28]: tasks_for_goal must scan both tasks and dead_letter tables for accurate goal_progress counts
 
 ### Decisions (v1.3)
 
@@ -91,5 +92,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 35-02-PLAN.md -- RepoScanner API endpoint + test suite (Phase 35 complete)
+Stopped at: Completed 28-02-PLAN.md -- Pipeline dependency TDD tests (16 tests, tasks_for_goal dead_letter fix)
 Resume file: None
