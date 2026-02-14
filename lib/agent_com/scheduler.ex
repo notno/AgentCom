@@ -299,6 +299,18 @@ defmodule AgentCom.Scheduler do
             _ -> queued_tasks
           end
 
+        # Phase 28: Filter out tasks whose dependencies are not yet completed
+        schedulable_tasks =
+          Enum.filter(schedulable_tasks, fn task ->
+            deps = Map.get(task, :depends_on, [])
+            deps == [] or Enum.all?(deps, fn dep_id ->
+              case AgentCom.TaskQueue.get(dep_id) do
+                {:ok, %{status: :completed}} -> true
+                _ -> false
+              end
+            end)
+          end)
+
         :telemetry.execute(
           [:agent_com, :scheduler, :attempt],
           %{idle_agents: length(agents), queued_tasks: length(schedulable_tasks)},
@@ -563,7 +575,10 @@ defmodule AgentCom.Scheduler do
           # Verification control (Phase 21/22)
           skip_verification: Map.get(assigned_task, :skip_verification, false),
           verification_timeout_ms: Map.get(assigned_task, :verification_timeout_ms),
-          max_verification_retries: Map.get(assigned_task, :max_verification_retries, 0)
+          max_verification_retries: Map.get(assigned_task, :max_verification_retries, 0),
+          # Pipeline dependency fields (Phase 28)
+          depends_on: Map.get(assigned_task, :depends_on, []),
+          goal_id: Map.get(assigned_task, :goal_id)
         }
 
         :telemetry.execute(

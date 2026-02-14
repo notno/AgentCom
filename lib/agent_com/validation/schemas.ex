@@ -287,7 +287,9 @@ defmodule AgentCom.Validation.Schemas do
         "complexity_tier" => :string,
         "max_verification_retries" => :integer,
         "skip_verification" => :boolean,
-        "verification_timeout_ms" => :integer
+        "verification_timeout_ms" => :integer,
+        "depends_on" => {:list, :string},
+        "goal_id" => :string
       },
       description: "Submit a task to the queue."
     },
@@ -330,6 +332,32 @@ defmodule AgentCom.Validation.Schemas do
         "name" => :string
       },
       description: "Register a new repository in the repo registry."
+    },
+    post_goal: %{
+      required: %{
+        "description" => :string,
+        "success_criteria" => {:list, :string}
+      },
+      optional: %{
+        "priority" => :string,
+        "source" => :string,
+        "repo" => :string,
+        "file_hints" => {:list, :string},
+        "tags" => {:list, :string},
+        "metadata" => :map,
+        "depends_on" => {:list, :string}
+      },
+      description: "Submit a goal to the backlog."
+    },
+    patch_goal_transition: %{
+      required: %{
+        "status" => :string
+      },
+      optional: %{
+        "reason" => :string,
+        "child_task_ids" => {:list, :string}
+      },
+      description: "Transition a goal to a new lifecycle state."
     }
   }
 

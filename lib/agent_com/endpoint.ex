@@ -70,6 +70,11 @@ defmodule AgentCom.Endpoint do
   - PUT    /api/admin/repo-registry/:repo_id/pause     — Pause a repo (auth required)
   - PUT    /api/admin/repo-registry/:repo_id/unpause   — Unpause a repo (auth required)
   - POST   /api/admin/repo-scanner/scan — Scan repos for sensitive content (auth required)
+  - POST   /api/goals             — Submit a goal to the backlog (auth required)
+  - GET    /api/goals             — List goals with optional filters (auth required)
+  - GET    /api/goals/stats       — Goal backlog statistics (auth required)
+  - GET    /api/goals/:goal_id    — Get goal details (auth required)
+  - PATCH  /api/goals/:goal_id/transition — Transition goal lifecycle state (auth required)
   - GET    /api/schemas           — Schema discovery (no auth)
   - WS     /ws                   — WebSocket for agent connections
   """
@@ -799,7 +804,8 @@ defmodule AgentCom.Endpoint do
     "agentcom_config" => :agentcom_config,
     "thread_messages" => :thread_messages,
     "thread_replies" => :thread_replies,
-    "repo_registry" => :repo_registry
+    "repo_registry" => :repo_registry,
+    "goal_backlog" => :goal_backlog
   }
 
   post "/api/admin/compact" do
@@ -1040,6 +1046,112 @@ defmodule AgentCom.Endpoint do
           {:error, :not_found} ->
             send_json(conn, 404, %{"error" => "task_not_found", "task_id" => task_id})
         end
+      end
+    end
+  end
+
+  # --- Goal Backlog API (auth required) ---
+
+  # IMPORTANT: /stats MUST be defined BEFORE /:goal_id to avoid "stats" being captured as :goal_id
+  get "/api/goals/stats" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      stats = AgentCom.GoalBacklog.stats()
+      send_json(conn, 200, stats)
+    end
+  end
+
+  post "/api/goals" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case Validation.validate_http(:post_goal, conn.body_params) do
+        {:ok, _} ->
+          params = %{
+            description: conn.body_params["description"],
+            success_criteria: conn.body_params["success_criteria"],
+            priority: conn.body_params["priority"] || "normal",
+            source: conn.body_params["source"] || "api",
+            tags: conn.body_params["tags"] || [],
+            repo: conn.body_params["repo"],
+            file_hints: conn.body_params["file_hints"] || [],
+            metadata: conn.body_params["metadata"] || %{},
+            depends_on: conn.body_params["depends_on"] || []
+          }
+
+          {:ok, goal} = AgentCom.GoalBacklog.submit(params)
+
+          send_json(conn, 201, %{
+            "status" => "submitted",
+            "goal_id" => goal.id,
+            "priority" => goal.priority,
+            "created_at" => goal.created_at
+          })
+
+        {:error, errors} ->
+          send_validation_error(conn, errors)
+      end
+    end
+  end
+
+  get "/api/goals" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      filters = %{}
+      filters = if s = conn.params["status"], do: Map.put(filters, :status, String.to_atom(s)), else: filters
+      filters = if p = conn.params["priority"], do: Map.put(filters, :priority, p), else: filters
+
+      goals = AgentCom.GoalBacklog.list(filters)
+      formatted = Enum.map(goals, &format_goal/1)
+      send_json(conn, 200, %{"goals" => formatted})
+    end
+  end
+
+  get "/api/goals/:goal_id" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case AgentCom.GoalBacklog.get(goal_id) do
+        {:ok, goal} ->
+          send_json(conn, 200, format_goal(goal))
+        {:error, :not_found} ->
+          send_json(conn, 404, %{"error" => "goal_not_found"})
+      end
+    end
+  end
+
+  patch "/api/goals/:goal_id/transition" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+    if conn.halted do
+      conn
+    else
+      case Validation.validate_http(:patch_goal_transition, conn.body_params) do
+        {:ok, _} ->
+          status_atom = String.to_atom(conn.body_params["status"])
+          opts = []
+          opts = if r = conn.body_params["reason"], do: [{:reason, r} | opts], else: opts
+          opts = if ids = conn.body_params["child_task_ids"], do: [{:child_task_ids, ids} | opts], else: opts
+
+          case AgentCom.GoalBacklog.transition(goal_id, status_atom, opts) do
+            {:ok, goal} ->
+              send_json(conn, 200, format_goal(goal))
+            {:error, {:invalid_transition, from, to}} ->
+              send_json(conn, 422, %{
+                "error" => "invalid_transition",
+                "detail" => "Cannot transition from #{from} to #{to}"
+              })
+            {:error, :not_found} ->
+              send_json(conn, 404, %{"error" => "goal_not_found"})
+          end
+
+        {:error, errors} ->
+          send_validation_error(conn, errors)
       end
     end
   end
@@ -1553,6 +1665,30 @@ defmodule AgentCom.Endpoint do
       "routing_decision" => format_routing_decision(Map.get(task, :routing_decision)),
       "depends_on" => Map.get(task, :depends_on, []),
       "goal_id" => Map.get(task, :goal_id)
+    }
+  end
+
+  defp format_goal(goal) when is_map(goal) do
+    %{
+      "id" => goal.id,
+      "description" => goal.description,
+      "success_criteria" => Map.get(goal, :success_criteria, []),
+      "status" => to_string(goal.status),
+      "priority" => goal.priority,
+      "source" => Map.get(goal, :source),
+      "tags" => Map.get(goal, :tags, []),
+      "repo" => Map.get(goal, :repo),
+      "file_hints" => Map.get(goal, :file_hints, []),
+      "metadata" => Map.get(goal, :metadata, %{}),
+      "depends_on" => Map.get(goal, :depends_on, []),
+      "child_task_ids" => Map.get(goal, :child_task_ids, []),
+      "history" => Enum.map(Map.get(goal, :history, []), fn
+        {event, timestamp, details} ->
+          %{"event" => to_string(event), "timestamp" => timestamp, "details" => format_details(details)}
+        other -> other
+      end),
+      "created_at" => goal.created_at,
+      "updated_at" => Map.get(goal, :updated_at)
     }
   end
 
