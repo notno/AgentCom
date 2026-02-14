@@ -88,18 +88,23 @@ defmodule AgentCom.Endpoint do
 
   alias AgentCom.Validation
 
-  plug Plug.Logger
-  plug :match
-  plug Plug.Parsers,
+  plug(Plug.Logger)
+  plug(:match)
+
+  plug(Plug.Parsers,
     parsers: [:json],
     pass: ["application/json"],
+    body_reader: {AgentCom.CacheBodyReader, :read_body, []},
     json_decoder: Jason
-  plug :dispatch
+  )
+
+  plug(:dispatch)
 
   # --- NOT rate limited: health check, dashboard, WS upgrades, schemas ---
 
   get "/health" do
     agents = AgentCom.Presence.list()
+
     send_json(conn, 200, %{
       "status" => "ok",
       "service" => "agent_com",
@@ -111,20 +116,22 @@ defmodule AgentCom.Endpoint do
 
   get "/api/agents" do
     conn = AgentCom.Plugs.RateLimit.call(conn, action: :get_agents)
+
     if conn.halted do
       conn
     else
-      agents = AgentCom.Presence.list()
-      |> Enum.map(fn a ->
-        %{
-          "agent_id" => a.agent_id,
-          "name" => a[:name],
-          "status" => a[:status],
-          "capabilities" => a[:capabilities] || [],
-          "connected_at" => a[:connected_at],
-          "fsm_state" => Map.get(a, :fsm_state, "unknown")
-        }
-      end)
+      agents =
+        AgentCom.Presence.list()
+        |> Enum.map(fn a ->
+          %{
+            "agent_id" => a.agent_id,
+            "name" => a[:name],
+            "status" => a[:status],
+            "capabilities" => a[:capabilities] || [],
+            "connected_at" => a[:connected_at],
+            "fsm_state" => Map.get(a, :fsm_state, "unknown")
+          }
+        end)
 
       send_json(conn, 200, %{"agents" => agents})
     end
@@ -134,10 +141,12 @@ defmodule AgentCom.Endpoint do
 
   post "/api/message" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       conn = AgentCom.Plugs.RateLimit.call(conn, action: :post_message)
+
       if conn.halted do
         conn
       else
@@ -150,13 +159,14 @@ defmodule AgentCom.Endpoint do
             from = authenticated_agent
             payload = params["payload"]
 
-            msg = AgentCom.Message.new(%{
-              from: from,
-              to: params["to"],
-              type: params["type"] || "chat",
-              payload: payload,
-              reply_to: params["reply_to"]
-            })
+            msg =
+              AgentCom.Message.new(%{
+                from: from,
+                to: params["to"],
+                type: params["type"] || "chat",
+                payload: payload,
+                reply_to: params["reply_to"]
+              })
 
             {:ok, _} = AgentCom.Router.route(msg)
             send_json(conn, 200, %{"status" => "sent", "id" => msg.id})
@@ -172,10 +182,12 @@ defmodule AgentCom.Endpoint do
 
   get "/api/config/heartbeat-interval" do
     token = get_token(conn)
+
     case AgentCom.Auth.verify(token) do
       {:ok, _agent_id} ->
         interval = AgentCom.Config.get(:heartbeat_interval_ms)
         send_json(conn, 200, %{"heartbeat_interval_ms" => interval})
+
       _ ->
         send_json(conn, 401, %{"error" => "unauthorized"})
     end
@@ -183,6 +195,7 @@ defmodule AgentCom.Endpoint do
 
   put "/api/config/heartbeat-interval" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -191,6 +204,7 @@ defmodule AgentCom.Endpoint do
           ms = conn.body_params["heartbeat_interval_ms"]
           :ok = AgentCom.Config.put(:heartbeat_interval_ms, ms)
           send_json(conn, 200, %{"heartbeat_interval_ms" => ms, "status" => "updated"})
+
         {:error, errors} ->
           send_validation_error(conn, errors)
       end
@@ -201,10 +215,12 @@ defmodule AgentCom.Endpoint do
 
   get "/api/config/mailbox-retention" do
     token = get_token(conn)
+
     case AgentCom.Auth.verify(token) do
       {:ok, _agent_id} ->
         ttl = AgentCom.Mailbox.get_ttl()
         send_json(conn, 200, %{"mailbox_ttl_ms" => ttl})
+
       _ ->
         send_json(conn, 401, %{"error" => "unauthorized"})
     end
@@ -212,6 +228,7 @@ defmodule AgentCom.Endpoint do
 
   put "/api/config/mailbox-retention" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -220,6 +237,7 @@ defmodule AgentCom.Endpoint do
           ms = conn.body_params["mailbox_ttl_ms"]
           AgentCom.Mailbox.set_ttl(ms)
           send_json(conn, 200, %{"mailbox_ttl_ms" => ms, "status" => "updated"})
+
         {:error, errors} ->
           send_validation_error(conn, errors)
       end
@@ -228,6 +246,7 @@ defmodule AgentCom.Endpoint do
 
   post "/api/mailbox/evict" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -240,10 +259,12 @@ defmodule AgentCom.Endpoint do
 
   get "/api/threads/:message_id" do
     token = get_token(conn)
+
     case AgentCom.Auth.verify(token) do
       {:ok, _agent_id} ->
         {:ok, thread} = AgentCom.Threads.get_thread(message_id)
         send_json(conn, 200, thread)
+
       _ ->
         send_json(conn, 401, %{"error" => "unauthorized"})
     end
@@ -251,10 +272,17 @@ defmodule AgentCom.Endpoint do
 
   get "/api/threads/:message_id/replies" do
     token = get_token(conn)
+
     case AgentCom.Auth.verify(token) do
       {:ok, _agent_id} ->
         {:ok, replies} = AgentCom.Threads.get_replies(message_id)
-        send_json(conn, 200, %{"parent" => message_id, "replies" => replies, "count" => length(replies)})
+
+        send_json(conn, 200, %{
+          "parent" => message_id,
+          "replies" => replies,
+          "count" => length(replies)
+        })
+
       _ ->
         send_json(conn, 401, %{"error" => "unauthorized"})
     end
@@ -262,10 +290,12 @@ defmodule AgentCom.Endpoint do
 
   get "/api/threads/:message_id/root" do
     token = get_token(conn)
+
     case AgentCom.Auth.verify(token) do
       {:ok, _agent_id} ->
         {:ok, root_id} = AgentCom.Threads.get_root(message_id)
         send_json(conn, 200, %{"message_id" => message_id, "root" => root_id})
+
       _ ->
         send_json(conn, 401, %{"error" => "unauthorized"})
     end
@@ -274,24 +304,30 @@ defmodule AgentCom.Endpoint do
   # --- Mailbox: Poll for messages ---
 
   get "/api/mailbox/:agent_id" do
-    since = case conn.params["since"] do
-      nil -> 0
-      s -> String.to_integer(s)
-    end
+    since =
+      case conn.params["since"] do
+        nil -> 0
+        s -> String.to_integer(s)
+      end
 
     token = get_token(conn)
+
     case AgentCom.Auth.verify(token) do
       {:ok, ^agent_id} ->
         {messages, last_seq} = AgentCom.Mailbox.poll(agent_id, since)
-        formatted = Enum.map(messages, fn entry ->
-          Map.put(entry.message, "seq", entry.seq)
-        end)
+
+        formatted =
+          Enum.map(messages, fn entry ->
+            Map.put(entry.message, "seq", entry.seq)
+          end)
+
         send_json(conn, 200, %{
           "agent_id" => agent_id,
           "messages" => formatted,
           "last_seq" => last_seq,
           "count" => length(formatted)
         })
+
       _ ->
         send_json(conn, 401, %{"error" => "unauthorized"})
     end
@@ -299,6 +335,7 @@ defmodule AgentCom.Endpoint do
 
   post "/api/mailbox/:agent_id/ack" do
     token = get_token(conn)
+
     case AgentCom.Auth.verify(token) do
       {:ok, ^agent_id} ->
         case Validation.validate_http(:post_mailbox_ack, conn.body_params) do
@@ -306,9 +343,11 @@ defmodule AgentCom.Endpoint do
             seq = conn.body_params["seq"]
             AgentCom.Mailbox.ack(agent_id, seq)
             send_json(conn, 200, %{"status" => "acked", "up_to" => seq})
+
           {:error, errors} ->
             send_validation_error(conn, errors)
         end
+
       _ ->
         send_json(conn, 401, %{"error" => "unauthorized"})
     end
@@ -318,6 +357,7 @@ defmodule AgentCom.Endpoint do
 
   get "/api/channels" do
     conn = AgentCom.Plugs.RateLimit.call(conn, action: :get_channels)
+
     if conn.halted do
       conn
     else
@@ -328,25 +368,31 @@ defmodule AgentCom.Endpoint do
 
   post "/api/channels" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       conn = AgentCom.Plugs.RateLimit.call(conn, action: :post_channel)
+
       if conn.halted do
         conn
       else
         agent_id = conn.assigns[:authenticated_agent]
+
         case Validation.validate_http(:post_channel, conn.body_params) do
           {:ok, _} ->
             name = conn.body_params["name"]
+
             opts = %{
               description: conn.body_params["description"] || "",
               created_by: agent_id
             }
+
             case AgentCom.Channels.create(name, opts) do
               :ok -> send_json(conn, 201, %{"status" => "created", "channel" => name})
               {:error, :exists} -> send_json(conn, 409, %{"error" => "channel_exists"})
             end
+
           {:error, errors} ->
             send_validation_error(conn, errors)
         end
@@ -356,6 +402,7 @@ defmodule AgentCom.Endpoint do
 
   get "/api/channels/:channel" do
     conn = AgentCom.Plugs.RateLimit.call(conn, action: :get_channel_info)
+
     if conn.halted do
       conn
     else
@@ -369,6 +416,7 @@ defmodule AgentCom.Endpoint do
             "created_at" => info.created_at,
             "created_by" => info.created_by
           })
+
         {:error, :not_found} ->
           send_json(conn, 404, %{"error" => "channel_not_found"})
       end
@@ -377,14 +425,17 @@ defmodule AgentCom.Endpoint do
 
   post "/api/channels/:channel/subscribe" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       conn = AgentCom.Plugs.RateLimit.call(conn, action: :post_channel_subscribe)
+
       if conn.halted do
         conn
       else
         agent_id = conn.assigns[:authenticated_agent]
+
         case AgentCom.Channels.subscribe(channel, agent_id) do
           :ok -> send_json(conn, 200, %{"status" => "subscribed", "channel" => channel})
           {:ok, :already_subscribed} -> send_json(conn, 200, %{"status" => "already_subscribed"})
@@ -396,14 +447,17 @@ defmodule AgentCom.Endpoint do
 
   post "/api/channels/:channel/unsubscribe" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       conn = AgentCom.Plugs.RateLimit.call(conn, action: :post_channel_unsubscribe)
+
       if conn.halted do
         conn
       else
         agent_id = conn.assigns[:authenticated_agent]
+
         case AgentCom.Channels.unsubscribe(channel, agent_id) do
           :ok -> send_json(conn, 200, %{"status" => "unsubscribed", "channel" => channel})
           {:error, :not_found} -> send_json(conn, 404, %{"error" => "channel_not_found"})
@@ -414,28 +468,35 @@ defmodule AgentCom.Endpoint do
 
   post "/api/channels/:channel/publish" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       conn = AgentCom.Plugs.RateLimit.call(conn, action: :post_channel_publish)
+
       if conn.halted do
         conn
       else
         agent_id = conn.assigns[:authenticated_agent]
+
         case Validation.validate_http(:post_channel_publish, conn.body_params) do
           {:ok, _} ->
             payload = conn.body_params["payload"]
-            msg = AgentCom.Message.new(%{
-              from: agent_id,
-              to: nil,
-              type: conn.body_params["type"] || "chat",
-              payload: payload,
-              reply_to: conn.body_params["reply_to"]
-            })
+
+            msg =
+              AgentCom.Message.new(%{
+                from: agent_id,
+                to: nil,
+                type: conn.body_params["type"] || "chat",
+                payload: payload,
+                reply_to: conn.body_params["reply_to"]
+              })
+
             case AgentCom.Channels.publish(channel, msg) do
               {:ok, seq} -> send_json(conn, 200, %{"status" => "published", "seq" => seq})
               {:error, :not_found} -> send_json(conn, 404, %{"error" => "channel_not_found"})
             end
+
           {:error, errors} ->
             send_validation_error(conn, errors)
         end
@@ -444,50 +505,64 @@ defmodule AgentCom.Endpoint do
   end
 
   get "/api/channels/:channel/history" do
-    limit = case conn.params["limit"] do
-      nil -> 50
-      l -> String.to_integer(l)
-    end
-    since = case conn.params["since"] do
-      nil -> 0
-      s -> String.to_integer(s)
-    end
+    limit =
+      case conn.params["limit"] do
+        nil -> 50
+        l -> String.to_integer(l)
+      end
+
+    since =
+      case conn.params["since"] do
+        nil -> 0
+        s -> String.to_integer(s)
+      end
 
     messages = AgentCom.Channels.history(channel, limit: limit, since: since)
-    send_json(conn, 200, %{"channel" => channel, "messages" => messages, "count" => length(messages)})
+
+    send_json(conn, 200, %{
+      "channel" => channel,
+      "messages" => messages,
+      "count" => length(messages)
+    })
   end
 
   # --- Agent FSM state endpoints (must be before parameterized :agent_id routes) ---
 
   get "/api/agents/states" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       agents = AgentCom.AgentFSM.list_all()
-      formatted = Enum.map(agents, fn a ->
-        %{
-          "agent_id" => a.agent_id,
-          "fsm_state" => to_string(a.fsm_state),
-          "current_task_id" => a.current_task_id,
-          "capabilities" => Enum.map(a.capabilities || [], fn cap ->
-            if is_map(cap) do
-              Map.new(cap, fn {k, v} -> {to_string(k), v} end)
-            else
-              cap
-            end
-          end),
-          "flags" => Enum.map(a.flags || [], &to_string/1),
-          "connected_at" => a.connected_at,
-          "name" => a.name
-        }
-      end)
+
+      formatted =
+        Enum.map(agents, fn a ->
+          %{
+            "agent_id" => a.agent_id,
+            "fsm_state" => to_string(a.fsm_state),
+            "current_task_id" => a.current_task_id,
+            "capabilities" =>
+              Enum.map(a.capabilities || [], fn cap ->
+                if is_map(cap) do
+                  Map.new(cap, fn {k, v} -> {to_string(k), v} end)
+                else
+                  cap
+                end
+              end),
+            "flags" => Enum.map(a.flags || [], &to_string/1),
+            "connected_at" => a.connected_at,
+            "name" => a.name
+          }
+        end)
+
       send_json(conn, 200, %{"agents" => formatted})
     end
   end
 
   get "/api/agents/:agent_id/state" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -497,18 +572,20 @@ defmodule AgentCom.Endpoint do
             "agent_id" => agent_state.agent_id,
             "fsm_state" => to_string(agent_state.fsm_state),
             "current_task_id" => agent_state.current_task_id,
-            "capabilities" => Enum.map(agent_state.capabilities, fn cap ->
-              if is_map(cap) do
-                Map.new(cap, fn {k, v} -> {to_string(k), v} end)
-              else
-                cap
-              end
-            end),
+            "capabilities" =>
+              Enum.map(agent_state.capabilities, fn cap ->
+                if is_map(cap) do
+                  Map.new(cap, fn {k, v} -> {to_string(k), v} end)
+                else
+                  cap
+                end
+              end),
             "flags" => Enum.map(agent_state.flags, &to_string/1),
             "connected_at" => agent_state.connected_at,
             "last_state_change" => agent_state.last_state_change,
             "name" => agent_state.name
           })
+
         {:error, :not_found} ->
           send_json(conn, 404, %{"error" => "agent_not_found"})
       end
@@ -524,23 +601,38 @@ defmodule AgentCom.Endpoint do
 
   get "/api/messages" do
     token = get_token(conn)
+
     case AgentCom.Auth.verify(token) do
       {:ok, _agent_id} ->
         opts = []
         opts = if p = conn.params["from"], do: [{:from, p} | opts], else: opts
         opts = if p = conn.params["to"], do: [{:to, p} | opts], else: opts
         opts = if p = conn.params["channel"], do: [{:channel, p} | opts], else: opts
-        opts = if p = conn.params["start_time"], do: [{:start_time, String.to_integer(p)} | opts], else: opts
-        opts = if p = conn.params["end_time"], do: [{:end_time, String.to_integer(p)} | opts], else: opts
-        opts = if p = conn.params["cursor"], do: [{:cursor, String.to_integer(p)} | opts], else: opts
-        opts = if p = conn.params["limit"], do: [{:limit, String.to_integer(p)} | opts], else: opts
+
+        opts =
+          if p = conn.params["start_time"],
+            do: [{:start_time, String.to_integer(p)} | opts],
+            else: opts
+
+        opts =
+          if p = conn.params["end_time"],
+            do: [{:end_time, String.to_integer(p)} | opts],
+            else: opts
+
+        opts =
+          if p = conn.params["cursor"], do: [{:cursor, String.to_integer(p)} | opts], else: opts
+
+        opts =
+          if p = conn.params["limit"], do: [{:limit, String.to_integer(p)} | opts], else: opts
 
         result = AgentCom.MessageHistory.query(opts)
+
         send_json(conn, 200, %{
           "messages" => result.messages,
           "cursor" => result.cursor,
           "count" => result.count
         })
+
       _ ->
         send_json(conn, 401, %{"error" => "unauthorized"})
     end
@@ -550,6 +642,7 @@ defmodule AgentCom.Endpoint do
 
   post "/admin/tokens" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -558,6 +651,7 @@ defmodule AgentCom.Endpoint do
           agent_id = conn.body_params["agent_id"]
           {:ok, token} = AgentCom.Auth.generate(agent_id)
           send_json(conn, 201, %{"agent_id" => agent_id, "token" => token})
+
         {:error, errors} ->
           send_validation_error(conn, errors)
       end
@@ -571,6 +665,7 @@ defmodule AgentCom.Endpoint do
 
   delete "/admin/tokens/:agent_id" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -583,13 +678,16 @@ defmodule AgentCom.Endpoint do
 
   post "/api/admin/agents/:agent_id/reset-token" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       existing = AgentCom.Auth.list()
+
       if Enum.any?(existing, fn entry -> entry.agent_id == agent_id end) do
         AgentCom.Auth.revoke(agent_id)
         {:ok, token} = AgentCom.Auth.generate(agent_id)
+
         send_json(conn, 201, %{
           "agent_id" => agent_id,
           "token" => token,
@@ -619,13 +717,17 @@ defmodule AgentCom.Endpoint do
   # For example: ADMIN_AGENTS=flere-imsaho,hub-admin
   post "/api/admin/reset" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       agent_id = conn.assigns[:authenticated_agent]
 
       if agent_id not in admin_agents() do
-        send_json(conn, 403, %{"error" => "admin_only", "message" => "Only admin agents can reset the hub"})
+        send_json(conn, 403, %{
+          "error" => "admin_only",
+          "message" => "Only admin agents can reset the hub"
+        })
       else
         Logger.warning("hub_reset_triggered", triggered_by: agent_id)
 
@@ -633,6 +735,7 @@ defmodule AgentCom.Endpoint do
         spawn(fn ->
           Process.sleep(500)
           children = Supervisor.which_children(AgentCom.Supervisor)
+
           Enum.each(children, fn {id, _pid, _type, _modules} ->
             if id != Bandit do
               Supervisor.terminate_child(AgentCom.Supervisor, id)
@@ -650,16 +753,26 @@ defmodule AgentCom.Endpoint do
 
   put "/api/admin/log-level" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       level = conn.body_params["level"]
+
       if level in ~w(debug info notice warning error) do
         Logger.configure(level: String.to_existing_atom(level))
-        Logger.notice("log_level_changed", new_level: level, changed_by: conn.assigns[:authenticated_agent])
+
+        Logger.notice("log_level_changed",
+          new_level: level,
+          changed_by: conn.assigns[:authenticated_agent]
+        )
+
         send_json(conn, 200, %{"status" => "ok", "level" => level})
       else
-        send_json(conn, 422, %{"error" => "invalid_level", "valid" => ["debug", "info", "notice", "warning", "error"]})
+        send_json(conn, 422, %{
+          "error" => "invalid_level",
+          "valid" => ["debug", "info", "notice", "warning", "error"]
+        })
       end
     end
   end
@@ -675,7 +788,10 @@ defmodule AgentCom.Endpoint do
   end
 
   get "/api/analytics/agents/:agent_id/hourly" do
-    send_json(conn, 200, %{"agent_id" => agent_id, "hourly" => AgentCom.Analytics.hourly(agent_id)})
+    send_json(conn, 200, %{
+      "agent_id" => agent_id,
+      "hourly" => AgentCom.Analytics.hourly(agent_id)
+    })
   end
 
   get "/dashboard" do
@@ -688,10 +804,12 @@ defmodule AgentCom.Endpoint do
 
   post "/api/admin/push-task" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       conn = AgentCom.Plugs.RateLimit.call(conn, action: :post_admin_push_task)
+
       if conn.halted do
         conn
       else
@@ -714,11 +832,13 @@ defmodule AgentCom.Endpoint do
             case Registry.lookup(AgentCom.AgentRegistry, target_agent_id) do
               [{pid, _meta}] ->
                 send(pid, {:push_task, task})
+
                 send_json(conn, 200, %{
                   "status" => "pushed",
                   "task_id" => task["task_id"],
                   "agent_id" => target_agent_id
                 })
+
               [] ->
                 send_json(conn, 404, %{
                   "error" => "agent_not_connected",
@@ -737,16 +857,36 @@ defmodule AgentCom.Endpoint do
 
   post "/api/admin/backup" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       case AgentCom.DetsBackup.backup_all() do
         {:ok, results} ->
-          formatted = Enum.map(results, fn
-            {:ok, info} -> %{"table" => to_string(info.table), "status" => "ok", "path" => info.path, "size" => info.size}
-            {:error, info} -> %{"table" => to_string(info.table), "status" => "error", "reason" => to_string(info.reason)}
-          end)
-          success_count = Enum.count(results, fn {:ok, _} -> true; _ -> false end)
+          formatted =
+            Enum.map(results, fn
+              {:ok, info} ->
+                %{
+                  "table" => to_string(info.table),
+                  "status" => "ok",
+                  "path" => info.path,
+                  "size" => info.size
+                }
+
+              {:error, info} ->
+                %{
+                  "table" => to_string(info.table),
+                  "status" => "error",
+                  "reason" => to_string(info.reason)
+                }
+            end)
+
+          success_count =
+            Enum.count(results, fn
+              {:ok, _} -> true
+              _ -> false
+            end)
+
           send_json(conn, 200, %{
             "status" => "complete",
             "tables_total" => length(results),
@@ -759,32 +899,40 @@ defmodule AgentCom.Endpoint do
 
   get "/api/admin/dets-health" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       metrics = AgentCom.DetsBackup.health_metrics()
-      formatted_tables = Enum.map(metrics.tables, fn t ->
-        %{
-          "table" => to_string(t.table),
-          "record_count" => t.record_count,
-          "file_size_bytes" => t.file_size_bytes,
-          "fragmentation_ratio" => t.fragmentation_ratio,
-          "status" => to_string(t.status)
-        }
-      end)
+
+      formatted_tables =
+        Enum.map(metrics.tables, fn t ->
+          %{
+            "table" => to_string(t.table),
+            "record_count" => t.record_count,
+            "file_size_bytes" => t.file_size_bytes,
+            "fragmentation_ratio" => t.fragmentation_ratio,
+            "status" => to_string(t.status)
+          }
+        end)
 
       now = System.system_time(:millisecond)
-      stale_backup = case metrics.last_backup_at do
-        nil -> true
-        ts -> now - ts > 48 * 60 * 60 * 1000
-      end
-      high_frag = Enum.any?(metrics.tables, fn t -> t.status == :ok and t.fragmentation_ratio > 0.5 end)
 
-      health_status = cond do
-        stale_backup and high_frag -> "unhealthy"
-        stale_backup or high_frag -> "warning"
-        true -> "healthy"
-      end
+      stale_backup =
+        case metrics.last_backup_at do
+          nil -> true
+          ts -> now - ts > 48 * 60 * 60 * 1000
+        end
+
+      high_frag =
+        Enum.any?(metrics.tables, fn t -> t.status == :ok and t.fragmentation_ratio > 0.5 end)
+
+      health_status =
+        cond do
+          stale_backup and high_frag -> "unhealthy"
+          stale_backup or high_frag -> "warning"
+          true -> "healthy"
+        end
 
       send_json(conn, 200, %{
         "health_status" => health_status,
@@ -814,18 +962,23 @@ defmodule AgentCom.Endpoint do
 
   post "/api/admin/compact" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       case AgentCom.DetsBackup.compact_all() do
         {:ok, results} ->
-          formatted = Enum.map(results, fn r ->
-            base = %{"table" => to_string(r.table), "status" => to_string(r.status)}
-            base = if r[:duration_ms], do: Map.put(base, "duration_ms", r.duration_ms), else: base
-            base = if r[:reason], do: Map.put(base, "reason", to_string(r.reason)), else: base
-            base = if r[:retried], do: Map.put(base, "retried", r.retried), else: base
-            base
-          end)
+          formatted =
+            Enum.map(results, fn r ->
+              base = %{"table" => to_string(r.table), "status" => to_string(r.status)}
+
+              base =
+                if r[:duration_ms], do: Map.put(base, "duration_ms", r.duration_ms), else: base
+
+              base = if r[:reason], do: Map.put(base, "reason", to_string(r.reason)), else: base
+              base = if r[:retried], do: Map.put(base, "retried", r.retried), else: base
+              base
+            end)
 
           compacted = Enum.count(results, fn r -> r.status == :compacted end)
           skipped = Enum.count(results, fn r -> r.status == :skipped end)
@@ -843,12 +996,14 @@ defmodule AgentCom.Endpoint do
 
   post "/api/admin/compact/:table_name" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       case Map.get(@dets_table_atoms, table_name) do
         nil ->
           send_json(conn, 404, %{"error" => "unknown_table", "table" => table_name})
+
         table_atom ->
           case AgentCom.DetsBackup.compact_one(table_atom) do
             {:ok, result} ->
@@ -864,12 +1019,14 @@ defmodule AgentCom.Endpoint do
 
   post "/api/admin/restore/:table_name" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       case Map.get(@dets_table_atoms, table_name) do
         nil ->
           send_json(conn, 404, %{"error" => "unknown_table", "table" => table_name})
+
         table_atom ->
           case AgentCom.DetsBackup.restore_table(table_atom) do
             {:ok, info} ->
@@ -880,6 +1037,7 @@ defmodule AgentCom.Endpoint do
                 "record_count" => get_in(info, [:integrity, :record_count]) || 0,
                 "file_size" => get_in(info, [:integrity, :file_size]) || 0
               })
+
             {:error, reason} ->
               send_json(conn, 500, %{
                 "status" => "failed",
@@ -895,10 +1053,12 @@ defmodule AgentCom.Endpoint do
 
   post "/api/tasks" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       conn = AgentCom.Plugs.RateLimit.call(conn, action: :post_task)
+
       if conn.halted do
         conn
       else
@@ -910,6 +1070,7 @@ defmodule AgentCom.Endpoint do
             case Validation.validate_enrichment_fields(params) do
               {:ok, _} ->
                 description = params["description"]
+
                 task_params = %{
                   description: description,
                   priority: params["priority"] || "normal",
@@ -933,10 +1094,11 @@ defmodule AgentCom.Endpoint do
 
                 case AgentCom.TaskQueue.submit(task_params) do
                   {:ok, task} ->
-                    warnings = case Validation.verify_step_soft_limit(params) do
-                      :ok -> []
-                      {:warn, msg} -> [msg]
-                    end
+                    warnings =
+                      case Validation.verify_step_soft_limit(params) do
+                        :ok -> []
+                        {:warn, msg} -> [msg]
+                      end
 
                     response = %{
                       "status" => "queued",
@@ -945,7 +1107,11 @@ defmodule AgentCom.Endpoint do
                       "created_at" => task.created_at
                     }
 
-                    response = if warnings != [], do: Map.put(response, "warnings", warnings), else: response
+                    response =
+                      if warnings != [],
+                        do: Map.put(response, "warnings", warnings),
+                        else: response
+
                     send_json(conn, 201, response)
                 end
 
@@ -962,23 +1128,28 @@ defmodule AgentCom.Endpoint do
 
   get "/api/tasks" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       conn = AgentCom.Plugs.RateLimit.call(conn, action: :get_tasks)
+
       if conn.halted do
         conn
       else
         opts = []
-        opts = if s = conn.params["status"] do
-          try do
-            [{:status, String.to_existing_atom(s)} | opts]
-          rescue
-            ArgumentError -> opts
+
+        opts =
+          if s = conn.params["status"] do
+            try do
+              [{:status, String.to_existing_atom(s)} | opts]
+            rescue
+              ArgumentError -> opts
+            end
+          else
+            opts
           end
-        else
-          opts
-        end
+
         opts = if p = conn.params["priority"], do: [{:priority, p} | opts], else: opts
         opts = if a = conn.params["assigned_to"], do: [{:assigned_to, a} | opts], else: opts
         opts = if g = conn.params["goal_id"], do: [{:goal_id, g} | opts], else: opts
@@ -993,6 +1164,7 @@ defmodule AgentCom.Endpoint do
   # IMPORTANT: /dead-letter and /stats MUST be defined BEFORE /:task_id
   get "/api/tasks/dead-letter" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1004,6 +1176,7 @@ defmodule AgentCom.Endpoint do
 
   get "/api/tasks/stats" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1014,16 +1187,19 @@ defmodule AgentCom.Endpoint do
 
   get "/api/tasks/:task_id" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       conn = AgentCom.Plugs.RateLimit.call(conn, action: :get_task_detail)
+
       if conn.halted do
         conn
       else
         case AgentCom.TaskQueue.get(task_id) do
           {:ok, task} ->
             send_json(conn, 200, format_task(task))
+
           {:error, :not_found} ->
             send_json(conn, 404, %{"error" => "task_not_found", "task_id" => task_id})
         end
@@ -1033,10 +1209,12 @@ defmodule AgentCom.Endpoint do
 
   post "/api/tasks/:task_id/retry" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       conn = AgentCom.Plugs.RateLimit.call(conn, action: :post_task_retry)
+
       if conn.halted do
         conn
       else
@@ -1047,6 +1225,7 @@ defmodule AgentCom.Endpoint do
               "task_id" => task.id,
               "priority" => task.priority
             })
+
           {:error, :not_found} ->
             send_json(conn, 404, %{"error" => "task_not_found", "task_id" => task_id})
         end
@@ -1059,6 +1238,7 @@ defmodule AgentCom.Endpoint do
   # IMPORTANT: /stats MUST be defined BEFORE /:goal_id to avoid "stats" being captured as :goal_id
   get "/api/goals/stats" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1069,6 +1249,7 @@ defmodule AgentCom.Endpoint do
 
   post "/api/goals" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1103,11 +1284,17 @@ defmodule AgentCom.Endpoint do
 
   get "/api/goals" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       filters = %{}
-      filters = if s = conn.params["status"], do: Map.put(filters, :status, String.to_atom(s)), else: filters
+
+      filters =
+        if s = conn.params["status"],
+          do: Map.put(filters, :status, String.to_atom(s)),
+          else: filters
+
       filters = if p = conn.params["priority"], do: Map.put(filters, :priority, p), else: filters
 
       goals = AgentCom.GoalBacklog.list(filters)
@@ -1118,12 +1305,14 @@ defmodule AgentCom.Endpoint do
 
   get "/api/goals/:goal_id" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       case AgentCom.GoalBacklog.get(goal_id) do
         {:ok, goal} ->
           send_json(conn, 200, format_goal(goal))
+
         {:error, :not_found} ->
           send_json(conn, 404, %{"error" => "goal_not_found"})
       end
@@ -1132,6 +1321,7 @@ defmodule AgentCom.Endpoint do
 
   patch "/api/goals/:goal_id/transition" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1140,16 +1330,22 @@ defmodule AgentCom.Endpoint do
           status_atom = String.to_atom(conn.body_params["status"])
           opts = []
           opts = if r = conn.body_params["reason"], do: [{:reason, r} | opts], else: opts
-          opts = if ids = conn.body_params["child_task_ids"], do: [{:child_task_ids, ids} | opts], else: opts
+
+          opts =
+            if ids = conn.body_params["child_task_ids"],
+              do: [{:child_task_ids, ids} | opts],
+              else: opts
 
           case AgentCom.GoalBacklog.transition(goal_id, status_atom, opts) do
             {:ok, goal} ->
               send_json(conn, 200, format_goal(goal))
+
             {:error, {:invalid_transition, from, to}} ->
               send_json(conn, 422, %{
                 "error" => "invalid_transition",
                 "detail" => "Cannot transition from #{from} to #{to}"
               })
+
             {:error, :not_found} ->
               send_json(conn, 404, %{"error" => "goal_not_found"})
           end
@@ -1164,6 +1360,7 @@ defmodule AgentCom.Endpoint do
 
   post "/api/hub/pause" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1176,6 +1373,7 @@ defmodule AgentCom.Endpoint do
 
   post "/api/hub/resume" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1189,6 +1387,7 @@ defmodule AgentCom.Endpoint do
   get "/api/hub/state" do
     try do
       state = AgentCom.HubFSM.get_state()
+
       send_json(conn, 200, %{
         "fsm_state" => to_string(state.fsm_state),
         "paused" => state.paused,
@@ -1202,24 +1401,30 @@ defmodule AgentCom.Endpoint do
   end
 
   get "/api/hub/history" do
-    limit = case conn.params["limit"] do
-      nil -> 50
-      l ->
-        parsed = String.to_integer(l)
-        min(parsed, 200)
-    end
+    limit =
+      case conn.params["limit"] do
+        nil ->
+          50
+
+        l ->
+          parsed = String.to_integer(l)
+          min(parsed, 200)
+      end
 
     try do
       transitions = AgentCom.HubFSM.history(limit: limit)
-      formatted = Enum.map(transitions, fn t ->
-        %{
-          "from_state" => to_string(t.from_state),
-          "to_state" => to_string(t.to_state),
-          "reason" => to_string(t.reason),
-          "timestamp" => t.timestamp,
-          "cycle_count" => t.cycle_count
-        }
-      end)
+
+      formatted =
+        Enum.map(transitions, fn t ->
+          %{
+            "from_state" => to_string(t.from_state),
+            "to_state" => to_string(t.to_state),
+            "reason" => to_string(t.reason),
+            "timestamp" => t.timestamp,
+            "cycle_count" => t.cycle_count
+          }
+        end)
+
       send_json(conn, 200, %{"transitions" => formatted})
     catch
       :exit, _ -> send_json(conn, 503, %{"error" => "hub_fsm not available"})
@@ -1230,6 +1435,7 @@ defmodule AgentCom.Endpoint do
 
   get "/api/metrics" do
     conn = AgentCom.Plugs.RateLimit.call(conn, action: :get_metrics)
+
     if conn.halted do
       conn
     else
@@ -1242,6 +1448,7 @@ defmodule AgentCom.Endpoint do
 
   get "/api/alerts" do
     alerts = AgentCom.Alerter.active_alerts()
+
     send_json(conn, 200, %{
       "alerts" => alerts,
       "timestamp" => System.system_time(:millisecond)
@@ -1250,6 +1457,7 @@ defmodule AgentCom.Endpoint do
 
   post "/api/alerts/:rule_id/acknowledge" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1264,6 +1472,7 @@ defmodule AgentCom.Endpoint do
 
   get "/api/config/alert-thresholds" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1274,6 +1483,7 @@ defmodule AgentCom.Endpoint do
 
   put "/api/config/alert-thresholds" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1290,6 +1500,7 @@ defmodule AgentCom.Endpoint do
 
   get "/api/admin/rate-limits" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1299,9 +1510,11 @@ defmodule AgentCom.Endpoint do
 
       # Convert atom keys to strings for JSON serialization
       defaults_json = Map.new(defaults, fn {tier, v} -> {to_string(tier), v} end)
-      overrides_json = Map.new(overrides, fn {agent_id, tiers} ->
-        {agent_id, Map.new(tiers, fn {tier, v} -> {to_string(tier), v} end)}
-      end)
+
+      overrides_json =
+        Map.new(overrides, fn {agent_id, tiers} ->
+          {agent_id, Map.new(tiers, fn {tier, v} -> {to_string(tier), v} end)}
+        end)
 
       send_json(conn, 200, %{
         "defaults" => defaults_json,
@@ -1313,6 +1526,7 @@ defmodule AgentCom.Endpoint do
 
   get "/api/admin/rate-limits/whitelist" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1323,36 +1537,47 @@ defmodule AgentCom.Endpoint do
 
   put "/api/admin/rate-limits/whitelist" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       agent_ids = conn.body_params["agent_ids"] || []
+
       if is_list(agent_ids) and Enum.all?(agent_ids, &is_binary/1) do
         AgentCom.RateLimiter.update_whitelist(agent_ids)
         send_json(conn, 200, %{"status" => "updated", "whitelist" => agent_ids})
       else
-        send_json(conn, 422, %{"error" => "invalid_whitelist", "detail" => "agent_ids must be a list of strings"})
+        send_json(conn, 422, %{
+          "error" => "invalid_whitelist",
+          "detail" => "agent_ids must be a list of strings"
+        })
       end
     end
   end
 
   post "/api/admin/rate-limits/whitelist" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       agent_id_to_add = conn.body_params["agent_id"]
+
       if is_binary(agent_id_to_add) and agent_id_to_add != "" do
         AgentCom.RateLimiter.add_to_whitelist(agent_id_to_add)
         send_json(conn, 200, %{"status" => "added", "agent_id" => agent_id_to_add})
       else
-        send_json(conn, 422, %{"error" => "invalid_agent_id", "detail" => "agent_id must be a non-empty string"})
+        send_json(conn, 422, %{
+          "error" => "invalid_agent_id",
+          "detail" => "agent_id must be a non-empty string"
+        })
       end
     end
   end
 
   delete "/api/admin/rate-limits/whitelist/:agent_id" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1363,14 +1588,22 @@ defmodule AgentCom.Endpoint do
 
   put "/api/admin/rate-limits/:agent_id" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       params = conn.body_params
+
       case parse_override_params(params) do
         {:ok, parsed} ->
           AgentCom.RateLimiter.set_override(agent_id, parsed)
-          send_json(conn, 200, %{"status" => "updated", "agent_id" => agent_id, "overrides" => params})
+
+          send_json(conn, 200, %{
+            "status" => "updated",
+            "agent_id" => agent_id,
+            "overrides" => params
+          })
+
         {:error, reason} ->
           send_json(conn, 422, %{"error" => "invalid_overrides", "detail" => reason})
       end
@@ -1379,6 +1612,7 @@ defmodule AgentCom.Endpoint do
 
   delete "/api/admin/rate-limits/:agent_id" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1391,6 +1625,7 @@ defmodule AgentCom.Endpoint do
 
   get "/api/admin/llm-registry" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1402,6 +1637,7 @@ defmodule AgentCom.Endpoint do
   # IMPORTANT: /snapshot MUST be defined BEFORE /:id to avoid "snapshot" being captured as :id
   get "/api/admin/llm-registry/snapshot" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1412,6 +1648,7 @@ defmodule AgentCom.Endpoint do
 
   get "/api/admin/llm-registry/:id" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1424,10 +1661,12 @@ defmodule AgentCom.Endpoint do
 
   post "/api/admin/llm-registry" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       body = conn.body_params
+
       params = %{
         host: body["host"],
         port: body["port"] || 11434,
@@ -1444,6 +1683,7 @@ defmodule AgentCom.Endpoint do
 
   delete "/api/admin/llm-registry/:id" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1458,6 +1698,7 @@ defmodule AgentCom.Endpoint do
 
   get "/api/admin/repo-registry" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1468,6 +1709,7 @@ defmodule AgentCom.Endpoint do
 
   post "/api/admin/repo-registry" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1479,8 +1721,11 @@ defmodule AgentCom.Endpoint do
           }
 
           case AgentCom.RepoRegistry.add_repo(params) do
-            {:ok, repo} -> send_json(conn, 201, repo)
-            {:error, :already_exists} -> send_json(conn, 409, %{"error" => "repo_already_registered"})
+            {:ok, repo} ->
+              send_json(conn, 201, repo)
+
+            {:error, :already_exists} ->
+              send_json(conn, 409, %{"error" => "repo_already_registered"})
           end
 
         {:error, errors} ->
@@ -1491,6 +1736,7 @@ defmodule AgentCom.Endpoint do
 
   delete "/api/admin/repo-registry/:repo_id" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1503,6 +1749,7 @@ defmodule AgentCom.Endpoint do
 
   put "/api/admin/repo-registry/:repo_id/move-up" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1513,6 +1760,7 @@ defmodule AgentCom.Endpoint do
 
   put "/api/admin/repo-registry/:repo_id/move-down" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1523,6 +1771,7 @@ defmodule AgentCom.Endpoint do
 
   put "/api/admin/repo-registry/:repo_id/pause" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1533,6 +1782,7 @@ defmodule AgentCom.Endpoint do
 
   put "/api/admin/repo-registry/:repo_id/unpause" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1566,6 +1816,7 @@ defmodule AgentCom.Endpoint do
         subscription = conn.body_params
         AgentCom.DashboardNotifier.subscribe(subscription)
         send_json(conn, 200, %{"status" => "subscribed"})
+
       {:error, errors} ->
         send_validation_error(conn, errors)
     end
@@ -1575,6 +1826,7 @@ defmodule AgentCom.Endpoint do
 
   post "/api/onboard/register" do
     conn = AgentCom.Plugs.RateLimit.call(conn, action: :post_onboard_register)
+
     if conn.halted do
       conn
     else
@@ -1584,7 +1836,9 @@ defmodule AgentCom.Endpoint do
 
           # Additional check: non-empty string (schema ensures string type, but guard against "")
           if agent_id == "" do
-            send_validation_error(conn, [%{field: "agent_id", error: :required, detail: "agent_id must not be empty"}])
+            send_validation_error(conn, [
+              %{field: "agent_id", error: :required, detail: "agent_id must not be empty"}
+            ])
           else
             # Check for existing agent with same name
             existing = AgentCom.Auth.list()
@@ -1620,6 +1874,7 @@ defmodule AgentCom.Endpoint do
 
   get "/api/config/default-repo" do
     value = AgentCom.Config.get(:default_repo)
+
     case value do
       nil -> send_json(conn, 200, %{"default_repo" => nil, "configured" => false})
       _ -> send_json(conn, 200, %{"default_repo" => value, "configured" => true})
@@ -1628,6 +1883,7 @@ defmodule AgentCom.Endpoint do
 
   put "/api/config/default-repo" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
@@ -1636,6 +1892,7 @@ defmodule AgentCom.Endpoint do
           url = conn.body_params["url"]
           :ok = AgentCom.Config.put(:default_repo, url)
           send_json(conn, 200, %{"status" => "ok", "default_repo" => url})
+
         {:error, errors} ->
           send_validation_error(conn, errors)
       end
@@ -1648,19 +1905,29 @@ defmodule AgentCom.Endpoint do
 
   post "/api/admin/repo-scanner/scan" do
     conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
     if conn.halted do
       conn
     else
       params = conn.body_params
-      opts = case parse_scan_categories(params["categories"]) do
-        {:ok, cats} -> [categories: cats]
-        :all -> []
-        {:error, _reason} ->
-          :error_categories
-      end
+
+      opts =
+        case parse_scan_categories(params["categories"]) do
+          {:ok, cats} ->
+            [categories: cats]
+
+          :all ->
+            []
+
+          {:error, _reason} ->
+            :error_categories
+        end
 
       if opts == :error_categories do
-        send_json(conn, 422, %{"error" => "invalid_categories", "valid" => Enum.map(@valid_scan_categories, &to_string/1)})
+        send_json(conn, 422, %{
+          "error" => "invalid_categories",
+          "valid" => Enum.map(@valid_scan_categories, &to_string/1)
+        })
       else
         case params["repo_path"] do
           nil ->
@@ -1671,6 +1938,7 @@ defmodule AgentCom.Endpoint do
             case AgentCom.RepoScanner.scan_repo(repo_path, opts) do
               {:ok, report} ->
                 send_json(conn, 200, format_scan_report(report))
+
               {:error, reason} ->
                 send_json(conn, 422, %{"error" => inspect(reason)})
             end
@@ -1718,11 +1986,18 @@ defmodule AgentCom.Endpoint do
       "submitted_by" => task.submitted_by,
       "created_at" => task.created_at,
       "updated_at" => task.updated_at,
-      "history" => Enum.map(task.history || [], fn
-        {event, timestamp, details} ->
-          %{"event" => to_string(event), "timestamp" => timestamp, "details" => format_details(details)}
-        other -> other
-      end),
+      "history" =>
+        Enum.map(task.history || [], fn
+          {event, timestamp, details} ->
+            %{
+              "event" => to_string(event),
+              "timestamp" => timestamp,
+              "details" => format_details(details)
+            }
+
+          other ->
+            other
+        end),
       "repo" => Map.get(task, :repo),
       "branch" => Map.get(task, :branch),
       "file_hints" => Map.get(task, :file_hints, []),
@@ -1752,36 +2027,50 @@ defmodule AgentCom.Endpoint do
       "metadata" => Map.get(goal, :metadata, %{}),
       "depends_on" => Map.get(goal, :depends_on, []),
       "child_task_ids" => Map.get(goal, :child_task_ids, []),
-      "history" => Enum.map(Map.get(goal, :history, []), fn
-        {event, timestamp, details} ->
-          %{"event" => to_string(event), "timestamp" => timestamp, "details" => format_details(details)}
-        other -> other
-      end),
+      "history" =>
+        Enum.map(Map.get(goal, :history, []), fn
+          {event, timestamp, details} ->
+            %{
+              "event" => to_string(event),
+              "timestamp" => timestamp,
+              "details" => format_details(details)
+            }
+
+          other ->
+            other
+        end),
       "created_at" => goal.created_at,
       "updated_at" => Map.get(goal, :updated_at)
     }
   end
 
   defp format_complexity(nil), do: nil
+
   defp format_complexity(c) when is_map(c) do
     %{
       "effective_tier" => to_string(Map.get(c, :effective_tier)),
-      "explicit_tier" => case Map.get(c, :explicit_tier) do
-        nil -> nil
-        t -> to_string(t)
-      end,
+      "explicit_tier" =>
+        case Map.get(c, :explicit_tier) do
+          nil -> nil
+          t -> to_string(t)
+        end,
       "source" => to_string(Map.get(c, :source)),
-      "inferred" => case Map.get(c, :inferred) do
-        nil -> nil
-        inf -> %{
-          "tier" => to_string(Map.get(inf, :tier)),
-          "confidence" => Map.get(inf, :confidence)
-        }
-      end
+      "inferred" =>
+        case Map.get(c, :inferred) do
+          nil ->
+            nil
+
+          inf ->
+            %{
+              "tier" => to_string(Map.get(inf, :tier)),
+              "confidence" => Map.get(inf, :confidence)
+            }
+        end
     }
   end
 
   defp format_routing_decision(nil), do: nil
+
   defp format_routing_decision(rd) when is_map(rd) do
     %{
       "effective_tier" => safe_to_string(Map.get(rd, :effective_tier)),
@@ -1806,10 +2095,12 @@ defmodule AgentCom.Endpoint do
   defp format_details(details) when is_map(details) do
     Map.new(details, fn {k, v} -> {to_string(k), v} end)
   end
+
   defp format_details(details), do: details
 
   defp send_validation_error(conn, errors) do
     formatted = Validation.format_errors(errors)
+
     send_json(conn, 422, %{
       "error" => "validation_failed",
       "errors" => formatted
@@ -1844,17 +2135,24 @@ defmodule AgentCom.Endpoint do
       end)
 
     case parsed do
-      {:error, _} = err -> err
-      map when map == %{} -> {:error, "at least one tier (light, normal, heavy) must be specified"}
-      map -> {:ok, map}
+      {:error, _} = err ->
+        err
+
+      map when map == %{} ->
+        {:error, "at least one tier (light, normal, heavy) must be specified"}
+
+      map ->
+        {:ok, map}
     end
   end
 
   defp parse_scan_categories(nil), do: :all
+
   defp parse_scan_categories(cats) when is_list(cats) do
     parsed =
       Enum.reduce_while(cats, [], fn cat, acc when is_binary(cat) ->
         atom = String.to_atom(cat)
+
         if atom in @valid_scan_categories do
           {:cont, [atom | acc]}
         else
@@ -1867,25 +2165,28 @@ defmodule AgentCom.Endpoint do
       list when is_list(list) -> {:ok, Enum.reverse(list)}
     end
   end
+
   defp parse_scan_categories(_), do: :all
 
   defp format_scan_report(report) do
     # Convert atom keys to string keys for JSON, and findings structs to maps
-    by_category = report.summary.by_category
-                  |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
+    by_category =
+      report.summary.by_category
+      |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
 
-    findings = Enum.map(report.findings, fn f ->
-      %{
-        "file_path" => f.file_path,
-        "line_number" => f.line_number,
-        "category" => to_string(f.category),
-        "pattern_name" => f.pattern_name,
-        "matched_text" => f.matched_text,
-        "severity" => to_string(f.severity),
-        "replacement" => f.replacement,
-        "action" => to_string(f.action)
-      }
-    end)
+    findings =
+      Enum.map(report.findings, fn f ->
+        %{
+          "file_path" => f.file_path,
+          "line_number" => f.line_number,
+          "category" => to_string(f.category),
+          "pattern_name" => f.pattern_name,
+          "matched_text" => f.matched_text,
+          "severity" => to_string(f.severity),
+          "replacement" => f.replacement,
+          "action" => to_string(f.action)
+        }
+      end)
 
     %{
       "repo_path" => report.repo_path,
@@ -1900,9 +2201,10 @@ defmodule AgentCom.Endpoint do
       },
       "blocking" => report.blocking,
       "gitignore_recommendations" => report.gitignore_recommendations,
-      "cleanup_tasks" => Enum.map(report.cleanup_tasks, fn task ->
-        Map.new(task, fn {k, v} -> {to_string(k), v} end)
-      end)
+      "cleanup_tasks" =>
+        Enum.map(report.cleanup_tasks, fn task ->
+          Map.new(task, fn {k, v} -> {to_string(k), v} end)
+        end)
     }
   end
 
