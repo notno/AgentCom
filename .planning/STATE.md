@@ -19,7 +19,7 @@ Progress: [██████▌       ] 50% (1/2 plans)
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 83 (19 v1.0 + 32 v1.1 + 25 v1.2 + 7 v1.3)
+- Total plans completed: 84 (19 v1.0 + 32 v1.1 + 25 v1.2 + 8 v1.3)
 - Average duration: 4 min
 - Total execution time: ~5.5 hours
 
@@ -57,6 +57,9 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - RepoScanner as library module (not GenServer) -- stateless scanning, no supervision overhead
 - Module attribute patterns with compile-time regex -- zero runtime compilation cost
 - Elixir maps for scan reports (not XML) -- JSON-serializable for API consumption
+- Dependency validation at submit time rejects unknown task IDs immediately (not at schedule time)
+- Dependencies checked against both tasks and dead_letter tables for maximum flexibility
+- goal_progress/1 as client-side aggregation over tasks_for_goal/1 (no extra GenServer call)
 
 ### Research Findings (v1.3)
 
@@ -84,5 +87,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 27-01-PLAN.md -- GoalBacklog GenServer (DETS persistence, lifecycle state machine, 16 tests)
+Stopped at: Completed 28-01-PLAN.md -- Pipeline dependencies (depends_on, goal_id, scheduler filter, goal progress API)
 Resume file: None
