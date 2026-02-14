@@ -711,6 +711,12 @@ defmodule AgentCom.Dashboard do
         <select id="task-agent-select" style="background:#1a1a2e;border:1px solid #2a2a3a;border-radius:6px;color:#e0e0e0;padding:10px 10px;font-size:0.85em;outline:none;min-width:120px;">
           <option value="">Any agent</option>
         </select>
+        <select id="task-complexity-select" style="background:#1a1a2e;border:1px solid #2a2a3a;border-radius:6px;color:#e0e0e0;padding:10px 10px;font-size:0.85em;outline:none;min-width:100px;">
+          <option value="">Auto</option>
+          <option value="trivial">Trivial</option>
+          <option value="standard">Standard</option>
+          <option value="complex">Complex</option>
+        </select>
         <button class="task-prompt-btn" id="task-submit-btn" onclick="submitTask()">Submit</button>
         <button class="task-prompt-token-btn" id="task-token-btn" onclick="promptForToken()">Token</button>
       </div>
@@ -3078,7 +3084,8 @@ defmodule AgentCom.Dashboard do
             },
             body: JSON.stringify(Object.assign(
               { description: description, priority: priority },
-              document.getElementById('task-agent-select').value ? { assign_to: document.getElementById('task-agent-select').value } : {}
+              document.getElementById('task-agent-select').value ? { assign_to: document.getElementById('task-agent-select').value } : {},
+              document.getElementById('task-complexity-select').value ? { complexity_tier: document.getElementById('task-complexity-select').value } : {}
             ))
           }).then(function(res) {
             return res.json().then(function(data) { return { status: res.status, data: data }; });
