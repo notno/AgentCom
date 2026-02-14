@@ -2576,9 +2576,10 @@ defmodule AgentCom.Dashboard do
 
         function onHubFsmToggle(isOn) {
           var action = isOn ? 'start' : 'stop';
+          var token = localStorage.getItem('agentcom_token') || '';
           fetch('/api/hub/' + action, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (window.hubToken || '')}
+            headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token}
           }).then(function(r) { return r.json(); }).then(function() {
             if (dashConn && dashConn.ws && dashConn.ws.readyState === 1) {
               dashConn.ws.send(JSON.stringify({type: 'request_snapshot'}));
@@ -2589,9 +2590,10 @@ defmodule AgentCom.Dashboard do
         function toggleHubFSMPause() {
           var btn = document.getElementById('hub-fsm-pause-btn');
           var action = btn.textContent === 'Pause' ? 'pause' : 'resume';
+          var token = localStorage.getItem('agentcom_token') || '';
           fetch('/api/hub/' + action, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (window.hubToken || '')}
+            headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token}
           }).then(function(r) { return r.json(); }).then(function(data) {
             // Refresh snapshot to reflect the change
             if (dashConn && dashConn.ws && dashConn.ws.readyState === 1) {
