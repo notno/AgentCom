@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 
 ## Current Position
 
-Phase: 36 of 36 (Dashboard and Observability)
-Plan: 2/2 complete
+Phase: 31 of 36 (Hub Event Wiring)
+Plan: 3/3 complete
 Status: Complete
-Last activity: 2026-02-14 -- Plan 36-02 Dashboard Goal Progress, Cost Tracking, and FSM Duration Panels
+Last activity: 2026-02-14 -- Plan 31-03 Webhook Test Coverage
 
-Progress: [██████████████] 100% (2/2 plans)
+Progress: [███████████████] 100% (3/3 plans)
 
 ## Performance Metrics
 
@@ -94,6 +94,9 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - PR-only before auto-merge (no auto-merge until pipeline proven)
 - Deterministic improvement scanning before LLM scanning
 - GenServer-based FSM (not gen_statem) following existing AgentFSM pattern
+- [Phase 30]: RepoRegistry.list_repos/0 (not list/0) with File.cwd! fallback for repo path resolution
+- [Phase 30]: Public helper extraction for unit-testable pure logic in Decomposer and Verifier
+- [Phase 30]: Verifier max retries at 2 via module attribute @max_retries
 
 ### Pending Todos
 
@@ -112,5 +115,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 36-02-PLAN.md -- Dashboard Goal Progress, Cost Tracking, and FSM Duration Panels
+Stopped at: Completed 31-03-PLAN.md -- Webhook Test Coverage (Phase 31 complete)
 Resume file: None
