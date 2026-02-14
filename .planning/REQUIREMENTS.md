@@ -9,11 +9,11 @@ Requirements for v1.3 Hub FSM Loop of Self-Improvement. Each maps to roadmap pha
 
 ### Hub FSM
 
-- [ ] **FSM-01**: Hub runs a 4-state FSM (Executing, Improving, Contemplating, Resting) as a singleton GenServer
-- [ ] **FSM-02**: FSM transitions are driven by queue state AND external events (git pushes, PR merges, backlog changes)
-- [ ] **FSM-03**: Hub FSM can be paused/resumed via API
-- [ ] **FSM-04**: FSM transition history is logged and queryable
-- [ ] **FSM-05**: Dashboard shows current FSM state, transition timeline, and state durations
+- [x] **FSM-01**: Hub runs a 4-state FSM (Executing, Improving, Contemplating, Resting) as a singleton GenServer
+- [x] **FSM-02**: FSM transitions are driven by queue state AND external events (git pushes, PR merges, backlog changes)
+- [x] **FSM-03**: Hub FSM can be paused/resumed via API
+- [x] **FSM-04**: FSM transition history is logged and queryable
+- [x] **FSM-05**: Dashboard shows current FSM state, transition timeline, and state durations
 - [ ] **FSM-06**: Hub exposes a GitHub webhook endpoint for push and PR merge events
 - [ ] **FSM-07**: Git push/PR merge on active repos wakes FSM from Resting to Improving
 - [ ] **FSM-08**: Goal backlog changes wake FSM from Resting to Executing
@@ -144,11 +144,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PIPE-01 | Phase 28 | Done |
 | PIPE-02 | Phase 28 | Done |
 | PIPE-03 | Phase 28 | Done |
-| FSM-01 | Phase 29 | Pending |
-| FSM-02 | Phase 29 | Pending |
-| FSM-03 | Phase 29 | Pending |
-| FSM-04 | Phase 29 | Pending |
-| FSM-05 | Phase 29 | Pending |
+| FSM-01 | Phase 29 | Done |
+| FSM-02 | Phase 29 | Done |
+| FSM-03 | Phase 29 | Done |
+| FSM-04 | Phase 29 | Done |
+| FSM-05 | Phase 29 | Done |
 | GOAL-03 | Phase 30 | Pending |
 | GOAL-04 | Phase 30 | Pending |
 | GOAL-06 | Phase 30 | Pending |

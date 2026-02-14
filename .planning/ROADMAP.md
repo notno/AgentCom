@@ -75,7 +75,7 @@
 - [x] **Phase 26: Claude API Client** - CLI-based ClaudeClient GenServer with budget-gated invocation, prompt templates, and response parsing (shipped 2026-02-14)
 - [x] **Phase 27: Goal Backlog** - DETS-backed goal storage with multi-source intake and lifecycle (shipped 2026-02-13)
 - [x] **Phase 28: Pipeline Dependencies** - Task dependency graph with scheduler filtering (shipped 2026-02-13)
-- [ ] **Phase 29: Hub FSM Core** - 4-state autonomous brain with queue-driven transitions
+- [x] **Phase 29: Hub FSM Core** - 4-state autonomous brain with queue-driven transitions (shipped 2026-02-13)
 - [ ] **Phase 30: Goal Decomposition and Inner Loop** - LLM-powered goal-to-task transformation with Ralph-style verification
 - [ ] **Phase 31: Hub Event Wiring** - GitHub webhooks and external event triggers for FSM transitions
 - [ ] **Phase 32: Improvement Scanning** - Deterministic and LLM-assisted codebase improvement identification
@@ -169,7 +169,7 @@ Plans:
 - [x] 29-01-PLAN.md -- HubFSM GenServer core with 2-state transitions, predicates, ETS history, supervision tree
 - [x] 29-02-PLAN.md -- API endpoints (pause/resume/state/history), dashboard integration, telemetry
 - [x] 29-03-PLAN.md -- TDD test suite for predicates, history, and GenServer integration
-- [ ] 29-04-PLAN.md -- Gap closure: transition timeline visualization in dashboard
+- [x] 29-04-PLAN.md -- Gap closure: transition timeline visualization in dashboard
 
 ### Phase 30: Goal Decomposition and Inner Loop
 **Goal**: The hub transforms high-level goals into executable task graphs and drives them to verified completion
@@ -262,7 +262,7 @@ Phases execute in numeric order: 24, 25, 26... Decimal phases (if inserted) exec
 | 26. Claude API Client | v1.3 | 3/3 | Complete | 2026-02-14 |
 | 27. Goal Backlog | v1.3 | 2/2 | Complete | 2026-02-13 |
 | 28. Pipeline Dependencies | v1.3 | 2/2 | Complete | 2026-02-13 |
-| 29. Hub FSM Core | v1.3 | 0/TBD | Not started | - |
+| 29. Hub FSM Core | v1.3 | 4/4 | Complete | 2026-02-13 |
 | 30. Goal Decomposition and Inner Loop | v1.3 | 0/TBD | Not started | - |
 | 31. Hub Event Wiring | v1.3 | 0/TBD | Not started | - |
 | 32. Improvement Scanning | v1.3 | 0/TBD | Not started | - |
