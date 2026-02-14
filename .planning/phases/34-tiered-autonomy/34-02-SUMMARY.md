@@ -9,7 +9,7 @@ requires:
     provides: "AgentCom.RiskClassifier.classify/2 pure function"
 provides:
   - "POST /api/tasks/:task_id/classify endpoint for risk tier classification"
-  - "gatherDiffMeta CLI command in agentcom-git.js for diff metadata collection"
+  - "gatherDiffMeta exported function in agentcom-git.js for diff metadata collection"
   - "Risk classification section in PR body with tier label and reasons"
   - "risk:tier-N GitHub labels on agent-created PRs"
   - "End-to-end flow: verification -> gather diff -> classify -> submit PR with classification"
@@ -17,7 +17,7 @@ affects: [auto-merge, dashboard-risk-view, task-analytics]
 
 tech-stack:
   added: []
-  patterns: [classify-before-submit, fail-safe-tier2-default, diff-meta-gathering]
+  patterns: [classify-before-submit, fail-safe-tier2-default, diff-meta-gathering, require-main-guard]
 
 key-files:
   created: []
@@ -27,7 +27,7 @@ key-files:
     - sidecar/index.js
 
 key-decisions:
-  - "gatherDiffMeta as CLI command (gather-diff-meta) in agentcom-git.js, invoked via runGitCommand -- follows existing child-process spawn pattern"
+  - "gatherDiffMeta exported from agentcom-git.js with require.main guard -- direct in-process import eliminates child process overhead"
   - "classifyTask helper uses Node.js built-in http/https module (no new dependencies) with 10s timeout"
   - "Classification failure always defaults to Tier 2 -- never blocks PR creation"
   - "risk_classification included in task_complete WebSocket message for hub-side storage"
@@ -35,20 +35,21 @@ key-decisions:
 patterns-established:
   - "Risk tier labels (risk:tier-1/2/3) as GitHub PR labels for filtering"
   - "Diff metadata gathering as pre-PR-creation step in task completion flow"
+  - "require.main === module guard for dual CLI/module usage of agentcom-git.js"
 
-duration: 4min
+duration: 6min
 completed: 2026-02-14
 ---
 
 # Phase 34 Plan 02: Sidecar Risk Classification Integration Summary
 
-**End-to-end risk classification wired into task completion flow: sidecar gathers diff metadata, hub classifies via RiskClassifier, PRs get tier labels and classification sections**
+**End-to-end risk classification wired into task completion flow: sidecar gathers diff metadata via direct function call, hub classifies via RiskClassifier, PRs get tier labels and classification sections**
 
 ## Performance
 
-- **Duration:** 4 min
+- **Duration:** 6 min
 - **Started:** 2026-02-14T04:31:39Z
-- **Completed:** 2026-02-14T04:35:58Z
+- **Completed:** 2026-02-14T04:37:30Z
 - **Tasks:** 2
 - **Files modified:** 3
 
@@ -60,6 +61,7 @@ completed: 2026-02-14
 - Task completion flow: verification -> gather diff meta -> classify via hub API -> submit PR with classification
 - Classify failure gracefully defaults to Tier 2 without blocking PR creation
 - risk_classification included in task_complete WebSocket message for hub storage
+- agentcom-git.js refactored to export gatherDiffMeta with require.main guard for direct import (no child process spawn)
 
 ## Task Commits
 
@@ -67,21 +69,29 @@ Each task was committed atomically:
 
 1. **Task 1: Add classify endpoint and sidecar diff gathering** - `6f56d04` (feat)
 2. **Task 2: Wire classification into task completion flow** - `fda67c4` (feat)
+3. **Task 2 refactor: Direct gatherDiffMeta import** - `9827180` (refactor)
 
 ## Files Created/Modified
 - `lib/agent_com/endpoint.ex` - Added POST /api/tasks/:task_id/classify route with auth, calls RiskClassifier.classify/2
-- `sidecar/agentcom-git.js` - Added gatherDiffMeta function + CLI command, enhanced generatePrBody with risk section, submit with risk:tier-N label
-- `sidecar/index.js` - Added classifyTask HTTP helper, wired diff gathering and classification into handleResult between verification and git submit
+- `sidecar/agentcom-git.js` - Added gatherDiffMeta function with module.exports and require.main guard, enhanced generatePrBody with risk section, submit with risk:tier-N label
+- `sidecar/index.js` - Added classifyTask HTTP helper, imported gatherDiffMeta directly, wired diff gathering and classification into handleResult between verification and git submit
 
 ## Decisions Made
-- gatherDiffMeta implemented as a CLI command (`gather-diff-meta`) in agentcom-git.js rather than a directly importable function, since index.js accesses agentcom-git.js via child process spawn through runGitCommand
+- gatherDiffMeta exported from agentcom-git.js via module.exports with require.main === module guard, enabling direct in-process import from index.js (eliminates child process spawn overhead)
 - classifyTask helper uses Node.js built-in http/https modules (matching existing sidecar patterns, no new npm dependencies)
 - Classification HTTP call has 10-second timeout to prevent blocking the task completion flow
 - All classification failures (network error, HTTP error, parse error, timeout) default to Tier 2 -- fail-safe design ensures PRs are always created
 
 ## Deviations from Plan
 
-None - plan executed exactly as written.
+### Auto-fixed Issues
+
+**1. [Rule 1 - Bug] Direct function import instead of child process spawn**
+- **Found during:** Task 2 verification
+- **Issue:** gatherDiffMeta was invoked via runGitCommand child process spawn, adding unnecessary process overhead for an in-process function call
+- **Fix:** Added module.exports to agentcom-git.js with require.main guard, imported gatherDiffMeta directly in index.js
+- **Files modified:** sidecar/agentcom-git.js, sidecar/index.js
+- **Commit:** 9827180
 
 ## Issues Encountered
 None

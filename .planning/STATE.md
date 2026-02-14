@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 Phase: 34 of 36 (Tiered Autonomy)
 Plan: 2/2 complete
 Status: Complete
-Last activity: 2026-02-14 -- Plan 34-02: Sidecar risk classification integration (2 tasks, 2 commits)
+Last activity: 2026-02-14 -- Plan 34-02: Sidecar risk classification integration (2 tasks, 3 commits incl. direct import refactor)
 
 Progress: [███████████████] 100% (2/2 plans)
 
@@ -89,6 +89,7 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 - [Phase 34]: Tier 1 strict less-than for lines (<20), less-than-or-equal for files (<=3)
 - [Phase 34]: Verification report nil treated as passed (no verification = ok by default)
 - [Phase 34]: Protected path matching via String.contains? for prefix-style matching
+- [Phase 34]: require.main guard on agentcom-git.js enables dual CLI/module usage -- direct gatherDiffMeta import eliminates child process overhead
 - [Phase 30]: Single pending_async slot ensures one LLM call in-flight at a time (respects ClaudeClient serialization)
 - [Phase 30]: Verification before decomposition priority in GoalOrchestrator tick
 - [Phase 30]: Process.demonitor with :flush prevents stale DOWN messages from Task.async
@@ -124,5 +125,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 34-02-PLAN.md -- Sidecar risk classification integration (2 tasks, 2 commits)
+Stopped at: Completed 34-02-PLAN.md -- Sidecar risk classification integration (2 tasks, 3 commits incl. direct import refactor)
 Resume file: None
