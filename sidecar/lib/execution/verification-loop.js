@@ -60,7 +60,10 @@ function buildLoopResult(execResult, reports, cumulativeCost, status) {
     verification_report: reports.length > 0 ? reports[reports.length - 1] : null,
     verification_history: reports,
     verification_status: status,
-    verification_attempts: reports.length
+    verification_attempts: reports.length,
+    // Phase 41: Agentic termination context (passed through from executor)
+    termination_reason: execResult.termination_reason || null,
+    iterations_used: execResult.iterations_used || null
   };
 }
 

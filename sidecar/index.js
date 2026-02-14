@@ -868,16 +868,24 @@ class HubConnection {
 
     const emitter = new ProgressEmitter((events) => {
       for (const event of events) {
+        const execution_event = {
+          event_type: event.type,
+          text: event.text || event.message || '',
+          tokens_so_far: event.tokens_so_far || null,
+          model: event.model || null,
+          timestamp: Date.now()
+        };
+        // Include tool_call fields when present (Phase 41: AGENT-07)
+        if (event.type === 'tool_call') {
+          execution_event.tool_name = event.tool_name || null;
+          execution_event.args_summary = event.args_summary || null;
+          execution_event.result_summary = event.result_summary || null;
+          execution_event.iteration = event.iteration || null;
+        }
         this.send({
           type: 'task_progress',
           task_id: task.task_id,
-          execution_event: {
-            event_type: event.type,
-            text: event.text || event.message || '',
-            tokens_so_far: event.tokens_so_far || null,
-            model: event.model || null,
-            timestamp: Date.now()
-          }
+          execution_event
         });
       }
     }, { batchIntervalMs: 100 });
@@ -906,7 +914,10 @@ class HubConnection {
         verification_report: result.verification_report,
         verification_history: result.verification_history,
         verification_status: result.verification_status,
-        verification_attempts: result.verification_attempts
+        verification_attempts: result.verification_attempts,
+        // Phase 41: Agentic termination context
+        termination_reason: result.termination_reason || null,
+        iterations_used: result.iterations_used || null
       });
     } catch (err) {
       clearTimeout(timeoutHandle);
