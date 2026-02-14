@@ -32,8 +32,8 @@ Requirements for v1.3 Hub FSM Loop of Self-Improvement. Each maps to roadmap pha
 
 ### Claude API Client
 
-- [ ] **CLIENT-01**: Claude Code CLI wrapper GenServer (`claude -p`) with invocation rate limiting and serialization
-- [ ] **CLIENT-02**: Structured prompt/response handling for decomposition, verification, and improvement identification
+- [x] **CLIENT-01**: Claude Code CLI wrapper GenServer (`claude -p`) with invocation rate limiting and serialization
+- [x] **CLIENT-02**: Structured prompt/response handling for decomposition, verification, and improvement identification
 
 ### Self-Improvement
 
@@ -135,8 +135,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | COST-02 | Phase 25 | Done |
 | COST-03 | Phase 25 | Done |
 | COST-04 | Phase 25 | Done |
-| CLIENT-01 | Phase 26 | Pending |
-| CLIENT-02 | Phase 26 | Pending |
+| CLIENT-01 | Phase 26 | Done |
+| CLIENT-02 | Phase 26 | Done |
 | GOAL-01 | Phase 27 | Done |
 | GOAL-02 | Phase 27 | Done |
 | GOAL-05 | Phase 27 | Done |
