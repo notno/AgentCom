@@ -94,7 +94,7 @@
 
 - [x] **Phase 37: CI Fix** - Unblock CI with green builds before building new features (shipped 2026-02-14)
 - [ ] **Phase 38: OllamaClient and Hub LLM Routing** - Hub-side Ollama HTTP client replaces all claude -p CLI calls
-- [ ] **Phase 39: Pipeline Reliability** - Wake failures, execution timeouts, stuck task recovery, reconnect handling
+- [x] **Phase 39: Pipeline Reliability** - Wake failures, execution timeouts, stuck task recovery, reconnect handling (shipped 2026-02-14)
 - [ ] **Phase 40: Sidecar Tool Infrastructure** - Tool registry, sandboxed executor, structured observations for LLM tool calling
 - [ ] **Phase 41: Agentic Execution Loop** - ReAct loop with guardrails, output parsing, adaptive limits, dashboard streaming
 - [ ] **Phase 42: Agent Self-Management** - Sidecar pm2 awareness and hub-commanded restart capability
@@ -144,9 +144,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 39-01-PLAN.md -- Wake failure recovery and no-wake fail-fast (PIPE-07, PIPE-01)
-- [ ] 39-02-PLAN.md -- Execution timeouts, stuck detection, generation checks, hub wake_result (PIPE-02, PIPE-03, PIPE-04)
-- [ ] 39-03-PLAN.md -- Sidecar reconnect state recovery and validation schemas (PIPE-05)
+- [x] 39-01-PLAN.md -- Wake failure recovery and no-wake fail-fast (PIPE-07, PIPE-01)
+- [x] 39-02-PLAN.md -- Execution timeouts, stuck detection, generation checks, hub wake_result (PIPE-02, PIPE-03, PIPE-04)
+- [x] 39-03-PLAN.md -- Sidecar reconnect state recovery and validation schemas (PIPE-05)
 
 ### Phase 40: Sidecar Tool Infrastructure
 **Goal**: Sidecar has a sandboxed tool execution layer that LLMs can call -- 5 tools with workspace isolation and structured JSON observations
@@ -239,7 +239,7 @@ Note: Phases 38, 39, 40, 42 all depend only on Phase 37, so they can parallelize
 | 24-36 | v1.3 | 35/35 | Complete | 2026-02-14 |
 | 37. CI Fix | v1.4 | 1/1 | Complete | 2026-02-14 |
 | 38. OllamaClient + Hub LLM Routing | v1.4 | 0/TBD | Not started | - |
-| 39. Pipeline Reliability | v1.4 | 0/TBD | Not started | - |
+| 39. Pipeline Reliability | v1.4 | 3/3 | Complete | 2026-02-14 |
 | 40. Sidecar Tool Infrastructure | v1.4 | 0/TBD | Not started | - |
 | 41. Agentic Execution Loop | v1.4 | 0/TBD | Not started | - |
 | 42. Agent Self-Management | v1.4 | 0/TBD | Not started | - |

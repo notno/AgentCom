@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliable autonomous work execution -- ideas enter a queue and emerge as reviewed, merged PRs without human hand-holding for safe changes.
-**Current focus:** Phase 40 - Sidecar Tool Infrastructure (v1.4 Reliable Autonomy)
+**Current focus:** Phase 39 - Pipeline Reliability (v1.4 Reliable Autonomy) -- COMPLETE
 
 ## Current Position
 
-Phase: 40 of 44 (Sidecar Tool Infrastructure) -- IN PROGRESS
-Plan: 1 of 2 in current phase
-Status: Plan 40-01 complete, executing Plan 40-02
-Last activity: 2026-02-14 -- Plan 40-01 tool registry + sandbox complete
+Phase: 39 of 44 (Pipeline Reliability) -- COMPLETE
+Plan: 3 of 3 in current phase
+Status: Phase 39 complete -- all pipeline reliability requirements implemented
+Last activity: 2026-02-14 -- Phase 39 complete (3 plans, 5 commits)
 
-Progress: [██░░░░░░░░] 12% (v1.4) -- 1/8 phases complete
+Progress: [██░░░░░░░░] 25% (v1.4) -- 2/8 phases complete
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 114 (19 v1.0 + 32 v1.1 + 25 v1.2 + 35 v1.3 + 3 v1.4)
+- Total plans completed: 115 (19 v1.0 + 32 v1.1 + 25 v1.2 + 35 v1.3 + 4 v1.4)
 - Average duration: 4 min
 - Total execution time: ~8 hours
 
@@ -46,8 +46,8 @@ v1.1-v1.3 decisions archived to respective milestone roadmap files.
 ### Blockers/Concerns
 
 - ~~[CI]: Unresolved merge conflict markers on remote main (endpoint.ex) -- RESOLVED Phase 37~~
-- [Pipeline]: wake_command not configured causes tasks to silently hang -- PHASE 39 TARGET
-- [Pipeline]: No execution timeout on executeWithVerification -- PHASE 39 TARGET
+- ~~[Pipeline]: wake_command not configured causes tasks to silently hang -- RESOLVED Phase 39 (PIPE-07)~~
+- ~~[Pipeline]: No execution timeout on executeWithVerification -- RESOLVED Phase 39 (PIPE-02)~~
 - [Pipeline]: Local LLM output is text-only, not agentic -- PHASE 40-41 TARGET
 - [Tech debt]: REG-03 warm/cold model distinction deferred
 - [Tech debt]: Elixir version bump (1.14 to 1.17+) recommended
@@ -57,5 +57,5 @@ v1.1-v1.3 decisions archived to respective milestone roadmap files.
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 40-01-PLAN.md, executing 40-02-PLAN.md
+Stopped at: Phase 39 complete (all 3 plans executed)
 Resume file: None
