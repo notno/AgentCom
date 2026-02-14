@@ -1007,6 +1007,11 @@ defmodule AgentCom.Dashboard do
           <div style="margin-top: 8px; text-align: right;">
             <button onclick="toggleHubFSMPause()" id="hub-fsm-pause-btn" style="background: #2a2a3a; border: 1px solid #3a3a4a; color: #e0e0e0; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85em;">Pause</button>
           </div>
+          <div id="hub-fsm-timeline-section" style="margin-top: 12px; border-top: 1px solid #2a2a3a; padding-top: 8px;">
+            <div style="font-size: 0.85em; color: #888; margin-bottom: 6px;">Transition Timeline</div>
+            <div id="hub-fsm-timeline" style="max-height: 280px; overflow-y: auto; font-size: 0.8em;"></div>
+            <div id="hub-fsm-timeline-empty" class="empty-state" style="font-size: 0.8em;">No transitions recorded</div>
+          </div>
         </div>
       </div>
 
@@ -2367,6 +2372,111 @@ defmodule AgentCom.Dashboard do
           return Math.floor(elapsed / 3600000) + 'h ago';
         }
 
+        function formatDuration(ms) {
+          if (!ms || ms < 0) return '--';
+          if (ms < 60000) return Math.floor(ms / 1000) + 's';
+          return Math.floor(ms / 60000) + 'm';
+        }
+
+        function fetchHubFSMTimeline() {
+          fetch('/api/hub/history?limit=20')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+              if (data && data.transitions) {
+                renderHubFSMTimeline(data.transitions);
+              }
+            })
+            .catch(function(e) { console.warn('Hub FSM timeline fetch failed:', e); });
+        }
+
+        function renderHubFSMTimeline(transitions) {
+          var container = document.getElementById('hub-fsm-timeline');
+          var emptyEl = document.getElementById('hub-fsm-timeline-empty');
+          if (!container) return;
+
+          if (!transitions || transitions.length === 0) {
+            container.innerHTML = '';
+            if (emptyEl) emptyEl.style.display = 'block';
+            return;
+          }
+
+          if (emptyEl) emptyEl.style.display = 'none';
+          var html = '';
+          for (var i = 0; i < transitions.length; i++) {
+            var t = transitions[i];
+            var toState = t.to_state || 'unknown';
+            var fromState = t.from_state || 'unknown';
+            var reason = t.reason || 'tick';
+            if (reason.length > 40) reason = reason.substring(0, 37) + '...';
+            var color = hubFsmStateColors[toState] || '#6b7280';
+            var timeStr = t.timestamp ? formatRelativeTime(t.timestamp) : '--';
+            var durStr = '--';
+            if (i < transitions.length - 1 && t.timestamp && transitions[i + 1].timestamp) {
+              durStr = formatDuration(t.timestamp - transitions[i + 1].timestamp);
+            }
+
+            html += '<div style="display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-bottom: 1px solid #2a2a3a;">'
+              + '<span style="width: 8px; height: 8px; border-radius: 50%; background: ' + color + '; flex-shrink: 0;"></span>'
+              + '<span style="color: #e0e0e0; min-width: 140px;">' + fromState + ' &rarr; ' + toState + '</span>'
+              + '<span style="color: #888; min-width: 80px;">' + reason + '</span>'
+              + '<span style="color: #888; min-width: 60px;">' + timeStr + '</span>'
+              + '<span style="color: #666; min-width: 50px;">dur: ' + durStr + '</span>'
+              + '</div>';
+          }
+          container.innerHTML = html;
+        }
+
+        function prependHubFSMTransition(data) {
+          if (!data) return;
+          var container = document.getElementById('hub-fsm-timeline');
+          var emptyEl = document.getElementById('hub-fsm-timeline-empty');
+          if (!container) return;
+
+          var toState = data.fsm_state ? String(data.fsm_state) : 'unknown';
+          var fromState = 'unknown';
+          var reason = data.reason || 'tick';
+          if (reason.length > 40) reason = reason.substring(0, 37) + '...';
+          var timestamp = data.timestamp || data.last_state_change || Date.now();
+
+          // Infer from_state from first existing row's to_state
+          var firstRow = container.querySelector('div');
+          if (firstRow) {
+            var stateText = firstRow.querySelector('span:nth-child(2)');
+            if (stateText) {
+              var match = stateText.textContent.match(/\u2192\s*(\w+)/);
+              if (match) fromState = match[1];
+            }
+          }
+
+          var color = hubFsmStateColors[toState] || '#6b7280';
+          var timeStr = formatRelativeTime(timestamp);
+
+          // Compute duration from previous first entry
+          var durStr = '--';
+          if (firstRow) {
+            var prevTimeSpan = firstRow.querySelector('span:nth-child(4)');
+            // We can't easily get exact prev timestamp from rendered text, so use '--' for prepended
+          }
+
+          var rowHtml = '<div style="display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-bottom: 1px solid #2a2a3a;">'
+            + '<span style="width: 8px; height: 8px; border-radius: 50%; background: ' + color + '; flex-shrink: 0;"></span>'
+            + '<span style="color: #e0e0e0; min-width: 140px;">' + fromState + ' &rarr; ' + toState + '</span>'
+            + '<span style="color: #888; min-width: 80px;">' + reason + '</span>'
+            + '<span style="color: #888; min-width: 60px;">' + timeStr + '</span>'
+            + '<span style="color: #666; min-width: 50px;">dur: --</span>'
+            + '</div>';
+
+          container.insertAdjacentHTML('afterbegin', rowHtml);
+
+          // Trim to 20 rows max
+          var rows = container.children;
+          while (rows.length > 20) {
+            container.removeChild(rows[rows.length - 1]);
+          }
+
+          if (emptyEl) emptyEl.style.display = 'none';
+        }
+
         function renderRoutingStats(stats) {
           var bar = document.getElementById('routing-stats-bar');
           if (!bar) return;
@@ -2735,6 +2845,7 @@ defmodule AgentCom.Dashboard do
                 break;
               case 'hub_fsm_state':
                 renderHubFSM(ev.data);
+                prependHubFSMTransition(ev.data);
                 break;
             }
           });
@@ -2882,6 +2993,9 @@ defmodule AgentCom.Dashboard do
         // Initialize
         // =====================================================================
         var dashConn = new DashboardConnection();
+
+        // Fetch Hub FSM transition timeline on load
+        fetchHubFSMTimeline();
 
         // Initialize uPlot charts (waits for uPlot script to load)
         initMetricsCharts();
