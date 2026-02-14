@@ -80,6 +80,9 @@ defmodule AgentCom.Endpoint do
   - POST   /api/hub/resume       — Resume the HubFSM (auth required)
   - GET    /api/hub/state        — Get current HubFSM state (no auth -- dashboard)
   - GET    /api/hub/history      — Get HubFSM transition history (no auth -- dashboard)
+  - POST   /api/webhooks/github           — GitHub webhook endpoint (HMAC auth, no bearer)
+  - GET    /api/webhooks/github/history   — Webhook event history (no auth -- dashboard)
+  - PUT    /api/config/webhook-secret     — Set webhook secret (auth required)
   - WS     /ws                   — WebSocket for agent connections
   """
   use Plug.Router
@@ -1431,6 +1434,64 @@ defmodule AgentCom.Endpoint do
     end
   end
 
+  # --- Webhook API ---
+
+  # IMPORTANT: GET /history MUST be defined BEFORE POST to avoid path conflicts
+  get "/api/webhooks/github/history" do
+    AgentCom.WebhookHistory.init_table()
+
+    limit = case conn.params["limit"] do
+      nil -> 50
+      l -> min(String.to_integer(l), 100)
+    end
+
+    events = AgentCom.WebhookHistory.list(limit: limit)
+
+    formatted = Enum.map(events, fn e ->
+      Map.new(e, fn {k, v} -> {to_string(k), v} end)
+    end)
+
+    send_json(conn, 200, %{"events" => formatted})
+  end
+
+  post "/api/webhooks/github" do
+    case AgentCom.WebhookVerifier.verify_signature(conn) do
+      {:ok, conn} ->
+        event_type = Plug.Conn.get_req_header(conn, "x-github-event") |> List.first()
+        delivery_id = Plug.Conn.get_req_header(conn, "x-github-delivery") |> List.first()
+
+        Logger.info("webhook_received",
+          event_type: event_type,
+          delivery_id: delivery_id
+        )
+
+        handle_github_event(conn, event_type, conn.body_params, delivery_id)
+
+      {:error, reason} ->
+        Logger.warning("webhook_signature_failed", reason: inspect(reason))
+        send_json(conn, 401, %{"error" => "invalid_signature"})
+    end
+  end
+
+  # --- Webhook Secret Config (auth required) ---
+
+  put "/api/config/webhook-secret" do
+    conn = AgentCom.Plugs.RequireAuth.call(conn, [])
+
+    if conn.halted do
+      conn
+    else
+      secret = conn.body_params["secret"]
+
+      if is_binary(secret) and byte_size(secret) >= 16 do
+        :ok = AgentCom.Config.put(:github_webhook_secret, secret)
+        send_json(conn, 200, %{"status" => "updated"})
+      else
+        send_json(conn, 422, %{"error" => "secret must be a string of at least 16 characters"})
+      end
+    end
+  end
+
   # --- Metrics API (no auth -- same visibility as dashboard, rate limited) ---
 
   get "/api/metrics" do
@@ -2206,6 +2267,197 @@ defmodule AgentCom.Endpoint do
           Map.new(task, fn {k, v} -> {to_string(k), v} end)
         end)
     }
+  end
+
+  # --- GitHub Webhook Helpers ---
+
+  defp handle_github_event(conn, "push", payload, delivery_id) do
+    repo_full_name = get_in(payload, ["repository", "full_name"])
+    ref = payload["ref"]
+    head_commit_id = get_in(payload, ["head_commit", "id"])
+
+    case match_active_repo(repo_full_name) do
+      {:ok, repo} ->
+        reason = "push to #{repo_full_name} ref=#{ref} commit=#{head_commit_id}"
+        wake_fsm(:improving, reason)
+
+        AgentCom.WebhookHistory.record(%{
+          event_type: "push",
+          repo: repo_full_name,
+          ref: ref,
+          commit: head_commit_id,
+          delivery_id: delivery_id,
+          action: "accepted",
+          repo_id: repo.id
+        })
+
+        Logger.info("webhook_push_accepted",
+          repo: repo_full_name,
+          ref: ref,
+          commit: head_commit_id
+        )
+
+        send_json(conn, 200, %{
+          "status" => "accepted",
+          "event" => "push",
+          "repo" => repo_full_name
+        })
+
+      :not_active ->
+        AgentCom.WebhookHistory.record(%{
+          event_type: "push",
+          repo: repo_full_name,
+          ref: ref,
+          delivery_id: delivery_id,
+          action: "ignored",
+          reason: "repo not active"
+        })
+
+        Logger.info("webhook_push_ignored",
+          repo: repo_full_name,
+          reason: "repo not active"
+        )
+
+        send_json(conn, 200, %{
+          "status" => "ignored",
+          "reason" => "repo not active"
+        })
+    end
+  end
+
+  defp handle_github_event(conn, "pull_request", payload, delivery_id) do
+    action = payload["action"]
+    merged = get_in(payload, ["pull_request", "merged"])
+
+    if action == "closed" and merged == true do
+      repo_full_name = get_in(payload, ["repository", "full_name"])
+      pr_number = get_in(payload, ["pull_request", "number"])
+      base_branch = get_in(payload, ["pull_request", "base", "ref"])
+
+      case match_active_repo(repo_full_name) do
+        {:ok, repo} ->
+          reason = "PR ##{pr_number} merged to #{base_branch} on #{repo_full_name}"
+          wake_fsm(:improving, reason)
+
+          AgentCom.WebhookHistory.record(%{
+            event_type: "pull_request",
+            repo: repo_full_name,
+            pr_number: pr_number,
+            base_branch: base_branch,
+            delivery_id: delivery_id,
+            action: "accepted",
+            repo_id: repo.id
+          })
+
+          Logger.info("webhook_pr_merge_accepted",
+            repo: repo_full_name,
+            pr_number: pr_number,
+            base_branch: base_branch
+          )
+
+          send_json(conn, 200, %{
+            "status" => "accepted",
+            "event" => "pull_request_merged",
+            "repo" => repo_full_name,
+            "pr_number" => pr_number
+          })
+
+        :not_active ->
+          AgentCom.WebhookHistory.record(%{
+            event_type: "pull_request",
+            repo: repo_full_name,
+            pr_number: pr_number,
+            delivery_id: delivery_id,
+            action: "ignored",
+            reason: "repo not active"
+          })
+
+          Logger.info("webhook_pr_merge_ignored",
+            repo: repo_full_name,
+            reason: "repo not active"
+          )
+
+          send_json(conn, 200, %{
+            "status" => "ignored",
+            "reason" => "repo not active"
+          })
+      end
+    else
+      AgentCom.WebhookHistory.record(%{
+        event_type: "pull_request",
+        pr_action: action,
+        merged: merged,
+        delivery_id: delivery_id,
+        action: "ignored",
+        reason: "not a merge"
+      })
+
+      send_json(conn, 200, %{
+        "status" => "ignored",
+        "reason" => "not a merge"
+      })
+    end
+  end
+
+  defp handle_github_event(conn, event_type, _payload, delivery_id) do
+    AgentCom.WebhookHistory.record(%{
+      event_type: event_type,
+      delivery_id: delivery_id,
+      action: "ignored",
+      reason: "unhandled event type"
+    })
+
+    Logger.info("webhook_event_ignored",
+      event_type: event_type,
+      reason: "unhandled event type"
+    )
+
+    send_json(conn, 200, %{
+      "status" => "ignored",
+      "reason" => "unhandled event type"
+    })
+  end
+
+  defp match_active_repo(full_name) when is_binary(full_name) do
+    target_id = String.replace(full_name, "/", "-")
+
+    repos =
+      try do
+        AgentCom.RepoRegistry.list_repos()
+      catch
+        :exit, _ -> []
+      end
+
+    case Enum.find(repos, fn r -> r.id == target_id and r.status == :active end) do
+      nil -> :not_active
+      repo -> {:ok, repo}
+    end
+  end
+
+  defp match_active_repo(_), do: :not_active
+
+  defp wake_fsm(target_state, reason) do
+    try do
+      case AgentCom.HubFSM.force_transition(target_state, reason) do
+        :ok ->
+          Logger.info("webhook_fsm_wake",
+            target_state: target_state,
+            reason: reason
+          )
+
+        {:error, :invalid_transition} ->
+          Logger.debug("webhook_fsm_already_active",
+            target_state: target_state,
+            reason: reason
+          )
+      end
+    catch
+      :exit, _ ->
+        Logger.warning("webhook_fsm_unavailable",
+          target_state: target_state,
+          reason: reason
+        )
+    end
   end
 
   defp send_json(conn, status, data) do

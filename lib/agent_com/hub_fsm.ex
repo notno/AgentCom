@@ -127,8 +127,9 @@ defmodule AgentCom.HubFSM do
   def init(_opts) do
     Logger.metadata(module: __MODULE__)
 
-    # Initialize ETS history table FIRST
+    # Initialize ETS history tables FIRST
     History.init_table()
+    AgentCom.WebhookHistory.init_table()
 
     # Subscribe to PubSub topics for future event-specific behavior
     Phoenix.PubSub.subscribe(AgentCom.PubSub, "goals")
