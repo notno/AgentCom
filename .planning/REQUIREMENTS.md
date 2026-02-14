@@ -52,9 +52,9 @@ Requirements for v1.3 Hub FSM Loop of Self-Improvement. Each maps to roadmap pha
 
 ### Tiered Autonomy
 
-- [ ] **AUTO-01**: Completed tasks classified by risk tier based on complexity, files touched, and lines changed
-- [ ] **AUTO-02**: Default mode is PR-only (no auto-merge until pipeline proven reliable)
-- [ ] **AUTO-03**: Tier thresholds configurable via Config GenServer
+- [x] **AUTO-01**: Completed tasks classified by risk tier based on complexity, files touched, and lines changed
+- [x] **AUTO-02**: Default mode is PR-only (no auto-merge until pipeline proven reliable)
+- [x] **AUTO-03**: Tier thresholds configurable via Config GenServer
 
 ### Pipeline Dependencies
 
@@ -166,9 +166,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CONTEMP-02 | Phase 33 | Pending |
 | SCALE-01 | Phase 33 | Pending |
 | SCALE-02 | Phase 33 | Pending |
-| AUTO-01 | Phase 34 | Pending |
-| AUTO-02 | Phase 34 | Pending |
-| AUTO-03 | Phase 34 | Pending |
+| AUTO-01 | Phase 34 | Done |
+| AUTO-02 | Phase 34 | Done |
+| AUTO-03 | Phase 34 | Done |
 | CLEAN-01 | Phase 35 | Done |
 | CLEAN-02 | Phase 35 | Done |
 | CLEAN-03 | Phase 35 | Done |

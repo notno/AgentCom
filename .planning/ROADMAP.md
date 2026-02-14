@@ -84,7 +84,7 @@
 - [x] **Phase 31: Hub Event Wiring** - GitHub webhooks and external event triggers for FSM transitions (shipped 2026-02-13)
 - [x] **Phase 32: Improvement Scanning** - Deterministic and LLM-assisted codebase improvement identification (shipped 2026-02-13)
 - [ ] **Phase 33: Contemplation and Scalability** - Feature proposal generation and bottleneck analysis
-- [ ] **Phase 34: Tiered Autonomy** - Risk-based PR classification with configurable thresholds
+- [x] **Phase 34: Tiered Autonomy** - Risk-based PR classification with configurable thresholds (shipped 2026-02-13)
 - [x] **Phase 35: Pre-Publication Cleanup** - Secret scanning, IP replacement, workspace file management (shipped 2026-02-13)
 - [x] **Phase 36: Dashboard and Observability** - Goal progress, cost tracking, and FSM visibility panels (shipped 2026-02-13)
 
@@ -241,8 +241,8 @@ Plans:
   3. Tier thresholds are configurable via the existing Config GenServer and can be adjusted without code changes
 **Plans:** 2 plans
 Plans:
-- [ ] 34-01-PLAN.md -- TDD: RiskClassifier pure function module with Config-driven thresholds
-- [ ] 34-02-PLAN.md -- Sidecar diff gathering, classify endpoint, PR body enrichment
+- [x] 34-01-PLAN.md -- TDD: RiskClassifier pure function module with Config-driven thresholds
+- [x] 34-02-PLAN.md -- Sidecar diff gathering, classify endpoint, PR body enrichment
 
 ### Phase 35: Pre-Publication Cleanup
 **Goal**: Repos can be scanned for sensitive content before open-sourcing, with actionable findings
@@ -290,6 +290,6 @@ Phases execute in numeric order: 24, 25, 26... Decimal phases (if inserted) exec
 | 31. Hub Event Wiring | v1.3 | 3/3 | Complete | 2026-02-13 |
 | 32. Improvement Scanning | v1.3 | 4/4 | Complete | 2026-02-13 |
 | 33. Contemplation and Scalability | v1.3 | 0/TBD | Not started | - |
-| 34. Tiered Autonomy | v1.3 | 0/TBD | Not started | - |
+| 34. Tiered Autonomy | v1.3 | 2/2 | Complete | 2026-02-13 |
 | 35. Pre-Publication Cleanup | v1.3 | 2/2 | Complete | 2026-02-13 |
 | 36. Dashboard and Observability | v1.3 | 2/2 | Complete | 2026-02-13 |
