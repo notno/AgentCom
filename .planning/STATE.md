@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 
 ## Current Position
 
-Phase: 26 of 36 (Claude API Client)
-Plan: 3/3 complete
-Status: Phase Complete
-Last activity: 2026-02-14 -- Plan 26-03 ClaudeClient Test Suite (TDD)
+Phase: 29 of 36 (Hub FSM Core)
+Plan: 1/3 complete
+Status: In Progress
+Last activity: 2026-02-14 -- Plan 29-01 HubFSM Core Implementation
 
-Progress: [██████████████] 100% (3/3 plans)
+Progress: [█████---------] 33% (1/3 plans)
 
 ## Performance Metrics
 
@@ -40,6 +40,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 v1.1 decisions archived to .planning/milestones/v1.1-ROADMAP.md (100 decisions across 32 plans).
 v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions across 25 plans).
 - [Phase 28]: tasks_for_goal must scan both tasks and dead_letter tables for accurate goal_progress counts
+- [Phase 29]: Tick-based evaluation at 1s intervals (not per-event) for HubFSM transitions
+- [Phase 29]: Pure Predicates module separated from GenServer for testability
+- [Phase 29]: ETS ordered_set with negated timestamps for newest-first History reads
 
 ### Decisions (v1.3)
 
@@ -98,5 +101,5 @@ v1.2 decisions archived to .planning/milestones/v1.2-ROADMAP.md (96 decisions ac
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 26-03-PLAN.md -- ClaudeClient Test Suite (Phase 26 complete)
+Stopped at: Completed 29-01-PLAN.md -- HubFSM Core Implementation
 Resume file: None
