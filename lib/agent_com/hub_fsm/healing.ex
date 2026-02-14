@@ -9,7 +9,9 @@ defmodule AgentCom.HubFSM.Healing do
   1. stuck_tasks -- requeue or dead-letter
   2. offline_agents -- requeue assigned tasks
   3. unhealthy_endpoints -- exponential backoff recovery
-  4. high_error_rate -- log for awareness (no automated fix)
+  4. merge_conflicts -- delegate to agent via TaskQueue
+  5. compilation_failure -- delegate to agent via TaskQueue
+  6. high_error_rate -- log for awareness (no automated fix)
   """
 
   require Logger
@@ -154,6 +156,63 @@ defmodule AgentCom.HubFSM.Healing do
     %{action: :endpoint_recovery, results: recovery_results, claude_fallback: not any_recovered}
   end
 
+  defp remediate(%{category: :merge_conflicts, detail: detail}) do
+    files = Map.get(detail, :files, [])
+
+    try do
+      task_params = %{
+        description: "Fix merge conflicts in #{length(files)} file(s): #{Enum.join(Enum.take(files, 5), ", ")}",
+        priority: "urgent",
+        metadata: %{
+          source: "healing",
+          tags: ["healing", "merge-conflict", "ci"],
+          files: files
+        }
+      }
+
+      case AgentCom.TaskQueue.submit(task_params) do
+        {:ok, task} ->
+          Logger.info("healing_created_fix_task", task_id: task.id, files: files)
+          %{action: :delegated_to_agent, task_id: task.id}
+
+        {:error, reason} ->
+          Logger.error("healing_failed_to_create_task", reason: inspect(reason))
+          %{action: :delegation_failed, reason: reason}
+      end
+    catch
+      kind, error ->
+        %{action: :delegation_error, error: "#{kind}: #{inspect(error)}"}
+    end
+  end
+
+  defp remediate(%{category: :compilation_failure, detail: detail}) do
+    output = Map.get(detail, :output, "")
+
+    try do
+      task_params = %{
+        description: "Fix compilation failure: #{String.slice(output, 0, 200)}",
+        priority: "urgent",
+        metadata: %{
+          source: "healing",
+          tags: ["healing", "compilation", "ci"],
+          error_output: String.slice(output, 0, 1000)
+        }
+      }
+
+      case AgentCom.TaskQueue.submit(task_params) do
+        {:ok, task} ->
+          Logger.info("healing_created_compile_fix_task", task_id: task.id)
+          %{action: :delegated_to_agent, task_id: task.id}
+
+        {:error, reason} ->
+          %{action: :delegation_failed, reason: reason}
+      end
+    catch
+      kind, error ->
+        %{action: :delegation_error, error: "#{kind}: #{inspect(error)}"}
+    end
+  end
+
   defp remediate(%{category: :high_error_rate}) do
     # No automated fix for high error rate -- log for awareness
     Logger.warning("healing_high_error_rate",
@@ -234,7 +293,9 @@ defmodule AgentCom.HubFSM.Healing do
   defp priority(%{category: :stuck_tasks}), do: 1
   defp priority(%{category: :offline_agents}), do: 2
   defp priority(%{category: :unhealthy_endpoints}), do: 3
-  defp priority(%{category: :high_error_rate}), do: 4
+  defp priority(%{category: :merge_conflicts}), do: 4
+  defp priority(%{category: :compilation_failure}), do: 5
+  defp priority(%{category: :high_error_rate}), do: 6
   defp priority(_), do: 99
 
   defp find_agent(agent_id) do
@@ -249,6 +310,14 @@ defmodule AgentCom.HubFSM.Healing do
   end
 
   defp log_action(issue, result) do
+    # Record to audit log
+    AgentCom.HubFSM.HealingHistory.record(
+      issue.category,
+      %{severity: issue.severity, detail: issue.detail},
+      result
+    )
+
+    # Emit telemetry
     :telemetry.execute(
       [:agent_com, :healing, :action],
       %{timestamp: System.system_time(:millisecond)},

@@ -155,6 +155,7 @@ defmodule AgentCom.HubFSM do
 
     # Initialize ETS history tables FIRST
     History.init_table()
+    AgentCom.HubFSM.HealingHistory.init_table()
     AgentCom.WebhookHistory.init_table()
 
     # Subscribe to PubSub topics for future event-specific behavior

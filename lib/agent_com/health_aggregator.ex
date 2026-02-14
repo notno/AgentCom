@@ -35,6 +35,7 @@ defmodule AgentCom.HealthAggregator do
       |> check_offline_agents(agents)
       |> check_unhealthy_endpoints(endpoints)
       |> check_high_error_rate(metrics)
+      |> check_compilation_issues()
 
     %{
       healthy: issues == [],
@@ -142,6 +143,52 @@ defmodule AgentCom.HealthAggregator do
       ]
     else
       issues
+    end
+  end
+
+  defp check_compilation_issues(issues) do
+    case check_merge_conflicts() do
+      {:conflict, files} ->
+        [
+          %{
+            source: :compilation,
+            severity: :critical,
+            category: :merge_conflicts,
+            detail: %{files: files}
+          }
+          | issues
+        ]
+
+      :ok ->
+        issues
+    end
+  end
+
+  defp check_merge_conflicts do
+    try do
+      # Check for merge conflict markers (fast, no compilation needed)
+      case System.cmd("git", ["diff", "--check"], stderr_to_stdout: true) do
+        {_output, 0} ->
+          :ok
+
+        {output, _} ->
+          if String.contains?(output, "conflict") do
+            files =
+              output
+              |> String.split("\n")
+              |> Enum.filter(&String.contains?(&1, ":"))
+              |> Enum.map(fn line -> String.split(line, ":") |> List.first() end)
+              |> Enum.uniq()
+
+            {:conflict, files}
+          else
+            :ok
+          end
+      end
+    rescue
+      _ -> :ok
+    catch
+      _, _ -> :ok
     end
   end
 

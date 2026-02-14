@@ -1,14 +1,21 @@
 defmodule AgentCom.HubFSM.HealingTest do
   @moduledoc """
-  Unit tests for the Healing remediation module.
+  Unit tests for the Healing remediation module and HealingHistory audit log.
 
   Tests healing cycle execution, remediation action structure,
-  and error handling when services are unavailable.
+  error handling, and history recording.
   """
 
   use ExUnit.Case, async: false
 
   alias AgentCom.HubFSM.Healing
+  alias AgentCom.HubFSM.HealingHistory
+
+  setup do
+    HealingHistory.init_table()
+    HealingHistory.clear()
+    :ok
+  end
 
   describe "run_healing_cycle/0" do
     test "returns correct summary structure" do
@@ -31,7 +38,6 @@ defmodule AgentCom.HubFSM.HealingTest do
     end
 
     test "does not crash when services are unavailable" do
-      # Healing cycle should handle all failures gracefully
       summary = Healing.run_healing_cycle()
 
       assert is_map(summary)
@@ -46,6 +52,59 @@ defmodule AgentCom.HubFSM.HealingTest do
         assert is_map(result)
         assert Map.has_key?(result, :action)
       end)
+    end
+
+    test "records actions to HealingHistory" do
+      summary = Healing.run_healing_cycle()
+
+      if summary.actions_taken > 0 do
+        history = HealingHistory.list(limit: 100)
+        assert length(history) > 0
+      end
+    end
+  end
+
+  describe "HealingHistory" do
+    test "record/3 stores entries and list/1 retrieves them" do
+      HealingHistory.record(:test_category, %{severity: :warning}, %{action: :test})
+
+      entries = HealingHistory.list()
+      assert length(entries) == 1
+
+      entry = hd(entries)
+      assert entry.category == :test_category
+      assert entry.action == %{severity: :warning}
+      assert entry.outcome == %{action: :test}
+      assert is_integer(entry.timestamp)
+    end
+
+    test "list/1 respects limit option" do
+      for i <- 1..10 do
+        HealingHistory.record(:"cat_#{i}", %{i: i}, %{result: :ok})
+      end
+
+      limited = HealingHistory.list(limit: 3)
+      assert length(limited) == 3
+    end
+
+    test "entries are ordered newest first" do
+      HealingHistory.record(:first, %{}, %{})
+      Process.sleep(2)
+      HealingHistory.record(:second, %{}, %{})
+
+      entries = HealingHistory.list()
+      assert length(entries) == 2
+
+      [newer, older] = entries
+      assert newer.timestamp >= older.timestamp
+    end
+
+    test "clear/0 removes all entries" do
+      HealingHistory.record(:test, %{}, %{})
+      assert length(HealingHistory.list()) == 1
+
+      HealingHistory.clear()
+      assert length(HealingHistory.list()) == 0
     end
   end
 end
