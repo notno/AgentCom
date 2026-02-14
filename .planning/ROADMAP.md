@@ -157,11 +157,11 @@ Plans:
   2. Tool executor rejects file paths outside the task workspace (path traversal blocked)
   3. Tool executor kills commands exceeding per-tool timeout
   4. Every tool returns a structured JSON observation with typed fields (not raw text)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 40-01: Tool registry and sandbox
-- [ ] 40-02: Tool executor with structured observations
+- [ ] 40-01-PLAN.md -- Tool registry (5 Ollama-format definitions) and sandbox (path validation, command blocking)
+- [ ] 40-02-PLAN.md -- Tool executor with 5 handlers returning structured JSON observations, plus tests
 
 ### Phase 41: Agentic Execution Loop
 **Goal**: Local Ollama models execute tasks via multi-turn tool-calling loops with safety guardrails, with real-time visibility in the dashboard
