@@ -491,6 +491,21 @@ defmodule AgentCom.Socket do
     end
   end
 
+  # --- Wake result reporting (Phase 39, PIPE-01) ---
+
+  defp handle_msg(%{"type" => "wake_result", "task_id" => task_id} = msg, state) do
+    status = msg["status"] || "unknown"
+    log_task_event(state.agent_id, "wake_result", task_id, msg)
+
+    # Touch task timestamp to prevent premature stuck sweep
+    if status == "success" do
+      AgentCom.TaskQueue.update_progress(task_id)
+    end
+
+    # No reply needed -- informational, hub logs and updates timestamp
+    {:ok, state}
+  end
+
   # --- LLM Registry: Sidecar auto-reporting ---
 
   # Sidecar auto-reports local Ollama endpoint

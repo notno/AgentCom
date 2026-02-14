@@ -63,7 +63,7 @@ defmodule AgentCom.Scheduler do
   alias AgentCom.TaskRouter.TierResolver
 
   @stuck_sweep_interval_ms 30_000
-  @stuck_threshold_ms 300_000
+  @stuck_threshold_ms 600_000
   @fallback_timeout_ms 5_000
 
   # ---------------------------------------------------------------------------
@@ -201,13 +201,44 @@ defmodule AgentCom.Scheduler do
         staleness_ms = now - task.updated_at
         staleness_min = Float.round(staleness_ms / 60_000, 1)
 
-        Logger.warning("scheduler_reclaim_stuck",
-          task_id: task.id,
-          assigned_to: task.assigned_to,
-          stale_minutes: staleness_min
-        )
+        # PIPE-03: Check agent online status before reclaiming
+        agent_status = case AgentCom.AgentFSM.get_state(task.assigned_to) do
+          {:ok, %{fsm_state: fsm_state}} -> fsm_state
+          {:error, :not_found} -> :offline
+        end
 
-        AgentCom.TaskQueue.reclaim_task(task.id)
+        case agent_status do
+          :offline ->
+            Logger.warning("scheduler_reclaim_stuck_offline",
+              task_id: task.id,
+              assigned_to: task.assigned_to,
+              stale_minutes: staleness_min,
+              agent_status: :offline
+            )
+            AgentCom.TaskQueue.reclaim_task(task.id)
+
+          :working ->
+            # Agent is online and working -- only reclaim if VERY stale (2x threshold)
+            if task.updated_at < (now - @stuck_threshold_ms * 2) do
+              Logger.warning("scheduler_reclaim_stuck_unresponsive",
+                task_id: task.id,
+                assigned_to: task.assigned_to,
+                stale_minutes: staleness_min,
+                agent_status: :working
+              )
+              AgentCom.TaskQueue.reclaim_task(task.id)
+            end
+
+          _other ->
+            # Agent in unexpected state (idle, assigned, blocked) -- reclaim
+            Logger.warning("scheduler_reclaim_stuck_unexpected",
+              task_id: task.id,
+              assigned_to: task.assigned_to,
+              stale_minutes: staleness_min,
+              agent_status: agent_status
+            )
+            AgentCom.TaskQueue.reclaim_task(task.id)
+        end
       end
     end)
 

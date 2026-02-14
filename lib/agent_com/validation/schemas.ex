@@ -196,6 +196,19 @@ defmodule AgentCom.Validation.Schemas do
         "timestamp" => :number
       },
       description: "Sidecar reports host resource utilization (CPU, RAM, VRAM)."
+    },
+    "wake_result" => %{
+      required: %{
+        "type" => :string,
+        "task_id" => :string,
+        "status" => :string
+      },
+      optional: %{
+        "attempt" => :integer,
+        "error" => :string,
+        "reason" => :string
+      },
+      description: "Sidecar reports wake command outcome (success, failed, timeout)."
     }
   }
 
