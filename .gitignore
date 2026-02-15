@@ -23,5 +23,8 @@ nul
 .claude/
 .agentcom/
 
+# Proposals (runtime generated)
+priv/proposals/
+
 # Accidental debug artifacts
 sidecar/config.ECHO.json
