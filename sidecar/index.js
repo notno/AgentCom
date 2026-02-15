@@ -993,7 +993,7 @@ class HubConnection {
     // Use openclaw system event to wake the agent with room context
     const roomText = `Room message from ${msg.from}: ${msg.text}`;
     const escapedText = roomText.replace(/"/g, '\\"');
-    const wakeCmd = `openclaw system event --text "${escapedText}" --heartbeat`;
+    const wakeCmd = `openclaw system event --text "${escapedText}"`;
 
     const { execCommand } = require('./lib/wake');
     execCommand(wakeCmd)
